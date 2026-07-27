@@ -3,12 +3,20 @@
   <!--
     NodeSharp.Contracts
     ====================
-    솔루션 최하위 계약(Contract) 레이어. 외부 참조 0개 원칙(02번 설계 문서 1번 탭 카드 2).
+    솔루션 최하위 계약(Contract) 레이어. 외부 참조 0개 원칙(02번 설계 문서 1번 탭 카드 2)은
+    "다른 NodeSharp.* 프로젝트를 참조하지 않는다"는 뜻이며, NuGet 패키지(Newtonsoft.Json 등)는
+    이 원칙의 예외로 명시적으로 필요할 때만 추가한다.
     IFlowNode, INodeType, INodeRegistry, ISharedServiceNode 등 인터페이스와
     FlowDefinition/NodeConfig/Wire/Msg 등 모델을 담는다(향후 Step: CT-01~09).
 
     Step: P0-1a (03번 개발 Step맵.html, Phase 0)
     - 이 시점에는 빈 프로젝트 껍데기만 생성한다. 인터페이스/모델 구현은 CT-01~09에서 진행.
+
+    Step: CT-02a (03번 개발 Step맵.html, Phase 1)
+    - Msg 모델이 JSON 상호 변환에 Newtonsoft.Json(JsonConvert, ExpandoObjectConverter)을 직접
+      사용하므로(02번 문서 2번 탭 카드 2·3), Newtonsoft.Json NuGet 패키지 참조를 추가한다.
+      System.Text.Json이 아닌 이유: ExpandoObjectConverter를 기본 제공해 ExpandoObject↔JSON
+      왕복 변환에 커스텀 컨버터 작성이 불필요하기 때문(02번 문서 2번 탭 카드 3).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -17,5 +25,9 @@
     <RootNamespace>NodeSharp.Contracts</RootNamespace>
     <AssemblyName>NodeSharp.Contracts</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
 
 </Project>
