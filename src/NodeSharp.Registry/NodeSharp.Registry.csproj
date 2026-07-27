@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Registry
+    ====================
+    노드 타입 탐색·로딩·버전관리(02번 설계 문서 1번 탭 카드 2~3, Node-RED @node-red/registry 대응).
+
+    Step: P0-1a (03번 개발 Step맵.html, Phase 0)
+    - 이 시점에는 빈 프로젝트 껍데기만 생성한다. NodeRegistry 구현은 이후 Registry 관련 Step에서 진행.
+
+    Step: P0-1b (03번 개발 Step맵.html, Phase 0)
+    - 1번 탭 의존성 그림에 따라 ProjectReference 추가: Registry → Contracts, Registry → Util.
+      (Registry는 Runtime을 참조하지 않음 — Runtime이 Registry를 참조하는 단방향 관계, 순환 참조 없음)
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Registry</RootNamespace>
+    <AssemblyName>NodeSharp.Registry</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+    <ProjectReference Include="..\NodeSharp.Util\NodeSharp.Util.csproj" />
+  </ItemGroup>
+
+</Project>

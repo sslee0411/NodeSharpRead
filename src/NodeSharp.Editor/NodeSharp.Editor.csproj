@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Editor
+    ====================
+    설정/조작 화면 전용 WPF 데스크톱 앱(02번 설계 문서 1번 탭 카드 2~3).
+    FlowEngine을 "미리보기/검증"용으로만 로컬 실행하며, 실제 무인 운영 실행은 NodeSharp.Runner가 담당한다.
+
+    Step: P0-1a (03번 개발 Step맵.html, Phase 0)
+    - 이 시점에는 빈 프로젝트 껍데기만 생성한다(App.xaml/MainWindow 없음, OutputType 미지정 → 기본 라이브러리로 빌드).
+    - 실행 가능한 WPF 앱(OutputType=WinExe, App.xaml/MainWindow, NodeSharp.UI.Themes 적용)은
+      ED-B0 Step("빈 WPF + NodeSharp.UI.Themes 적용")에서 추가한다.
+
+    Step: P0-1b (03번 개발 Step맵.html, Phase 0)
+    - 1번 탭 의존성 그림에 따라 ProjectReference 추가: Editor → Contracts, Editor → Runtime,
+      Editor → Registry, Editor → Util, Editor → UI.Themes.
+      (Contracts는 Runtime/Registry를 통해서도 전이적으로 들어오지만, Step 설명에 명시된 대로 직접 참조도 추가)
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Editor</RootNamespace>
+    <AssemblyName>NodeSharp.Editor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+    <ProjectReference Include="..\NodeSharp.Runtime\NodeSharp.Runtime.csproj" />
+    <ProjectReference Include="..\NodeSharp.Registry\NodeSharp.Registry.csproj" />
+    <ProjectReference Include="..\NodeSharp.Util\NodeSharp.Util.csproj" />
+    <ProjectReference Include="..\NodeSharp.UI.Themes\NodeSharp.UI.Themes.csproj" />
+  </ItemGroup>
+
+</Project>

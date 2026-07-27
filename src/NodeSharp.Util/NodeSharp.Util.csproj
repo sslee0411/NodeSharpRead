@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Util
+    ====================
+    로깅·직렬화·i18n 등 공용 유틸리티 레이어(02번 설계 문서 1번 탭 카드 3, Node-RED @node-red/util 대응).
+    D:\lssLib 코드는 ProjectReference가 아니라 "포팅(복사)"으로만 반입한다(README 개발 지침, LL-00 Step).
+
+    Step: P0-1a (03번 개발 Step맵.html, Phase 0)
+    - 이 시점에는 빈 프로젝트 껍데기만 생성한다. lssLib 포팅은 LL-00 이후 진행.
+
+    Step: P0-1b (03번 개발 Step맵.html, Phase 0)
+    - NodeSharp.Contracts에 대한 ProjectReference 추가(1번 탭 의존성 그림: Util → Contracts).
+      D:\lssLib에 대한 ProjectReference/PackageReference는 추가하지 않음(포팅 원칙 유지).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Util</RootNamespace>
+    <AssemblyName>NodeSharp.Util</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

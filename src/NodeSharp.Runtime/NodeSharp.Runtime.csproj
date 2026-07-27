@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Runtime
+    ====================
+    플로우 실행 엔진(FlowEngine), 노드 생명주기, 메시지 라우팅을 담당하는 Editor/Runner 공용 레이어.
+    WPF에 비의존적인 순수 로직(02번 설계 문서 1번 탭 카드 2~3, Node-RED @node-red/runtime 대응).
+
+    Step: P0-1a (03번 개발 Step맵.html, Phase 0)
+    - 이 시점에는 빈 프로젝트 껍데기만 생성한다. FlowEngine 구현은 RT-01~11에서 진행.
+
+    Step: P0-1b (03번 개발 Step맵.html, Phase 0)
+    - 1번 탭 의존성 그림에 따라 ProjectReference 추가: Runtime → Contracts, Runtime → Registry, Runtime → Util.
+      (FlowEngine.DeployAsync가 노드 타입 인스턴스화를 위해 Registry를 사용하므로 Runtime이 Registry를 참조)
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Runtime</RootNamespace>
+    <AssemblyName>NodeSharp.Runtime</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+    <ProjectReference Include="..\NodeSharp.Registry\NodeSharp.Registry.csproj" />
+    <ProjectReference Include="..\NodeSharp.Util\NodeSharp.Util.csproj" />
+  </ItemGroup>
+
+</Project>
