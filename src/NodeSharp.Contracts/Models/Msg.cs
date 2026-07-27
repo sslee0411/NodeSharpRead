@@ -50,7 +50,7 @@ namespace NodeSharp.Contracts.Models;
 /// dyn.customField = "hello";
 ///
 /// // 타입 안전 접근자로 값 꺼내기
-/// if (msg.TryGet&lt;string&gt;("customField", out var s))
+/// if (msg.TryGet<string>("customField", out var s))
 /// {
 ///     Console.WriteLine(s);   // "hello"
 /// }
@@ -106,8 +106,18 @@ public sealed class Msg : DynamicObject
     /// <c>null</c>이 되고 <c>true</c>를 반환합니다(존재하지 않는 필드 접근 시 예외를 던지지 않음 —
     /// Node-RED의 <c>msg.foo</c>가 <c>undefined</c>를 반환하는 것과 동일한 관용).
     /// </summary>
+    /// <remarks>
+    /// 이 메서드는 반드시 <b>항상 <c>true</c></b>를 반환해야 합니다 — C#의 동적 바인딩 규약상
+    /// <c>TryGetMember</c>가 <c>false</c>를 반환하면 "이 멤버를 찾지 못했다"는 뜻이 되어 런타임이
+    /// <c>RuntimeBinderException</c>을 던집니다. <c>_data.TryGetValue(...)</c>의 결과를 그대로
+    /// 반환하면(필드가 없을 때 <c>false</c>) 바로 이 예외가 발생하는 실제 버그가 있었습니다
+    /// (CT-02a 로컬 단위 테스트 실행으로 발견, README Ver History v1.47 / 02번 문서 v1.39 참고).
+    /// </remarks>
     public override bool TryGetMember(GetMemberBinder binder, out object? result)
-        => _data.TryGetValue(binder.Name, out result);
+    {
+        _data.TryGetValue(binder.Name, out result);
+        return true;
+    }
 
     /// <summary>동적 필드 쓰기 — <c>dynamic</c>으로 캐스팅한 뒤 <c>msg.customField = 1;</c> 형태로 대입할 때 호출됩니다. Function 노드 등에서 사용합니다.</summary>
     public override bool TrySetMember(SetMemberBinder binder, object? value)
@@ -172,14 +182,26 @@ public sealed class Msg : DynamicObject
     /// <summary>
     /// JSON 문자열로부터 <see cref="Msg"/>를 복원합니다. <see cref="ExpandoObjectConverter"/>를
     /// 사용해 JSON 객체를 <see cref="ExpandoObject"/> 트리로 역직렬화하므로, 커스텀 컨버터 없이도
-    /// 임의의 중첩 JSON 구조를 그대로 동적 필드로 복원할 수 있습니다.
+    /// 임의의 중첩 JSON 구조(중첩 객체는 <see cref="ExpandoObject"/>, 배열은
+    /// <see cref="List{T}">List&lt;object&gt;</see>)를 그대로 동적 필드로 복원할 수 있습니다.
     /// </summary>
+    /// <remarks>
+    /// <see cref="ExpandoObjectConverter.CanConvert"/>는 대상 타입이 <b>정확히</b>
+    /// <see cref="ExpandoObject"/>일 때만 <c>true</c>를 반환합니다. 이전에는 대상 타입을
+    /// <c>IDictionary&lt;string, object?&gt;</c>로 지정해서 컨버터가 전혀 동작하지 않고,
+    /// 중첩 객체/배열이 Newtonsoft의 기본 처리인 <c>JObject</c>/<c>JArray</c>로 남는 실제 버그가
+    /// 있었습니다(중첩 객체는 <c>JObject</c>도 동적 속성 접근을 지원해 우연히 동작하는 것처럼
+    /// 보였지만, 엄밀한 타입을 기대하는 코드에서는 실패). 대상 타입을 <see cref="ExpandoObject"/>로
+    /// 직접 지정해야 컨버터가 실제로 재귀 변환을 수행합니다(CT-02a 로컬 단위 테스트 실행으로
+    /// 발견, README Ver History v1.47 / 02번 문서 v1.39 참고).
+    /// </remarks>
     /// <param name="json"><see cref="ToJson"/>으로 만든(또는 그와 동일한 형식의) JSON 문자열.</param>
     /// <returns>역직렬화된 필드를 모두 포함하는 새 <see cref="Msg"/> 인스턴스.</returns>
     public static Msg FromJson(string json)
     {
-        var dict = JsonConvert.DeserializeObject<IDictionary<string, object?>>(
+        var expando = JsonConvert.DeserializeObject<ExpandoObject>(
             json, new ExpandoObjectConverter())!;
+        var dict = (IDictionary<string, object?>)expando;
 
         var msg = new Msg();
         foreach (var kv in dict)

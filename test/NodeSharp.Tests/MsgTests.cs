@@ -1,3 +1,4 @@
+using System.Dynamic;
 using NodeSharp.Contracts.Models;
 using Xunit;
 
@@ -166,5 +167,59 @@ public class MsgTests
         var restored = Msg.FromJson(json);
 
         Assert.Equal(original.Id, restored.Id);
+    }
+
+    [Fact]
+    public void ToJson_FromJson_왕복_시_3단계로_중첩된_객체도_보존된다()
+    {
+        // ExpandoObjectConverter는 재귀적으로 동작한다 — JSON 객체를 만나면 중첩된 객체도
+        // 다시 ExpandoObject로 변환하므로, 2·3단계 이상 중첩된 구조도 각 레벨이 전부
+        // 동적 객체로 복원되어야 한다(사용자 질문 계기로 이 테스트를 추가함).
+        dynamic device = new ExpandoObject();
+        dynamic plc = new ExpandoObject();
+        plc.status = "ok";
+        plc.registerCount = 16;
+        device.plc = plc;
+        device.name = "1호기PLC";
+
+        dynamic original = new Msg();
+        original.device = device; // msg.device.plc.status 형태의 3단계 중첩
+
+        var json = ((Msg)original).ToJson();
+        dynamic restored = Msg.FromJson(json);
+
+        Assert.Equal("1호기PLC", (string)restored.device.name);
+        Assert.Equal("ok", (string)restored.device.plc.status);
+        Assert.Equal(16L, (long)restored.device.plc.registerCount);
+    }
+
+    [Fact]
+    public void ToJson_FromJson_왕복_시_객체_배열_안의_중첩_필드도_보존된다()
+    {
+        // 배열은 List<object>로, 배열 안의 객체는 다시 ExpandoObject로 재귀 변환되는지 확인.
+        // Node-RED에서 msg.payload가 여러 태그 값을 담은 배열일 때(예: PLC 배치 폴링 결과)와
+        // 동일한 형태.
+        dynamic tag1 = new ExpandoObject();
+        tag1.tagName = "온도센서1";
+        tag1.value = 85.5;
+
+        dynamic tag2 = new ExpandoObject();
+        tag2.tagName = "온도센서2";
+        tag2.value = 90.2;
+
+        var original = new Msg { Payload = new List<object> { tag1, tag2 } };
+
+        var json = original.ToJson();
+        var restored = Msg.FromJson(json);
+
+        var list = Assert.IsType<List<object>>(restored.Payload);
+        Assert.Equal(2, list.Count);
+
+        dynamic restoredTag1 = list[0];
+        dynamic restoredTag2 = list[1];
+        Assert.Equal("온도센서1", (string)restoredTag1.tagName);
+        Assert.Equal(85.5, (double)restoredTag1.value);
+        Assert.Equal("온도센서2", (string)restoredTag2.tagName);
+        Assert.Equal(90.2, (double)restoredTag2.value);
     }
 }
