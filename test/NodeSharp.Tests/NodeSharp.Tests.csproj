@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Tests
+    ====================
+    단위/통합 테스트 프로젝트(xUnit). 02번 설계 문서 1번 탭 폴더 구조의 test\NodeSharp.Tests\에 대응.
+
+    Step: CT-01c (03번 개발 Step맵.html, Phase 1)
+    - 원래 이 프로젝트 생성은 Phase 14 OP-06(테스트 하네스)에 있었으나, CT-02a(Msg 모델)부터
+      완료 기준이 "단위 테스트로 확인"을 요구하는데 그때까지 테스트를 돌릴 프로젝트 자체가
+      없는 구조적 공백을 발견해 이 Step으로 앞당겼다(README v1.46, 03번 문서 v1.21 근거).
+    - OP-06은 이 프로젝트의 신규 생성이 아니라, 그동안 누적된 테스트가 CI에서 한 번에
+      통과하는지 확인하고 커버리지 설정을 추가하는 역할로 범위가 조정되었다.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>NodeSharp.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- xUnit 테스트 프레임워크 + VS/dotnet test 러너 어댑터 + 코드 커버리지 수집기(OP-06에서 실제 사용) -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector" Version="6.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- CT-02a(Msg)부터 Contracts의 Models/Enums를 테스트하므로 Contracts만 우선 참조.
+         이후 Runtime/Registry 등을 테스트해야 하는 Step(RT-*, LL-*)에서 필요할 때 추가한다. -->
+    <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
