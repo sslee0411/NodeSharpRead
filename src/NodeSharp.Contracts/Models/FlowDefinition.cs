@@ -3,42 +3,39 @@ namespace NodeSharp.Contracts.Models;
 /// <summary>
 /// 캔버스의 Flow 탭 하나에 대응하는 최상위 모델입니다. <c>flows.json</c>은 이
 /// <see cref="FlowDefinition"/>의 목록(사용자가 만든 Flow 탭 개수만큼)으로 구성됩니다.
+/// 설계 근거: 02번 문서 2번 탭 카드 10(정식 선언).
 /// </summary>
 /// <remarks>
-/// <para>
-/// 설계 근거: 02번 설계 문서 2번 탭 카드 10 "NodeConfig / FlowDefinition 완전 정의" —
-/// 이전에는 <c>FlowEngine.DeployAsync(FlowDefinition, ...)</c>, <c>SubflowDefinition.InnerFlow</c>
-/// 등 여러 탭에서 타입으로만 언급되고 한 번도 정식 선언되지 않았던 것을 완성한 최종본입니다.
-/// </para>
-/// <para>
-/// <b>다중 Flow 탭 지원의 데이터 기반</b>: <see cref="Id"/>/<see cref="Name"/>은 v1.12에서
-/// 확정된 "캔버스 상단 플로우 탭 스트립"(여러 개의 <see cref="FlowDefinition"/>을 탭으로 전환하며
-/// 편집하는 UI, Step <c>EC-05</c>에서 구현)의 데이터 기반입니다. 이 Step(<c>CT-02c</c>)에서는
-/// 데이터 모델만 완성하고, 실제 탭 전환 화면은 <c>EC-05</c>에서 구현합니다.
-/// </para>
+/// <see cref="Id"/>/<see cref="Name"/>은 캔버스 상단 플로우 탭 스트립(여러 <see cref="FlowDefinition"/>을
+/// 탭으로 전환하며 편집하는 UI, <c>EC-05</c>에서 구현)의 데이터 기반입니다. 이 파일은 데이터
+/// 모델만 정의하며, 실제 탭 전환 화면은 <c>EC-05</c>에서 구현합니다.
 /// </remarks>
-/// <param name="Id">이 Flow 탭의 고유 식별자. 캔버스 상단 탭 스트립에서 어떤 탭이 선택되어 있는지 구분하는 키로 쓰입니다.</param>
+/// <param name="Id">이 Flow 탭의 고유 식별자. 캔버스 상단 탭 스트립에서 어떤 탭이 선택되어 있는지 구분하는 키입니다.</param>
 /// <param name="Name">캔버스 상단 탭에 표시되는 이름(예: "1호기 라인", "공통 알림").</param>
-/// <param name="Nodes">이 Flow 탭에 배치된 모든 노드의 설정 목록(<see cref="NodeConfig"/>).</param>
-/// <param name="Wires">이 Flow 탭 안의 노드들을 잇는 모든 연결선 목록(<see cref="Models.Wire"/>).</param>
-/// <param name="Disabled">
-/// 이 Flow 탭 전체가 비활성화되어 있는지(Node-RED Flow 탭의 <c>disabled</c> 속성과 동일,
-/// 9번 탭 Enable-Disable). <c>true</c>면 배포 시 이 탭에 속한 노드는 하나도 생성되지 않습니다
-/// — <see cref="NodeConfig.Disabled"/>(노드 하나만 끄기)와는 범위가 다릅니다.
-/// </param>
+/// <param name="Nodes">이 Flow 탭에 배치된 모든 노드의 설정 목록.</param>
+/// <param name="Wires">이 Flow 탭 안의 노드들을 잇는 모든 연결선 목록.</param>
+/// <param name="Disabled">이 Flow 탭 전체가 비활성화되어 있는지. <c>true</c>면 배포 시 이 탭에 속한 노드는 하나도 생성되지 않습니다(노드 단위 <see cref="NodeConfig.Disabled"/>와는 범위가 다릅니다).</param>
 /// <example>
 /// <code>
-/// // 서로 다른 두 Flow 탭 — 탭 전환 UI(EC-05)는 Id로 선택 상태를 추적하고 Name을 화면에 표시한다
+/// // Inject → Function → Alarm 3개 노드가 순서대로 연결된 Flow 탭 하나를 구성하는 예
+/// var inject = new NodeConfig(Id: "n1", Type: "inject", Name: "1초 주기", FlowId: "flow-1",
+///     Properties: new Dictionary&lt;string, object?&gt; { ["interval"] = 1000 });
+/// var func = new NodeConfig(Id: "n2", Type: "function", Name: "온도 변환", FlowId: "flow-1",
+///     Properties: new Dictionary&lt;string, object?&gt; { ["code"] = "return msg.payload * 1.8 + 32;" });
+/// var alarm = new NodeConfig(Id: "n3", Type: "alarm-broadcast", Name: "알람 전파", FlowId: "flow-1",
+///     Properties: new Dictionary&lt;string, object?&gt; { ["level"] = "HH" });
+///
 /// var line1 = new FlowDefinition(
 ///     Id: "flow-1", Name: "1호기 라인",
-///     Nodes: new List&lt;NodeConfig&gt;(), Wires: new List&lt;Wire&gt;());
+///     Nodes: new List&lt;NodeConfig&gt; { inject, func, alarm },
+///     Wires: new List&lt;Wire&gt;
+///     {
+///         new(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n2", TargetPort: 0),
+///         new(SourceNodeId: "n2", SourcePort: 0, TargetNodeId: "n3", TargetPort: 0),
+///     });
 ///
-/// var line2 = new FlowDefinition(
-///     Id: "flow-2", Name: "2호기 라인",
-///     Nodes: new List&lt;NodeConfig&gt;(), Wires: new List&lt;Wire&gt;());
-///
-/// // 탭 전환 UI는 이렇게 서로 다른 Id/Name으로 두 탭을 구분한다
-/// bool sameTab = line1.Id == line2.Id; // false
+/// // 비활성화된 두 번째 탭 — Disabled=true면 배포 시 n4/n5는 하나도 생성되지 않는다
+/// var line2 = line1 with { Id = "flow-2", Name = "2호기 라인(점검 중)", Disabled = true };
 /// </code>
 /// </example>
 public sealed record FlowDefinition(

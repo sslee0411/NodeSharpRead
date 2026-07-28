@@ -5,10 +5,8 @@ using Xunit;
 namespace NodeSharp.Tests;
 
 /// <summary>
-/// <see cref="Msg"/>(CT-02a, 02번 설계 문서 2번 탭 카드 2)에 대한 단위 테스트입니다.
-/// 이 Step의 완료 기준(03번 개발 Step맵.html)을 그대로 검증합니다:
-/// (1) msg.payload/msg.topic 강타입 접근, (2) msg.Get&lt;T&gt;()/TryGet&lt;T&gt;() 동적 속성 접근,
-/// (3) Clone() 후 원본 변경이 복제본에 영향을 주지 않음, (4) ToJson()/FromJson() 왕복 시 값 보존.
+/// <see cref="Msg"/>(CT-02a, 02번 문서 2번 탭 카드 2) 단위 테스트.
+/// 완료 기준: 강타입 접근(Payload/Topic), Get&lt;T&gt;/TryGet&lt;T&gt;, Clone() 격리, ToJson/FromJson 왕복.
 /// </summary>
 public class MsgTests
 {

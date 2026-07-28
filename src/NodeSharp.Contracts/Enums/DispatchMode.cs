@@ -1,34 +1,27 @@
 namespace NodeSharp.Contracts.Enums;
 
 /// <summary>
-/// 한 노드가 여러 출력 와이어를 가질 때(Fan-out), 그 와이어들에 메시지를 어떤 순서로
-/// 전달할지 지정합니다.
+/// 한 노드가 여러 출력 와이어를 가질 때(Fan-out) 메시지를 전달하는 순서를 지정합니다.
+/// <see cref="Models.NodeConfig.OutputDispatch"/>의 타입이며, 노드가 하나의 입력을 받아
+/// 여러 다음 노드로 갈라 보낼 때 이 값에 따라 실행 방식이 달라집니다.
+/// 설계 근거: 02번 문서 5번 탭 카드 1.
 /// </summary>
-/// <remarks>
-/// <para>
-/// 설계 근거: 02번 설계 문서 5번 탭(동작모델) 카드 1, 2번 탭 카드 10(<c>NodeConfig</c> 정식 선언).
-/// <c>NodeConfig.OutputDispatch</c> 필드의 타입입니다.
-/// </para>
-/// <para>
-/// 발견 경위: 이 Enum은 <c>CT-01a</c>(상태/실행 계열)·<c>CT-01b</c>(통신/파라미터 계열)
-/// 어디에도 포함되지 않은 채로 02번 문서에만 존재했는데, <c>CT-02b</c>(<c>NodeConfig</c> 구현)를
-/// 진행하려는 시점에 <c>NodeConfig</c>가 이 타입을 직접 참조해야 컴파일된다는 것을 확인했습니다.
-/// 이미 만들어진 두 Enum Step(CT-01a/b)을 다시 여는 대신, 이 Enum을 실제로 필요로 하는
-/// <c>CT-02b</c> 안에서 함께 정의합니다(03번 개발 Step맵.html CT-02b [조치] 참고).
-/// </para>
-/// </remarks>
 /// <example>
 /// <code>
-/// // 기본값은 Sequential — 여러 와이어에 순서대로(하나씩 완료 후 다음) 전달
-/// var config = new NodeConfig(Id: "n1", Type: "function", Name: "예시", FlowId: "f1",
+/// // 기본값(Sequential) — 로그 기록 → DB 저장 순서가 보장돼야 하는 노드
+/// var logThenSave = new NodeConfig(Id: "n1", Type: "function", Name: "로그+저장", FlowId: "f1",
+///     Properties: new Dictionary&lt;string, object?&gt;(), OutputDispatch: DispatchMode.Sequential);
+///
+/// // Parallel — 3개 출력 와이어(알람 발행, Dashboard 갱신, Historian 기록)를 동시에 실행해 지연을 줄임
+/// var fanOutAlarm = new NodeConfig(Id: "n2", Type: "function", Name: "알람 분배", FlowId: "f1",
 ///     Properties: new Dictionary&lt;string, object?&gt;(), OutputDispatch: DispatchMode.Parallel);
 /// </code>
 /// </example>
 public enum DispatchMode
 {
-    /// <summary>순차 전달 — 첫 번째 와이어로 전달·완료된 뒤 다음 와이어로 전달합니다(기본값).</summary>
+    /// <summary>순차 전달 — 첫 번째 와이어의 처리가 끝난 뒤 다음 와이어로 전달합니다(기본값). 분기 간 실행 순서가 보장됩니다.</summary>
     Sequential,
 
-    /// <summary>병렬 전달 — 모든 와이어에 동시에 전달합니다(더 빠르지만, 각 분기가 독립적으로 동시에 실행되어야 함).</summary>
+    /// <summary>병렬 전달 — 모든 와이어에 동시에 전달합니다. 처리량은 높지만 분기 간 실행 순서는 보장되지 않습니다.</summary>
     Parallel
 }

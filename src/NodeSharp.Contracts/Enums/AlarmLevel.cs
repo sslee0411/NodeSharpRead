@@ -1,51 +1,50 @@
 namespace NodeSharp.Contracts.Enums;
 
 /// <summary>
-/// 계층형 구조 설정(8번 탭)의 태그 알람 임계값 4단계입니다. 산업 현장의 일반적인 알람 표기법
-/// (HH=High-High, H=High, L=Low, LL=Low-Low)을 그대로 따릅니다.
+/// 계층형 구조 설정(8번 탭)에서 태그 값에 매길 수 있는 알람 임계값 4단계입니다. 산업 현장의
+/// 일반적인 알람 표기법을 그대로 따릅니다: HH(High-High)·H(High)·L(Low)·LL(Low-Low).
+/// <c>AlarmStateManager</c>가 태그 값이 각 임계값을 넘을 때 이 단계로 알람 상태를 전이시키고
+/// Ack(확인)·Shelve(억제)를 관리합니다.
+/// 설계 근거: 02번 문서 8번 탭 카드 11.
 /// </summary>
 /// <remarks>
-/// <para>
-/// 설계 근거: 02번 설계 문서 8번 탭(계층형 구조 설정 &amp; PLC 데이터 계층) 카드 11
-/// — <c>AlarmStateManager</c>가 태그 값이 각 임계값을 넘을 때 이 4단계 중 하나의 알람 상태로
-/// 전이시키고, Ack(확인)·Shelve(억제, 최대 8시간)를 관리합니다(ED-D07a/ED-D07b Step에서 구현).
-/// </para>
-/// <para>
-/// 값의 크기 순서는 <b>정의 순서(HH &lt; H &lt; L &lt; LL의 심각도가 아니라, HH/LL이 더 심각하고
-/// H/L이 상대적으로 경미)</b>이므로, 단순히 <c>(int)</c> 캐스팅으로 심각도를 비교하면
-/// 안 됩니다 — 심각도 비교가 필요하면 별도의 헬퍼(향후 Step에서 필요 시 추가)를 통해야 합니다.
-/// 이 Step(CT-01a)에서는 Enum 정의만 하고, 심각도 비교 로직은 실제로 필요해지는
-/// <c>ED-D07a</c>에서 판단합니다(지금 미리 만들지 않음 — 과설계 방지).
-/// </para>
+/// Enum 정의 순서(HH, H, L, LL)는 심각도 순서가 아닙니다 — 실제로는 HH/LL(상/하한을 크게
+/// 벗어난 긴급 상태)이 가장 심각하고, H/L(상/하한에 근접한 주의 상태)이 상대적으로 경미합니다.
+/// 따라서 <c>(int)</c> 캐스팅 값으로 두 알람의 심각도를 비교하면 안 됩니다. 심각도 비교가
+/// 필요하면 별도의 헬퍼 메서드를 통해야 합니다.
 /// </remarks>
 /// <example>
-/// 태그 스케일 설정에서 알람 임계값을 지정하고, 값 갱신 시 알람 상태를 판정하는 예
-/// (실제 <c>AlarmStateManager</c> 구현은 ED-D07a에서 진행 — 아래는 이 Enum의 쓰임을 보여주는 예시일 뿐):
 /// <code>
-/// // 태그 스케일 설정 예: 탱크 온도 태그에 4단계 임계값을 지정
-/// var scale = new TagScale
+/// // 탱크 온도 태그에 4단계 임계값 지정
+/// var scale = new TagScale { HH = 95.0, H = 85.0, L = 10.0, LL = 0.0 };
+///
+/// // 값 갱신 시 임계값을 넘었는지 판정하는 전형적인 패턴
+/// double temp = 96.2;
+/// AlarmLevel? level = temp switch
 /// {
-///     HH = 95.0,   // 95도 이상이면 AlarmLevel.HH (긴급 정지 고려)
-///     H  = 85.0,   // 85도 이상이면 AlarmLevel.H  (주의)
-///     L  = 10.0,   // 10도 이하이면 AlarmLevel.L  (주의, 저온)
-///     LL = 0.0     // 0도 이하이면 AlarmLevel.LL  (긴급, 동결 위험)
+///     _ when temp >= scale.HH => AlarmLevel.HH,   // 96.2 >= 95.0 → 긴급 정지 고려
+///     _ when temp >= scale.H  => AlarmLevel.H,
+///     _ when temp &lt;= scale.LL => AlarmLevel.LL,   // 동결 위험
+///     _ when temp &lt;= scale.L  => AlarmLevel.L,
+///     _ => null   // 정상 범위, 알람 없음
 /// };
 ///
-/// // 알람이 발생하면(ED-D07a 구현 예정) Dashboard에도 표시(v1.19 UiSequenceStatusNode와 유사한 패턴)
-/// // ctx.SetStatus(NodeStatusLevel.Red, "dot", $"알람: {AlarmLevel.HH}");
+/// // 알람 발생 시 Dashboard·노드 상태 표시에 반영
+/// if (level == AlarmLevel.HH)
+///     ctx.SetStatus(NodeStatusLevel.Red, "dot", $"긴급 알람: {temp}°C");
 /// </code>
 /// </example>
 public enum AlarmLevel
 {
-    /// <summary>High-High — 상한 긴급 알람. 즉각적인 조치가 필요한 가장 심각한 상한 초과 상태입니다.</summary>
+    /// <summary>High-High — 상한을 크게 초과한 긴급 알람. 즉각 조치가 필요합니다.</summary>
     HH,
 
-    /// <summary>High — 상한 주의 알람. 상한에 근접했거나 초과했지만 HH보다는 여유가 있는 상태입니다.</summary>
+    /// <summary>High — 상한에 근접했거나 초과한 주의 알람. HH보다는 여유가 있습니다.</summary>
     H,
 
-    /// <summary>Low — 하한 주의 알람. 하한에 근접했거나 미달했지만 LL보다는 여유가 있는 상태입니다.</summary>
+    /// <summary>Low — 하한에 근접했거나 미달한 주의 알람. LL보다는 여유가 있습니다.</summary>
     L,
 
-    /// <summary>Low-Low — 하한 긴급 알람. 즉각적인 조치가 필요한 가장 심각한 하한 미달 상태입니다.</summary>
+    /// <summary>Low-Low — 하한을 크게 미달한 긴급 알람. 즉각 조치가 필요합니다.</summary>
     LL
 }

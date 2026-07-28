@@ -4,11 +4,8 @@ using Xunit;
 namespace NodeSharp.Tests;
 
 /// <summary>
-/// <see cref="SequenceDefinition"/>/<see cref="SequenceStepDto"/>(CT-03b, 02번 설계 문서
-/// 11번 탭 카드 5)에 대한 단위 테스트입니다.
-/// 완료 기준: SequenceStepDto의 진입조건(TriggerExpression)·타임아웃(TimeoutMs)·실패시이동
-/// (OnFailStepId)·타임아웃시이동(OnTimeoutStepId) 필드가 SQ-01 SequenceExecutor 설계
-/// (진입 조건 평가 → 성공 시 다음 Step, 실패/타임아웃 시 분기)와 1:1 대응하는지 확인.
+/// <see cref="SequenceDefinition"/>/<see cref="SequenceStepDto"/>(CT-03b, 02번 문서 11번 탭 카드 5) 단위 테스트.
+/// 완료 기준: TriggerExpression·TimeoutMs·OnFailStepId·OnTimeoutStepId가 SQ-01 설계와 1:1 대응하는지 확인.
 /// </summary>
 public class SequenceDefinitionTests
 {
