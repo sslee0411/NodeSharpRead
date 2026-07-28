@@ -2,7 +2,7 @@ namespace NodeSharp.Contracts.Enums;
 
 /// <summary>
 /// 노드 속성 편집 다이얼로그에서 각 입력 필드가 어떤 UI 컨트롤로 자동 렌더링될지 지정하는
-/// 태그입니다. Node-RED의 <c><node>.html</c> 편집 폼 정의, iiot-system-arch
+/// 태그입니다. Node-RED의 <c>&lt;node&gt;.html</c> 편집 폼 정의, iiot-system-arch
 /// <c>PlcEditorView._RenderParameterForm()</c>의 "ParameterType별 동적 폼" 패턴과 동일한 역할을 합니다.
 /// </summary>
 /// <remarks>

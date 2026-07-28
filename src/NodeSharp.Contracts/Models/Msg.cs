@@ -50,7 +50,7 @@ namespace NodeSharp.Contracts.Models;
 /// dyn.customField = "hello";
 ///
 /// // 타입 안전 접근자로 값 꺼내기
-/// if (msg.TryGet<string>("customField", out var s))
+/// if (msg.TryGet&lt;string&gt;("customField", out var s))
 /// {
 ///     Console.WriteLine(s);   // "hello"
 /// }
