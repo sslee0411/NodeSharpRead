@@ -31,11 +31,11 @@ namespace NodeSharp.Contracts.Models;
 /// // 서로 다른 두 Flow 탭 — 탭 전환 UI(EC-05)는 Id로 선택 상태를 추적하고 Name을 화면에 표시한다
 /// var line1 = new FlowDefinition(
 ///     Id: "flow-1", Name: "1호기 라인",
-///     Nodes: new List<NodeConfig>(), Wires: new List<Wire>());
+///     Nodes: new List&lt;NodeConfig&gt;(), Wires: new List&lt;Wire&gt;());
 ///
 /// var line2 = new FlowDefinition(
 ///     Id: "flow-2", Name: "2호기 라인",
-///     Nodes: new List<NodeConfig>(), Wires: new List<Wire>());
+///     Nodes: new List&lt;NodeConfig&gt;(), Wires: new List&lt;Wire&gt;());
 ///
 /// // 탭 전환 UI는 이렇게 서로 다른 Id/Name으로 두 탭을 구분한다
 /// bool sameTab = line1.Id == line2.Id; // false
