@@ -31,6 +31,15 @@
       튜플을, IFlowNodeIndex.FindNodesBySequenceId(10번 탭 카드5)는 정의가 없던 NodeRef를 각자
       반환하고 있었다 — 둘 다 "Flow 노드 역방향 참조 1건"으로 같은 모양이라 NodeRef record로 통일
       하고 02번 문서 8번 탭 카드7에 정의를 추가했다(02번 문서 동일 시점 수정).
+
+    Step: CT-04c (03번 개발 Step맵.html, Phase 1)
+    - src\Interfaces\{ICredentialStore,ITagHistorian,ITagHistorianExporter}.cs,
+      src\Models\TagAggregateRow.cs 추가. ITagHistorian은 02번 문서 8번 탭 카드12의 원본판(v1.x)과
+      확장판(v1.20, RecordAggregateAsync/QueryAggregateAsync)을 CT-04b와 동일한 방식으로 병합해
+      정식 통합판으로 선언. 02번 문서의 ICredentialStore 코드 조각은 주석 경로가
+      "NodeSharp.Runtime/Security/..."로 되어 있으나 이는 구현체(DpapiCredentialStore) 기준 표기이고,
+      인터페이스 자체는 다른 CT-04 계열과 동일하게 Contracts에 선언한다(멤버가 전부 순수 데이터/문자열
+      이라 Runtime 참조 없이 안전).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
