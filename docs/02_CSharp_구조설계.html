@@ -2790,6 +2790,7 @@ public sealed record WidgetInteractionEvent(string NodeId, object? UserInput, Da
       <tr><td><code>UiGaugeNode</code> / <code>UiChartNode</code> / <code>UiTextNode</code></td><td>출력 전용(표시만)</td><td>ui_gauge / ui_chart / ui_text</td></tr>
       <tr><td><code>UiButtonNode</code> / <code>UiSwitchNode</code> / <code>UiSliderNode</code></td><td>입력 겸용(사용자 조작→msg)</td><td>ui_button / ui_switch / ui_slider</td></tr>
       <tr><td>★ <code>UiSequenceStatusNode</code></td><td>출력 전용(Flow 노드가 아니라 <code>SequenceId</code>를 직접 지정) — Node-RED에는 대응 노드 없음, NodeSharpRead 고유</td><td>-</td></tr>
+      <tr><td>★ <code>CctvViewerNode</code></td><td>출력 전용(영상 표시, msg 미사용) — WidgetValueUpdatedEvent를 타지 않고 위젯이 직접 RTSP 세션을 여는 유일한 예외(카드 17 참고), Node-RED에는 대응 노드 없음, NodeSharpRead 고유, <b>웹 미지원(WPF 전용)</b></td><td>-</td></tr>
     </table>
     <div class="src">화면 목업은 12번 탭 카드 6 참고 — 위젯 노드는 5번 탭 Fan-out·6번 탭 Context 등 기존 Flow 인프라를 그대로 재사용하므로 "새로운 실행 모델"이 아니라 "새로운 노드 종류"일 뿐이다. <code>UiSequenceStatusNode</code>만 예외적으로 Flow msg가 아닌 11번 탭 <code>SequenceExecutor</code> 상태를 직접 구독한다(아래 카드 참고)</div>
   </div>
@@ -2939,6 +2940,75 @@ public sealed class MesReportNode : LssLibNodeAdapterBase
       <tr><td>노드 정보 패널 + 플로우 전체 검색</td><td>Node-RED Editor 사이드바의 "정보(info)" 탭 — 캔버스에서 노드를 선택하면 해당 노드 타입의 설명·HelpText·Example(CT-07 PropertySchema에 이미 있는 필드)을 모아 보여주는 읽기 전용 패널. 그리고 Ctrl+F로 캔버스 전체(여러 Flow 탭 포함)에서 노드 이름/속성 값을 텍스트로 검색하는 기능 — EC-01a는 팔레트(아직 배치 안 한 노드 종류) 검색만 다루고, 이미 배치된 노드를 찾는 기능은 없었다. <b>★(v1.32 신설, Node-RED 5.0 조사로 확인)</b> Node-RED 5.0에서 이 "정보" 패널이 <b>Explorer</b>(플로우/노드 트리 내비게이션)와 <b>Information</b>(선택 항목 설명, 위에서 설계한 것과 동일 개념) 2개로 분리된 것을 공식 명칭으로 채택 — Explorer는 EC-12(플로우 전체 검색)의 결과 트리와 통합해 별도 신규 Step 없이 같은 패널에서 제공. 노드 편집 다이얼로그에 "설명" 탭을 추가하면 캔버스의 해당 노드에 문서 배지가 표시되고, 클릭 시 팝업으로 보여주는 것도 함께 반영(CT-07 PropertyField와 별개로 노드 타입 자체의 설명 텍스트 필드 추가 필요)</td></tr>
     </table>
     <div class="src">대응 개발 Step: 03_개발_Step맵.html Phase 6(Canvas), EC-09~EC-12</div>
+  </div>
+
+  <div class="card">
+    <h2><span class="num">17</span> ★ CCTV 영상 모니터링 (RTSP 연결 — WPF 전용 위젯)</h2>
+    <p><b>사용자 요청(v1.62 신설)</b>: "RTSP로 카메라에 접속해 화면 영상을 보는 기능"을 추가해달라는 요청. 지금까지 카드 11의 Dashboard 위젯은 전부 태그값 표시/사용자 조작(숫자·문자열·On/Off)뿐이었고, 카메라 영상처럼 연속 프레임 스트림을 다루는 위젯은 이 문서 어디에도 없었다.</p>
+    <p><b>판단이 필요해 사용자에게 확인한 3가지 사항(모두 확정)</b>:</p>
+    <table>
+      <tr><th>결정 사항</th><th>확정 내용 및 근거</th></tr>
+      <tr><td>표시 범위</td><td><b>WPF Editor/대시보드 전용</b>(웹 <code>/ui</code> 미지원). RTSP는 브라우저가 직접 재생하지 못해, 웹까지 지원하려면 RTSP→HLS/WebRTC 변환 게이트웨이(예: MediaMTX)를 별도로 추가해야 해서 범위가 크게 늘어난다 — 웹 지원은 지금 하지 않고 10번 탭 카드 14 로드맵에 별도 등재(아래 참고)</td></tr>
+      <tr><td>재생 라이브러리</td><td><b>LibVLCSharp</b>(<code>LibVLCSharp.WPF</code>). VLC 엔진 기반이라 카메라 제조사별(Hikvision/Dahua/Axis 등) RTSP 방언 호환성이 가장 좋고 TCP/UDP 전송 자동 전환을 지원한다. LGPL 라이선스라 <code>libvlc</code> 네이티브 바이너리를 재배포할 때 라이선스 고지가 필요하며, 이 패키지는 <code>NodeSharp.Editor</code> 프로젝트에만 참조를 추가한다(<code>NodeSharp.Contracts</code>/<code>NodeSharp.Runtime</code>은 참조하지 않음 — 순수 UI 렌더링 라이브러리라 1번 탭 계층 원칙 위반이 아니다)</td></tr>
+      <tr><td>Flow 노드 역할 범위</td><td><b>연결 설정 + 상태만</b>. 일반 <code>ui_*</code> 위젯과 다르게, 영상 프레임은 <code>WidgetValueUpdatedEvent</code>(SignalR)로 스트리밍하지 않는다 — 프레임 데이터가 대역폭·Runner 프로세스 부담이 훨씬 크기 때문이다. 실제 영상은 WPF 위젯(<code>CctvViewerControl</code>)이 노드 설정(<code>Url</code>/자격증명)만 읽어 카메라에 직접 RTSP 세션을 연다</td></tr>
+    </table>
+    <p><b>핵심 설계 결정 — 연결이 2개로 분리된다</b>: Runner의 <code>CctvViewerNode</code>는 카메라와 RTSP 세션을 열지 않고 host:port에 대한 경량 TCP 도달성만 주기적으로 확인해 캔버스 상태 점(초록/빨강)만 갱신한다. 실제 영상 재생은 WPF 위젯이 완전히 별개로 자체 RTSP 세션을 연다. 이렇게 분리한 이유는 다수의 저가형 IP 카메라가 동시 RTSP 세션 수를 1~2개로 제한하기 때문 — Runner가 상시 헬스체크용 스트림 세션까지 잡고 있으면 실제 뷰어가 세션을 못 얻는 문제가 생길 수 있다. 대신 두 상태(캔버스 점 vs 위젯 내부 재연결 오버레이)는 서로 동기화하지 않는다 — 위젯이 자체 이벤트(<code>EncounteredError</code>/<code>EndReached</code>)로 재연결 오버레이를 독립적으로 표시하며, 이를 위해 별도 양방향 채널을 새로 만들지 않는다(과설계 방지, 개발 지침 참고).</p>
+    <pre><code>// Contracts/Enums/RtspTransportMode.cs
+public enum RtspTransportMode { Tcp, Udp }
+
+// Contracts/Models/CctvCameraConfig.cs — flows.json에 저장되는 노드 설정. 자격증명은 CredentialRefId로만 참조(카드 2와 동일 원칙, Url에 평문 user:pass 저장 금지)
+public sealed record CctvCameraConfig(
+    string Url,                    // rtsp://host:port/path (자격증명 제외)
+    string? CredentialRefId,
+    RtspTransportMode Transport,
+    int ReconnectIntervalSeconds);
+
+// nodes/NodeSharp.Nodes.Ui/CctvViewerNode.cs — 연결 설정 + 상태만 담당, 영상 자체는 다루지 않음
+public sealed class CctvViewerNode : IFlowNode
+{
+    public CctvCameraConfig Camera { get; set; } = null!;
+    private readonly IScheduler _scheduler;
+
+    public Task OnStartAsync(INodeContext ctx, CancellationToken ct)
+    {
+        // RTSP 세션은 열지 않고 host:port 도달성만 확인 — 실제 영상 세션(위젯이 직접 염)과 별개라
+        // 카메라의 동시 접속 세션 제한과 충돌하지 않는다
+        _scheduler.SchedulePeriodic(Id, TimeSpan.FromSeconds(Camera.ReconnectIntervalSeconds), async () =&gt;
+        {
+            bool reachable = await ProbeTcpAsync(Camera.Url, ct);
+            ctx.SetStatus(reachable ? NodeStatusLevel.Green : NodeStatusLevel.Red, "dot", reachable ? "연결됨" : "연결 끊김");
+        });
+        return Task.CompletedTask;
+    }
+
+    public Task OnCloseAsync(INodeContext ctx) { _scheduler.Unschedule(Id); return Task.CompletedTask; }
+}
+
+// Editor/Dashboard/Widgets/CctvViewerControl.xaml.cs — LibVLCSharp.WPF VideoView 래핑, 노드 설정을 직접 읽어 자체 RTSP 세션을 연다
+public partial class CctvViewerControl : UserControl
+{
+    private readonly LibVLC _libVlc = new();
+    private MediaPlayer? _player;
+
+    public void Attach(CctvCameraConfig camera, ICredentialStore credentials)
+    {
+        var user = camera.CredentialRefId is null ? null : credentials.Get(camera.CredentialRefId, "username");
+        var pass = camera.CredentialRefId is null ? null : credentials.Get(camera.CredentialRefId, "password");
+        var url = BuildUrlWithCredentials(camera.Url, user, pass);   // 조합은 메모리에서만, 어디에도 저장하지 않음
+        _player = new MediaPlayer(_libVlc);
+        VideoView.MediaPlayer = _player;
+        using var media = new Media(_libVlc, url, FromType.FromLocation);
+        media.AddOption(camera.Transport == RtspTransportMode.Tcp ? ":rtsp-tcp" : ":rtsp-udp");
+        _player.Play(media);
+        // EncounteredError/EndReached 이벤트는 이 컨트롤 내부에서만 재연결 오버레이로 표시 — Runner 노드 상태와는 동기화하지 않음(단순화)
+    }
+}</code></pre>
+    <table>
+      <tr><th>연결</th><th>담당 주체</th><th>목적</th><th>실제 영상 세션 소모</th></tr>
+      <tr><td>TCP 도달성 확인</td><td>Runner의 <code>CctvViewerNode</code>(<code>IScheduler</code> 주기 확인)</td><td>캔버스 상태 점(초록/빨강) 갱신</td><td>없음(RTSP 세션 미개설)</td></tr>
+      <tr><td>실제 RTSP 재생</td><td>WPF <code>CctvViewerControl</code>(LibVLCSharp)</td><td>대시보드에 실시간 영상 표시</td><td>있음(카메라 세션 1개 소모)</td></tr>
+    </table>
+    <div class="src">대응 개발 Step: 03_개발_Step맵.html <code>CT-10</code>(모델)·<code>DB-07</code>(노드+위젯). 웹 대시보드 지원은 10번 탭 카드 14 로드맵 참고. 위젯 카탈로그에는 카드 11 표에 <code>CctvViewerNode</code> 행 추가</div>
   </div>
 </section>
 
@@ -3152,8 +3222,9 @@ public static class ProjectBundleExporter
       <tr><td>★ Editor 다중 사용자 인증·권한(RBAC)</td><td>(v1.30 신설, v1.37 인용 오류 정정) 8번 탭 카드 16·10번 탭 카드 9(동시 편집)와 7번 탭 카드 6(Editor↔Runner 인증)에 "다중 사용자는 향후 로드맵", "다중 사용자 시 Windows 계정 인증(Negotiate)으로 확장"이라고 텍스트로만 언급돼 있었고, 로드맵 표 자체에는 항목으로 등재돼 있지 않던 것을 발견. 현재는 <code>runner.token</code>이 Editor↔Runner 간 단일 토큰 인증만 제공하고, Editor를 여는 사람(엔지니어)별 뷰어 전용/조작 가능 권한 구분이 없다(9번 탭 Dashboard의 뷰어/조작 토큰 구분과 유사한 개념을 Editor 자체에도 적용 필요). Windows 계정 기반 인증(Negotiate) + 역할(Viewer/Operator/Admin) 기반 권한 모델 도입 예정</td><td>1차는 단일 엔지니어 PC 1대 전제로도 충분 — flows.json 파일 락(EC-04b)만으로 동시 편집 사고는 이미 방지됨. 다중 사용자 도입은 여러 엔지니어가 같은 Runner를 동시에 관리하는 조직 규모가 됐을 때 재검토</td></tr>
       <tr><td>★ Siemens S7 프로토콜 드라이버</td><td>(v1.33 신설) 11번 탭 카드 8에서 Modbus를 <code>IProtocolDriver</code>의 1차 구현체로 확정하면서, 그 다음으로 흔한 PLC 프로토콜인 Siemens S7(S7comm)도 함께 검토했다. Modbus와 달리 S7은 벤더 전용 프로토콜이라 <code>OPCFoundation.NetStandard</code>처럼 외부 라이브러리(예: <code>S7netplus</code>) 도입이 필요할 가능성이 높아, RM-01(OPC-UA)과 같은 "외부 라이브러리 신규 도입" 사례로 분류. 도입 시 <code>S7Driver : IProtocolDriver</code>가 Modbus와 동일한 인터페이스로 <code>DeviceMapPoller</code>(8번 탭 카드 11)에 연결될 예정</td><td>Modbus 1차 구현(PD-01a/b)이 먼저 안정화된 뒤, 실제 Siemens 장비 도입 수요가 확인되면 외부 라이브러리 선정부터 착수</td></tr>
       <tr><td>★ 소프트웨어 자동 업데이트</td><td>(v1.34 신설, 재검토로 발견) 10번 탭 카드 16 "버전 확인" 행에 "자동 업데이트는 향후 로드맵"이라고 텍스트로만 언급돼 있었고, 이 로드맵 표 자체에는 항목으로 없던 것을 발견(RM-04 RBAC 발견 때와 동일한 패턴의 누락). 1차는 GitHub Releases API로 신규 버전 존재 여부만 수동 확인하고, 이후 MSIX 패키징(카드 16에 이미 "2차 선택"으로 언급됨)을 전제로 Editor 시작 시 자동 확인+다운로드+재시작 적용까지 자동화 예정</td><td>xcopy 배포가 1차 기본값이라 자동 업데이트의 전제인 MSIX 패키징 자체가 아직 확정 우선순위가 아님 — MSIX 채택 이후 재검토</td></tr>
+      <tr><td>★ CCTV 웹 대시보드 지원(RTSP→HLS/WebRTC)</td><td>(v1.62 신설) 9번 탭 카드 17 CCTV 기능 도입 시 사용자와 함께 확정 — 1차는 WPF 전용(<code>CctvViewerNode</code>+<code>CctvViewerControl</code>, LibVLCSharp)이고, 브라우저(웹 <code>/ui</code>)에서도 영상을 보려면 RTSP를 브라우저가 재생 가능한 형식으로 변환하는 별도 게이트웨이(예: MediaMTX로 RTSP→HLS 또는 WebRTC 변환)를 새로 도입해야 한다 — 카메라 대수가 늘어나면 게이트웨이의 트랜스코딩 부하도 함께 검토 필요</td><td>1차는 WPF 현장 PC에서 보는 것으로 충분 — 웹/태블릿 CCTV 열람 수요가 확인되면 게이트웨이 도입부터 재검토</td></tr>
     </table>
-    <div class="src">여섯 항목 모두 4단계(구현) 착수 전 또는 초기 스프린트에서 우선순위를 다시 정한다 — 이 표는 "잊지 않기 위한 목록"이지 일정표가 아니다</div>
+    <div class="src">일곱 항목 모두 4단계(구현) 착수 전 또는 초기 스프린트에서 우선순위를 다시 정한다 — 이 표는 "잊지 않기 위한 목록"이지 일정표가 아니다</div>
   </div>
 
   <div class="card">

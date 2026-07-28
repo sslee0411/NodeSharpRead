@@ -40,6 +40,12 @@
       "NodeSharp.Runtime/Security/..."로 되어 있으나 이는 구현체(DpapiCredentialStore) 기준 표기이고,
       인터페이스 자체는 다른 CT-04 계열과 동일하게 Contracts에 선언한다(멤버가 전부 순수 데이터/문자열
       이라 Runtime 참조 없이 안전).
+
+    Step: CT-05a (03번 개발 Step맵.html, Phase 1)
+    - src\Events\MonitoringEvents.cs 추가 — NodeStatusEvent/FlowActivityEvent/DebugMessageEvent/
+      NodeErrorEvent 4개 레코드(02번 문서 3번 탭 카드7 StatusBroadcaster 그대로). Runner→Editor
+      SignalR 스트리밍 페이로드이며 Runtime 구체 타입을 참조하지 않는 순수 데이터라 Contracts에
+      안전하게 선언. TagValueUpdatedEvent(8번 탭 카드15)는 성격이 달라 CT-05b에서 별도 정의 예정.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
