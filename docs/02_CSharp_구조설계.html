@@ -230,7 +230,7 @@ graph TB
 
   <div class="card">
     <h2><span class="num">1</span> 노드 계약 (Contracts)</h2>
-    <p><b>※ 표기 안내</b>: 이 문서의 코드 조각은 설명을 위해 단순화되어 있다. 예를 들어 이 탭과 5번 탭의 <code>new NodeContext(this)</code>는 실제로는 6번 탭에서 정의하는 <code>NodeContext(FlowEngine engine, string flowId, string nodeId)</code> 생성자를 축약 표기한 것이다. <code>IFlowNode</code>도 5번 탭(<code>MaxConcurrency</code>)·11번 탭(<code>IRetryableNode</code>)에서 점진적으로 멤버가 추가되며, 실제 최종 인터페이스는 4단계 구현 시 이 문서의 모든 확장분을 합쳐서 확정한다. <code>NodeContext</code> 역시 6번 탭(<code>Local/Flow/Global</code>)·7번 탭(<code>SetStatus</code>) 등에서 부분적으로만 등장하는데, <b>이 탭 카드 9(NodeContext 최종 통합 정의)에 모든 멤버를 합친 정식 통합판</b>이 있으니 최종 구현 시에는 그쪽을 기준으로 삼는다.</p>
+    <p><b>※ 표기 안내</b>: 이 문서의 코드 조각은 설명을 위해 단순화되어 있다. 예를 들어 이 탭과 5번 탭의 <code>new NodeContext(this)</code>는 실제로는 6번 탭에서 정의하는 <code>NodeContext(FlowEngine engine, string flowId, string nodeId)</code> 생성자를 축약 표기한 것이다. <code>IFlowNode</code>도 5번 탭(<code>MaxConcurrency</code>)·11번 탭(<code>IRetryableNode</code>)에서 점진적으로 멤버가 추가되며, 실제 최종 인터페이스는 4단계 구현 시 이 문서의 모든 확장분을 합쳐서 확정한다. <code>NodeContext</code> 역시 6번 탭(<code>Local/Flow/Global</code>)·7번 탭(<code>SetStatus</code>) 등에서 부분적으로만 등장하는데, <b>이 탭 카드 9(NodeContext 최종 통합 정의)에 모든 멤버를 합친 정식 통합판</b>이 있으니 최종 구현 시에는 그쪽을 기준으로 삼는다. <b>★ v1.57 정정</b>: <code>IFlowNode</code>·이 문서 전체 코드 조각에 등장하는 <code>NodeContext ctx</code> 파라미터는 실제 구현에서는 구체 타입이 아니라 아래 <code>INodeContext</code> 인터페이스를 가리킨다 — <code>NodeContext</code>는 Runtime 소속(카드 9, v1.40)인데 <code>IFlowNode</code>는 Contracts 소속이라 구체 타입을 그대로 참조하면 Runtime↔Contracts 순환 참조가 발생하기 때문이다(<code>NodeContext</code>가 <code>INodeContext</code>를 구현).</p>
     <pre><code>// NodeSharp.Contracts/Interfaces/IFlowNode.cs
 public interface IFlowNode
 {
@@ -240,12 +240,12 @@ public interface IFlowNode
     IReadOnlyList&lt;NodePort&gt; InputPorts { get; }
     IReadOnlyList&lt;NodePort&gt; OutputPorts { get; }
 
-    Task OnStartAsync(NodeContext ctx, CancellationToken ct);
-    Task OnInputAsync(Msg msg, NodeContext ctx, CancellationToken ct);
-    Task OnCloseAsync(NodeContext ctx);
+    Task OnStartAsync(INodeContext ctx, CancellationToken ct);
+    Task OnInputAsync(Msg msg, INodeContext ctx, CancellationToken ct);
+    Task OnCloseAsync(INodeContext ctx);
 }
 
-// 노드 타입 메타(팔레트 표시용) — Node-RED의 <node>.html 등록 정보에 대응
+// 노드 타입 메타(팔레트 표시용) — Node-RED의 &lt;node&gt;.html 등록 정보에 대응
 public interface INodeTypeDescriptor
 {
     string TypeName { get; }
@@ -254,6 +254,24 @@ public interface INodeTypeDescriptor
     int DefaultInputs { get; }
     int DefaultOutputs { get; }
     Func&lt;NodeConfig, IFlowNode&gt; Factory { get; }
+}
+
+// ★ CT-04a 구현 시 발견(v1.57) — Contracts/Interfaces/INodeContext.cs
+// NodeContext(카드 9)는 Runtime 소속, IFlowNode는 Contracts 소속이라 위 ctx 파라미터에 구체 NodeContext를
+// 직접 쓰면 Runtime↔Contracts 순환 참조가 된다. 노드가 실제로 필요로 하는 기능만 인터페이스로 뽑아
+// Contracts에 둔다 — Runtime의 NodeContext가 이를 구현. 이후 Runtime Step(RT-07 EventBus, RT-08
+// Scheduler, RT-09 Context, RT-10 SharedResourceManager, CT-04b Structure)이 실제로 필요해질 때마다
+// 이 인터페이스에 멤버를 추가한다(카드 9와 함께 갱신) — 지금은 Phase 4 메시지 파이프라인(RT-04a)과
+// 7번 탭 상태표시(SetStatus)에 필요한 최소 계약만 정의.
+public interface INodeContext
+{
+    Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct);
+
+    void SetStatus(string fill, string shape, string text);   // Node-RED this.status(...) 원형(7번 탭)
+
+    // 8번 탭 NodeStatusLevel 타입 세이프 편의 오버로드 — 기본 구현이 문자열 버전에 위임(오타 방지 목적일 뿐 별도 로직 없음)
+    void SetStatus(NodeStatusLevel level, string shape, string text) =&gt;
+        SetStatus(level.ToString().ToLowerInvariant(), shape, text);
 }</code></pre>
   </div>
 
@@ -601,7 +619,10 @@ private static readonly string[] _allowedImports =
 //   FlowEngine/EventBus/SharedResourceManager가 모두 Runtime의 구체 클래스이고 Contracts는
 //   외부참조 0개(P0-1b)이므로, 이 파일은 Contracts가 아니라 Runtime에 있어야 순환 참조 없이 컴파일된다.
 //   (CT-03a는 이 의존 타입들이 갖춰지는 Runtime 단계 이후 재개 — README/03번 Step맵 Ver History 참고)
-public sealed class NodeContext
+// ★ v1.57 추가: IFlowNode(카드 1)가 참조하는 INodeContext(Contracts)를 이 클래스가 구현한다 —
+//   RouteAsync/SetStatus(string,...)는 아래에서 직접 구현, SetStatus(NodeStatusLevel,...)는
+//   INodeContext의 기본 구현을 그대로 사용(재정의 불필요).
+public sealed class NodeContext : INodeContext
 {
     private readonly IContextStore _store;
     private readonly string _nodeId;
@@ -645,6 +666,10 @@ public sealed class NodeContext
     // 노드 상태 표시 — Node-RED의 this.status(...) 대응 (7번 탭)
     public void SetStatus(string fill, string shape, string text) =&gt;
         EventBus.Publish(new NodeStatusEvent(_nodeId, fill, shape, text, DateTime.UtcNow));   // 8번 탭 UTC 기준 통일
+
+    // INodeContext 구현 — 다음 노드로 메시지 전달(2번 탭 FlowEngine.RouteAsync에 위임, Fan-out/hop-count 등은 그쪽 책임)
+    public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct) =&gt;
+        Engine.RouteAsync(sourceNodeId, outputPort, msg, ct);
 }
 
 // FlowEngine도 위 생성자가 요구하는 3개 프로퍼티를 공개해야 한다 (2번 탭 FlowEngine 보완)

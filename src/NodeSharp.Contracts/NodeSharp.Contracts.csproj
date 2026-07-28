@@ -17,6 +17,13 @@
       사용하므로(02번 문서 2번 탭 카드 2·3), Newtonsoft.Json NuGet 패키지 참조를 추가한다.
       System.Text.Json이 아닌 이유: ExpandoObjectConverter를 기본 제공해 ExpandoObject↔JSON
       왕복 변환에 커스텀 컨버터 작성이 불필요하기 때문(02번 문서 2번 탭 카드 3).
+
+    Step: CT-04a (03번 개발 Step맵.html, Phase 1)
+    - src\Interfaces\{IFlowNode,ISharedServiceNode,IEditorCommand,INodeContext}.cs 추가.
+      IFlowNode의 ctx 파라미터는 구체 NodeContext(Runtime 소속, v1.40)가 아니라 INodeContext
+      인터페이스를 사용한다 — 그대로 참조하면 Runtime↔Contracts 순환 참조가 되기 때문(v1.57,
+      02번 문서 2번 탭 카드 1 참고). INodeContext는 신규 도입 타입으로 원본 lssLib에는 대응 항목이
+      없다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
