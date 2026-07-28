@@ -2105,6 +2105,15 @@ public enum AlarmLevel { HH, H, L, LL }
 public enum AlarmState { Active, Acknowledged, Cleared }
 public sealed record ActiveAlarm(string TagId, AlarmLevel Level, double Value, DateTime RaisedAt, AlarmState State);
 
+// ★ v1.64 보강 — AlarmRaisedEvent는 이 문서 전체에서 8곳 언급되지만(9번 탭 알림 채널, 11번 탭 카드5
+// SequenceExecutor 자동 안전정지 등) 정식 record 선언이 없었고, 11번 탭 카드5의 사용 코드는 존재하지
+// 않는 AlarmSeverity 타입(e.Severity == AlarmSeverity.HH)까지 참조하고 있었다(NodeRef와 같은 유형의
+// 공백, CT-04b 때 발견한 패턴). AlarmLevel이 이미 있으므로 새 Enum을 만들지 않고 AlarmRaisedEvent가
+// AlarmLevel을 그대로 재사용하도록 정의 — 11번 탭 카드5의 AlarmSeverity.HH도 AlarmLevel.HH로 정정.
+public sealed record AlarmRaisedEvent(string TagId, AlarmLevel Level, double Value, DateTime At);
+// AlarmStateManager.Evaluate()가 신규 발생 시에만 발행(같은 알람 반복 발행 방지) — 7번 탭 모니터링(빨강 배지),
+// 9번 탭 알림 채널 노드(Email/SMS/Webhook), 11번 탭 SequenceExecutor(자동 안전정지)가 각각 구독
+
 public sealed class AlarmStateManager
 {
     private readonly ConcurrentDictionary&lt;string, ActiveAlarm&gt; _active = new();   // key: $"{TagId}:{Level}"
@@ -3575,7 +3584,7 @@ public sealed class SequenceExecutor : ISharedServiceNode
         _alarmSubscription = ctx.EventBus.Subscribe&lt;AlarmRaisedEvent&gt;(e =&gt;
         {
             // 이 시퀀스가 참조하는 태그 범위에 속한 알람이고, 심각도가 HH(최상위)면 자동으로 안전정지 단계로 이동
-            if (Definition.WatchedTagIds.Contains(e.TagId) &amp;&amp; e.Severity == AlarmSeverity.HH)
+            if (Definition.WatchedTagIds.Contains(e.TagId) &amp;&amp; e.Level == AlarmLevel.HH)   // ★ v1.64: AlarmSeverity(미정의) → AlarmLevel로 정정
                 _ = AbortAsync();   // OnFailStepId 체인의 "안전정지" 단계로 강제 이동(카드의 Step5와 동일 개념)
         });
         return Task.CompletedTask;

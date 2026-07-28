@@ -46,6 +46,14 @@
       NodeErrorEvent 4개 레코드(02번 문서 3번 탭 카드7 StatusBroadcaster 그대로). Runner→Editor
       SignalR 스트리밍 페이로드이며 Runtime 구체 타입을 참조하지 않는 순수 데이터라 Contracts에
       안전하게 선언. TagValueUpdatedEvent(8번 탭 카드15)는 성격이 달라 CT-05b에서 별도 정의 예정.
+
+    Step: CT-05b (03번 개발 Step맵.html, Phase 1)
+    - src\Events\TagAlarmEvents.cs 추가 — TagValueUpdatedEvent(8번 탭 카드15)·AlarmRaisedEvent(8번
+      탭 카드11) 정의. 구현 중 발견한 문서 공백(v1.64): AlarmRaisedEvent는 이 문서에서 8곳 언급되지만
+      정식 선언이 없었고, 11번 탭 SequenceExecutor 예시 코드는 존재하지 않는 AlarmSeverity 타입까지
+      참조하고 있었다(NodeRef와 같은 유형의 공백). 새 Enum을 만들지 않고 기존 AlarmLevel(8번 탭 카드11)을
+      그대로 재사용하도록 AlarmRaisedEvent를 정의하고, SequenceExecutor 예시의 AlarmSeverity.HH도
+      AlarmLevel.HH로 정정(02번 문서 8번 탭 카드11·11번 탭 카드5 동시 수정).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
