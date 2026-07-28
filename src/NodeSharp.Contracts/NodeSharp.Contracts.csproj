@@ -24,6 +24,13 @@
       인터페이스를 사용한다 — 그대로 참조하면 Runtime↔Contracts 순환 참조가 되기 때문(v1.57,
       02번 문서 2번 탭 카드 1 참고). INodeContext는 신규 도입 타입으로 원본 lssLib에는 대응 항목이
       없다.
+
+    Step: CT-04b (03번 개발 Step맵.html, Phase 1)
+    - src\Interfaces\{IStructureService,IFlowNodeIndex,IScheduler}.cs, src\Models\NodeRef.cs 추가.
+      구현 중 발견한 문서 공백(v1.60): IStructureService.FindNodesByTagRef(8번 탭 카드13)는 인라인
+      튜플을, IFlowNodeIndex.FindNodesBySequenceId(10번 탭 카드5)는 정의가 없던 NodeRef를 각자
+      반환하고 있었다 — 둘 다 "Flow 노드 역방향 참조 1건"으로 같은 모양이라 NodeRef record로 통일
+      하고 02번 문서 8번 탭 카드7에 정의를 추가했다(02번 문서 동일 시점 수정).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

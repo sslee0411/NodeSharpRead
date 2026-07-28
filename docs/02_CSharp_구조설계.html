@@ -1959,6 +1959,12 @@ public sealed record TagRuntimeInfo(
 public sealed record ScaleRuntimeInfo(double RawMin, double RawMax, double EngMin, double EngMax);
 public sealed record AlarmRuntimeInfo(double? HH, double? H, double? L, double? LL);
 
+// ★ v1.60 보강 — Flow의 특정 노드를 가리키는 최소 참조. IStructureService.FindNodesByTagRef(아래)와
+// IFlowNodeIndex.FindNodesBySequenceId(10번 탭)가 공통으로 반환하는 "역방향 조회 결과 1건" 모양이라
+// 여기서 한 번만 정의해 재사용한다(원래 FindNodesByTagRef는 인라인 튜플, FindNodesBySequenceId는
+// 정의 없는 NodeRef를 각자 썼던 것을 통일 — CT-04b 구현 중 발견).
+public sealed record NodeRef(string FlowId, string NodeId, string NodeName);
+
 // NodeSharp.Runtime/Structure/StructureService.cs — IStructureService 구현체
 // device.json → DeviceTreeDto(8번 탭)를 로드한 뒤, StructureTreeNode(Editor 전용)는 절대 거치지 않고
 // 바로 이 평면(Dictionary) 인덱스로 변환한다. Editor와 Runner는 "같은 JSON 파일"만 공유할 뿐,
@@ -2287,7 +2293,7 @@ public sealed class RetentionSweeper : ISharedServiceNode
 public interface IStructureService
 {
     // ... 기존 멤버(GetTag/GetTagsByMap/ReadRawAsync/WriteRawAsync/ApplyScale/ApplyInverseScale/GetWriteGate)
-    IReadOnlyList&lt;(string FlowId, string NodeId, string NodeName)&gt; FindNodesByTagRef(string tagId);
+    IReadOnlyList&lt;NodeRef&gt; FindNodesByTagRef(string tagId);   // ★ v1.60: 반환 타입을 인라인 튜플 → NodeRef로 통일(카드 7)
     // ↑ 카드 13 CanDeleteTag의 blockingNodeNames 조회 로직을 일반화 — "삭제 가능한가" 뿐 아니라
     //   "역방향으로 이동하기 위한 목적"으로도 재사용(같은 인덱스, 다른 소비처)
 }
@@ -3568,6 +3574,7 @@ public sealed class SequenceWindowManager
 public interface IFlowNodeIndex
 {
     IReadOnlyList&lt;NodeRef&gt; FindNodesBySequenceId(string sequenceId);   // 모든 Flow의 SequenceTriggerNode를 스캔해 SequenceId 일치하는 것만 반환
+    // NodeRef 정의: 8번 탭 카드 7(v1.60 보강 — 원래 이 카드에서만 쓰고 정의가 없던 것을 IStructureService.FindNodesByTagRef와 공유하는 공통 타입으로 확정)
 }
 // Sequence Editor 창 툴바 → "이 시퀀스를 호출하는 Flow 노드 보기" 버튼
 // → 결과가 1개면 MainWindow.Activate() + 해당 노드로 캔버스 스크롤 + 파란 테두리 하이라이트(8번 탭 카드 15와 동일 시각 효과)
