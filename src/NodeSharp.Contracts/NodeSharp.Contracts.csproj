@@ -72,6 +72,11 @@
     - src\Models\PropertyField.cs 추가(9번 탭 카드3) — PropertyField record와 PropertySchemaValidator
       정적 헬퍼(HelpText/Example 누락 필드를 표면화). "PropertySchema"는 별도 타입이 아니라
       IReadOnlyList<PropertyField>를 가리키는 관례적 이름임을 확인(정식 record/class 선언 없음).
+
+    Step: CT-08 (03번 개발 Step맵.html, Phase 1)
+    - src\Enums\TypedValueSource.cs, src\Models\TypedValue.cs 추가(9번 탭 카드3, v1.10 신설).
+      PropertyFieldType.TypedValue는 CT-01b에서 이미 추가돼 있어 이 Step은 TypedValueSource(Fixed/
+      MsgField/FlowContext/GlobalContext/EnvVar/Expression)와 TypedValue(Source, Value)만 신규 정의.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
