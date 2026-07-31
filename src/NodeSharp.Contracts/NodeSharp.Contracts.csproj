@@ -67,6 +67,11 @@
       참조하므로 이 레코드는 여기 있어야 플러그인 쪽에서 직접 생성 가능 — PluginLoadContext/
       PluginLoader(CT-06a)·NodeTypeRegistry(CT-06b 나머지)와 달리 순수 데이터라 Contracts 배치가
       자연스러움.
+
+    Step: CT-07 (03번 개발 Step맵.html, Phase 1)
+    - src\Models\PropertyField.cs 추가(9번 탭 카드3) — PropertyField record와 PropertySchemaValidator
+      정적 헬퍼(HelpText/Example 누락 필드를 표면화). "PropertySchema"는 별도 타입이 아니라
+      IReadOnlyList<PropertyField>를 가리키는 관례적 이름임을 확인(정식 record/class 선언 없음).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
