@@ -24,6 +24,14 @@
     - NodeTypeRegistry.cs 추가(10번 탭 카드8) — CT-06a와 동일한 사유로 Contracts가 아니라 Registry
       소속. PluginManifest(Contracts, CT-06b 나머지)와 SemVer(NodeSharp.Util, CT-06b 나머지)를
       사용해 로드 전 Contracts 버전 호환성을 가드한다.
+
+    Step: CT-09 확장 (사용자 확인 전 — LS산전 XGT·미쯔비시 A/QnA·CIMON HD 동적 확장 요청 반영, ★ v1.71 정정)
+    - ProtocolDriverRegistry.cs 추가(11번 탭 카드8) — IProtocolDriver.Type이 enum에서 string으로
+      바뀌면서, 새 PLC 프로토콜 드라이버를 Contracts 재컴파일 없이 등록할 수 있는 저장소가 필요해졌다.
+      NodeTypeRegistry(CT-06b)와 완전히 동일한 구조(문자열 키 → Type, SemVer 버전 가드)를 프로토콜
+      드라이버 축에 그대로 적용 — IFlowNode 플러그인 축(NodeTypeRegistry)과 IProtocolDriver 축
+      (ProtocolDriverRegistry)은 서로 다른 관심사라 레지스트리도 분리한다. dll 로드 자체는
+      PluginLoadContext/PluginLoader(CT-06a)를 그대로 재사용(별도 로더 불필요).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

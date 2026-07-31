@@ -77,6 +77,21 @@
     - src\Enums\TypedValueSource.cs, src\Models\TypedValue.cs 추가(9번 탭 카드3, v1.10 신설).
       PropertyFieldType.TypedValue는 CT-01b에서 이미 추가돼 있어 이 Step은 TypedValueSource(Fixed/
       MsgField/FlowContext/GlobalContext/EnvVar/Expression)와 TypedValue(Source, Value)만 신규 정의.
+
+    Step: CT-09 (03번 개발 Step맵.html, Phase 1 — Phase 1 Contracts의 마지막 Step)
+    - src\Enums\ProtocolDriverType.cs, src\Models\PlcConnectionConfig.cs,
+      src\Interfaces\IProtocolDriver.cs 추가(11번 탭 카드8). IProtocolDriver.ConnectAsync가 받는
+      PlcConnectionConfig는 원본 코드 조각에 파라미터 타입으로만 등장하고 정식 필드 선언이 없던
+      공백이라, PlcNode.Host/Port(8번 탭)와 ModbusDriver.IsRtu가 암시하는 Serial 접속 정보(ComPort/
+      BaudRate)를 근거로 최소 형태로 신규 정의(NodeRef·AlarmRaisedEvent와 동일 유형의 공백).
+
+    Step: CT-09 확장 (사용자 확인 전 — LS산전 XGT·미쯔비시 A/QnA·CIMON HD 동적 확장 요청 반영, ★ v1.71 정정)
+    - ProtocolDriverType을 enum(Modbus 고정 1값)에서 string 상수 모음(static class)으로 전환
+      (ModbusTcp/ModbusRtu/SiemensS7/LsXgt/MitsubishiA/MitsubishiQnA/CimonHd) — 새 프로토콜을
+      Contracts 재컴파일 없이 추가할 수 있도록 IProtocolDriver.Type도 string으로 변경.
+      src\Models\ProtocolDriverManifest.cs 신규 추가(PluginManifest·CT-06b와 동일한 목적, 드라이버
+      플러그인이 Contracts만 참조해도 직접 생성 가능하도록 Contracts 배치). 동적 등록소
+      ProtocolDriverRegistry는 NodeTypeRegistry(CT-06b)와 동일한 사유로 NodeSharp.Registry 소속.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

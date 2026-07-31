@@ -1776,7 +1776,9 @@ public sealed class PlcNode : StructureTreeNode
     // WebSocket/Mqtt/NamedPipe/SharedMemory/Virtual, 11번 탭 카드 1)에는 애초에 Modbus가 없어 실제로는
     // 존재하지 않는 값을 기본값으로 쓰고 있었다. Modbus는 레지스터 주소·함수코드·CRC 같은 프로토콜 자체
     // 로직이 필요해 raw Transport 위에 별도 드라이버가 있어야 한다 — 11번 탭 카드 8(IProtocolDriver) 참고.
-    public string CommType { get; set; } = "Modbus";            // 11번 탭 카드 8 ProtocolDriverType과 동일 값 사용(NetTransportType 아님)
+    // ★ v1.71 정정: ProtocolDriverType이 enum → string으로 바뀌어(LS산전 XGT 등 동적 확장 지원) 기본값도
+    // 실제 상수(ModbusTcp)로 정정.
+    public string CommType { get; set; } = ProtocolDriverType.ModbusTcp;   // 11번 탭 카드 8 ProtocolDriverType 상수와 동일 값 사용(NetTransportType 아님)
     public string Host { get; set; } = string.Empty;
     public int Port { get; set; }
     public override string IconGlyph =&gt; "🔧";
@@ -1784,8 +1786,12 @@ public sealed class PlcNode : StructureTreeNode
     public override IReadOnlyList&lt;PropertyField&gt; PropertySchema =&gt; new[]
     {
         new PropertyField("commType", "프로토콜", PropertyFieldType.ComboBox,
-            Options: Enum.GetNames(typeof(ProtocolDriverType)),
-            HelpText: "이 PLC와 통신할 프로토콜입니다. 11번 탭 카드 8의 IProtocolDriver 구현체가 이 값을 보고 선택되며, 드라이버 내부에서 다시 적절한 NetTransportType(Tcp/Serial 등)을 사용합니다."),
+            // ★ v1.71: Options가 더 이상 Enum.GetNames로 고정 나열되지 않는다 — ProtocolDriverType이
+            // 동적 등록(플러그인) 구조로 바뀌었으므로, 실제 Editor는 이 목록을 컴파일 타임 배열이 아니라
+            // ProtocolDriverRegistry.RegisteredDrivers.Keys(런타임에 로드된 드라이버 목록)로 채운다.
+            // 여기 Options: null은 "정적 목록 없음 = 호출 측이 동적으로 채움" 관례를 뜻한다.
+            Options: null,
+            HelpText: "이 PLC와 통신할 프로토콜입니다. 11번 탭 카드 8의 IProtocolDriver 구현체가 이 값을 보고 선택되며, 드라이버 내부에서 다시 적절한 NetTransportType(Tcp/Serial 등)을 사용합니다. 목록은 로드된 프로토콜 드라이버 플러그인에 따라 달라집니다(LS산전 XGT/미쯔비시 A·QnA/CIMON HD 등 추가 가능)."),
         new PropertyField("host", "IP/주소", PropertyFieldType.Text, Example: "예: 192.168.1.10"),
         new PropertyField("port", "포트", PropertyFieldType.Number, DefaultValue: "502",
             HelpText: "Modbus TCP는 보통 502번을 사용합니다."),
@@ -3234,7 +3240,8 @@ public static class ProjectBundleExporter
       <tr><td>OPC-UA 프로토콜 지원</td><td>산업 현장에서 Modbus만큼 흔한 프로토콜인데, <code>lssLib.Net</code> 9종 Transport(Tcp/Udp/Serial/Http/WebSocket/Mqtt/NamedPipe/SharedMemory/Virtual)에도 이 문서 어디에도 없던 공백(사용자 확인 후 로드맵에 등재). MQTT(11번 탭 카드 4)처럼 기존 lssLib Transport를 감싸는 방식이 아니라, <b>외부 OPC-UA 클라이언트 라이브러리(OPCFoundation.NetStandard 또는 Workstation.UaClient) 신규 도입</b>이 필요 — lssLib 재사용 원칙에서 벗어나는 첫 사례라 별도 검토 후 착수. 도입 시 <code>OpcUaInNode</code>/<code>OpcUaWriteNode</code>가 <code>ctx.Structure</code>(8번 탭)와 동일한 패턴으로 태그 읽기/쓰기 제공 예정</td><td>새 외부 라이브러리 도입 여부·선정은 4단계 착수 전 별도 조사 필요, 지금은 "무엇을 붙일 자리가 있다"는 것만 확정</td></tr>
       <tr><td>★ 이중화/Failover</td><td>지금까지의 "다중 Runner 관리"(위 행)는 여러 Runner를 <b>한눈에 모니터링</b>하는 개념이고, 이 항목은 그와 별개로 <b>Runner 하나가 죽었을 때 대기 중인 다른 Runner가 자동으로 이어받는 것</b>을 뜻한다(Active-Standby). 카드 12(NTP)의 시각 동기화, <code>SaveAndDeployAsync</code>(8번 탭)의 상태 저장 방식이 선행 조건이라 다중 Runner 관리보다 뒤에 착수</td><td>단일 라인 우선 개발 중이라 이중화 대상 자체가 아직 없음 — 다중 Runner 관리(관제) 로드맵이 먼저 실현된 뒤 그 위에 얹는 순서</td></tr>
       <tr><td>★ Editor 다중 사용자 인증·권한(RBAC)</td><td>(v1.30 신설, v1.37 인용 오류 정정) 8번 탭 카드 16·10번 탭 카드 9(동시 편집)와 7번 탭 카드 6(Editor↔Runner 인증)에 "다중 사용자는 향후 로드맵", "다중 사용자 시 Windows 계정 인증(Negotiate)으로 확장"이라고 텍스트로만 언급돼 있었고, 로드맵 표 자체에는 항목으로 등재돼 있지 않던 것을 발견. 현재는 <code>runner.token</code>이 Editor↔Runner 간 단일 토큰 인증만 제공하고, Editor를 여는 사람(엔지니어)별 뷰어 전용/조작 가능 권한 구분이 없다(9번 탭 Dashboard의 뷰어/조작 토큰 구분과 유사한 개념을 Editor 자체에도 적용 필요). Windows 계정 기반 인증(Negotiate) + 역할(Viewer/Operator/Admin) 기반 권한 모델 도입 예정</td><td>1차는 단일 엔지니어 PC 1대 전제로도 충분 — flows.json 파일 락(EC-04b)만으로 동시 편집 사고는 이미 방지됨. 다중 사용자 도입은 여러 엔지니어가 같은 Runner를 동시에 관리하는 조직 규모가 됐을 때 재검토</td></tr>
-      <tr><td>★ Siemens S7 프로토콜 드라이버</td><td>(v1.33 신설) 11번 탭 카드 8에서 Modbus를 <code>IProtocolDriver</code>의 1차 구현체로 확정하면서, 그 다음으로 흔한 PLC 프로토콜인 Siemens S7(S7comm)도 함께 검토했다. Modbus와 달리 S7은 벤더 전용 프로토콜이라 <code>OPCFoundation.NetStandard</code>처럼 외부 라이브러리(예: <code>S7netplus</code>) 도입이 필요할 가능성이 높아, RM-01(OPC-UA)과 같은 "외부 라이브러리 신규 도입" 사례로 분류. 도입 시 <code>S7Driver : IProtocolDriver</code>가 Modbus와 동일한 인터페이스로 <code>DeviceMapPoller</code>(8번 탭 카드 11)에 연결될 예정</td><td>Modbus 1차 구현(PD-01a/b)이 먼저 안정화된 뒤, 실제 Siemens 장비 도입 수요가 확인되면 외부 라이브러리 선정부터 착수</td></tr>
+      <tr><td>★ Siemens S7 프로토콜 드라이버</td><td>(v1.33 신설, v1.71 갱신) 11번 탭 카드 8에서 Modbus를 <code>IProtocolDriver</code>의 1차 구현체로 확정하면서, 그 다음으로 흔한 PLC 프로토콜인 Siemens S7(S7comm)도 함께 검토했다. Modbus와 달리 S7은 벤더 전용 프로토콜이라 <code>OPCFoundation.NetStandard</code>처럼 외부 라이브러리(예: <code>S7netplus</code>) 도입이 필요할 가능성이 높아, RM-01(OPC-UA)과 같은 "외부 라이브러리 신규 도입" 사례로 분류. 도입 시 <code>S7Driver : IProtocolDriver</code>가 Modbus와 동일한 인터페이스로 <code>DeviceMapPoller</code>(8번 탭 카드 11)에 연결될 예정 — <code>ProtocolDriverType.SiemensS7</code> 상수는 CT-09(★ v1.71)에서 이미 예약해뒀다</td><td>Modbus 1차 구현(PD-01a/b)이 먼저 안정화된 뒤, 실제 Siemens 장비 도입 수요가 확인되면 외부 라이브러리 선정부터 착수</td></tr>
+      <tr><td>★ 국산·일본계 PLC 프로토콜 확장(LS산전 XGT·미쯔비시 A/QnA·CIMON HD)</td><td>(v1.71 신설, 사용자 요청) 국내 산업 현장에서 Modbus 못지않게 흔한 PLC 4종 — LS산전(구 LG산전) XGT, 미쯔비시전기 MELSEC A/QnA 프레임, CIMON(신성이엔지) HD. CT-09(★ v1.71)에서 <code>IProtocolDriver.Type</code>을 <code>string</code>으로, <code>ProtocolDriverType</code>을 동적 등록 가능한 상수 카탈로그로 전환해두었으므로, 각 프로토콜은 <code>Contracts</code> 수정 없이 <code>nodes/NodeSharp.Nodes.{LsXgt,MitsubishiA,MitsubishiQnA,CimonHd}</code> 플러그인 프로젝트로 <code>ProtocolDriverRegistry.TryRegister</code>에 등록하기만 하면 된다(Modbus/S7과 달리 처음부터 이 구조 위에서 설계됨). 4개 모두 벤더 전용 프로토콜이라 각각 외부 라이브러리 또는 자체 프레임 파서 구현이 필요 — 어떤 것부터 착수할지는 실제 현장 수요로 우선순위를 정한다</td><td>4개 프로토콜 모두 실장비 접속 테스트가 필요해 Modbus 1차 구현(PD-01a/b)과 CT-09 동적 구조 확정이 먼저다 — 착수 순서는 현장 PLC 보급률 조사 후 결정</td></tr>
       <tr><td>★ 소프트웨어 자동 업데이트</td><td>(v1.34 신설, 재검토로 발견) 10번 탭 카드 16 "버전 확인" 행에 "자동 업데이트는 향후 로드맵"이라고 텍스트로만 언급돼 있었고, 이 로드맵 표 자체에는 항목으로 없던 것을 발견(RM-04 RBAC 발견 때와 동일한 패턴의 누락). 1차는 GitHub Releases API로 신규 버전 존재 여부만 수동 확인하고, 이후 MSIX 패키징(카드 16에 이미 "2차 선택"으로 언급됨)을 전제로 Editor 시작 시 자동 확인+다운로드+재시작 적용까지 자동화 예정</td><td>xcopy 배포가 1차 기본값이라 자동 업데이트의 전제인 MSIX 패키징 자체가 아직 확정 우선순위가 아님 — MSIX 채택 이후 재검토</td></tr>
       <tr><td>★ CCTV 웹 대시보드 지원(RTSP→HLS/WebRTC)</td><td>(v1.62 신설) 9번 탭 카드 17 CCTV 기능 도입 시 사용자와 함께 확정 — 1차는 WPF 전용(<code>CctvViewerNode</code>+<code>CctvViewerControl</code>, LibVLCSharp)이고, 브라우저(웹 <code>/ui</code>)에서도 영상을 보려면 RTSP를 브라우저가 재생 가능한 형식으로 변환하는 별도 게이트웨이(예: MediaMTX로 RTSP→HLS 또는 WebRTC 변환)를 새로 도입해야 한다 — 카메라 대수가 늘어나면 게이트웨이의 트랜스코딩 부하도 함께 검토 필요</td><td>1차는 WPF 현장 PC에서 보는 것으로 충분 — 웹/태블릿 CCTV 열람 수요가 확인되면 게이트웨이 도입부터 재검토</td></tr>
     </table>
@@ -3692,22 +3699,49 @@ public interface IFlowNodeIndex
   <div class="card">
     <h2><span class="num">8</span> ★ PLC 프로토콜 드라이버 — IProtocolDriver (Modbus 등)</h2>
     <p><b>발견한 공백</b>(사용자 질의 "Node-RED에서 많이 쓰는 외부 라이브러리는 무엇인가"로 진행한 조사에서 확인). 8번 탭 전체에서 <code>PlcNode</code> 예시로 "ModbusTcp"가 반복 등장하고 방화벽 표에도 "Modbus TCP 502"가 실려 있는데, 정작 그 값을 실제로 처리할 프로토콜 계층이 설계 어디에도 없었다. 11번 탭 카드 1의 <code>NetTransportType</code>(Tcp/Udp/Serial/Http/WebSocket/Mqtt/NamedPipe/SharedMemory/Virtual)은 <b>raw 전송</b>일 뿐, 레지스터 주소·함수 코드(0x03 Read Holding Registers 등)·CRC 같은 <b>Modbus 프로토콜 자체의 규약</b>은 별도 계층이 필요하다. 이는 iiot-system-arch 스킬이 원래 요구하는 <code>IProtocolDriver</code> 패턴이기도 하다.</p>
-    <pre><code>// Contracts/Interfaces/IProtocolDriver.cs — PLC 등 산업용 프로토콜의 공통 계약(IFlowNode와는 별개 축)
-public enum ProtocolDriverType { Modbus }   // S7 등은 10번 탭 카드 14 향후 로드맵(RM-05)으로 등재, 지금은 Modbus만 확정
+    <p><b>★ v1.71 정정</b>(사용자 요청 — "MODBUSTCP/모드버스RTU, LS산전 XGT, 미쯔비시 A/QnA, CIMON HD 등 프로토콜을 동적으로 추가할 수 있도록 설계에 반영"). 아래 <code>ProtocolDriverType</code>은 애초 <code>enum { Modbus }</code>(고정 1값)이었으나, 새 PLC 프로토콜이 나올 때마다 Contracts를 재컴파일해야 하는 구조라 확장성이 없었다. Node-RED가 노드 종류를 문자열("switch", "change" 등)로 열어두고 팔레트에 동적으로 추가하는 것과 동일한 원칙으로, <code>IProtocolDriver.Type</code>을 <code>string</code> 식별자로 바꾸고 <code>ProtocolDriverManifest</code>/<code>ProtocolDriverRegistry</code>(<code>PluginManifest</code>/<code>NodeTypeRegistry</code>, CT-06a/b와 완전히 동일한 패턴)를 도입해 새 프로토콜 드라이버를 dll 플러그인으로 등록할 수 있게 했다. LS산전 XGT·미쯔비시 A/QnA·CIMON HD는 이 구조 위에서 <b>구현 시점에 상수만 예약해두고(카탈로그), 실제 드라이버는 별도 플러그인 프로젝트에서 나중에 추가</b>하는 대상이다(지금 이 Step에서 4개 프로토콜을 전부 구현하는 것은 아님 — Modbus TCP/RTU만 1차 구현 확정, PD-01a/b).</p>
+    <pre><code>// Contracts/Enums/ProtocolDriverType.cs — 잘 알려진 프로토콜 식별 문자열 카탈로그(Enum 아님, ★ v1.71)
+public static class ProtocolDriverType
+{
+    public const string ModbusTcp = "Modbus.Tcp";        // 1차 구현(PD-01a)
+    public const string ModbusRtu = "Modbus.Rtu";        // 1차 구현(PD-01b)
+    public const string SiemensS7 = "Siemens.S7";        // 10번 탭 카드14 로드맵(RM-05) — 외부 라이브러리 선정 후 구현 예정
+    public const string LsXgt = "LS.XGT";                 // 구현 예정(플러그인)
+    public const string MitsubishiA = "Mitsubishi.A";     // 구현 예정(플러그인)
+    public const string MitsubishiQnA = "Mitsubishi.QnA"; // 구현 예정(플러그인)
+    public const string CimonHd = "CIMON.HD";             // 구현 예정(플러그인)
+    // 카탈로그에 없는 값도 "제조사.모델" 관례를 따르는 문자열이면 ProtocolDriverRegistry로 그대로 등록 가능
+}
+
+// Contracts/Models/ProtocolDriverManifest.cs — PluginManifest(10번 탭 카드8)와 동일한 목적의 드라이버 전용 매니페스트
+public sealed record ProtocolDriverManifest(string ProtocolTypeName, string DriverVersion, string RequiredContractsVersion);
+
+// Registry/ProtocolDriverRegistry.cs — NodeTypeRegistry(10번 탭 카드8)와 완전히 동일한 구조를 드라이버 축에 적용
+public sealed class ProtocolDriverRegistry
+{
+    public IReadOnlyDictionary&lt;string, Type&gt; RegisteredDrivers =&gt; _registeredDrivers;
+    public bool TryRegister(ProtocolDriverManifest manifest, Type driverType)
+    {
+        if (!SemVer.IsCompatible(manifest.RequiredContractsVersion, _contractsVersion)) return false;   // 크래시 대신 이 드라이버만 제외
+        _registeredDrivers[manifest.ProtocolTypeName] = driverType;
+        return true;
+    }
+    // ... 필드 생략, NodeTypeRegistry와 동일
+}
 
 /// &lt;summary&gt;raw Transport(NetTransportType) 위에서 PLC 프로토콜 규약(주소 체계·함수 코드·오류 응답)을 처리하는 드라이버.&lt;/summary&gt;
 public interface IProtocolDriver
 {
-    ProtocolDriverType Type { get; }
+    string Type { get; }   // ★ v1.71: enum → string(위 ProtocolDriverType 상수 또는 플러그인이 등록한 새 값)
     Task ConnectAsync(PlcConnectionConfig config, CancellationToken ct);
     Task&lt;byte[]&gt; ReadAsync(int startAddress, int lengthBytes, CancellationToken ct);   // DeviceMapNode.StartAddress/LengthBytes(8번 탭)와 직결
     Task WriteAsync(int address, byte[] data, CancellationToken ct);                    // ED-D06a PLC Write 안전장치가 이 메서드를 감쌈
 }
 
-// nodes/NodeSharp.Nodes.Modbus/ModbusDriver.cs — 1차 구현체
+// nodes/NodeSharp.Nodes.Modbus/ModbusDriver.cs — 1차 구현체(TCP/RTU 겸용, IsRtu로 분기)
 public sealed class ModbusDriver : IProtocolDriver
 {
-    public ProtocolDriverType Type =&gt; ProtocolDriverType.Modbus;
+    public string Type =&gt; IsRtu ? ProtocolDriverType.ModbusRtu : ProtocolDriverType.ModbusTcp;
     private INetTransport? _transport;   // TCP 모드는 NetTransportType.Tcp, RTU 모드는 NetTransportType.Serial 위에서 동작(LL-05a로 포팅된 NodeSharp.Util.Net 재사용)
     public bool IsRtu { get; init; }     // true=Modbus RTU(Serial, CRC16 포함) / false=Modbus TCP(MBAP 헤더)
 
@@ -3725,7 +3759,7 @@ public sealed class ModbusDriver : IProtocolDriver
     }
     public Task WriteAsync(int address, byte[] data, CancellationToken ct) =&gt; /* 함수코드 0x06/0x10 Write */ Task.CompletedTask;
 }</code></pre>
-    <p>PlcNode.CommType(8번 탭)이 <code>ProtocolDriverType</code> 값을 선택하면, Editor/Runner는 해당 <code>IProtocolDriver</code> 구현체를 RT-10 <code>SharedResourceManager</code>로 싱글턴 관리(같은 PLC를 여러 TagNode가 공유 참조하므로 LL-05b <code>NetIoNode</code>와 동일한 참조 카운트 원칙)한다. ED-D06b <code>DeviceMapPoller</code>가 이 드라이버의 <code>ReadAsync</code>를 배치 폴링 주기로 호출하는 실제 소비자다.</p>
+    <p>PlcNode.CommType(8번 탭)이 <code>ProtocolDriverType</code> 상수(또는 플러그인이 등록한 문자열)를 선택하면, Editor/Runner는 <code>ProtocolDriverRegistry.RegisteredDrivers</code>에서 해당 <code>IProtocolDriver</code> 구현체 타입을 찾아 RT-10 <code>SharedResourceManager</code>로 싱글턴 관리(같은 PLC를 여러 TagNode가 공유 참조하므로 LL-05b <code>NetIoNode</code>와 동일한 참조 카운트 원칙)한다. ED-D06b <code>DeviceMapPoller</code>가 이 드라이버의 <code>ReadAsync</code>를 배치 폴링 주기로 호출하는 실제 소비자다.</p>
     <p><b>★ (v1.34 신설, 재검토로 발견) Modbus/PLC 시뮬레이터 — Virtual Transport 활용</b>. 11번 탭 카드 1(<code>lssLib.Net</code> 9종 Transport)에 <code>Virtual</code>이 이름만 나열돼 있고 설계 문서 전체에서 실제 용도가 한 번도 설명되지 않았던 것을 발견. 실제 PLC 하드웨어 없이 Modbus 플로우를 개발·테스트해야 하는 엔지니어의 실무 필요를 고려해, 이 <code>Virtual</code> Transport를 <b>메모리 기반 가상 Modbus 슬레이브</b>로 활용하는 용도를 확정한다.</p>
     <pre><code>// nodes/NodeSharp.Nodes.Modbus/VirtualModbusSlave.cs — NetTransportType.Virtual 위에서 동작하는 시뮬레이터
 public sealed class VirtualModbusSlave : INetTransport   // ModbusDriver 입장에서는 실제 Tcp/Serial과 구분되지 않음
@@ -3734,7 +3768,7 @@ public sealed class VirtualModbusSlave : INetTransport   // ModbusDriver 입장�
     public Task&lt;byte[]&gt; ReceiveAsync(CancellationToken ct) =&gt; /* 요청 프레임을 해석해 _registers에서 값을 꺼내 Modbus 응답 프레임으로 조립 */ default!;
     // Editor 속성창에 "시뮬레이션 모드" 체크박스 — 켜면 PlcNode.Host/Port 대신 이 가상 슬레이브로 연결
 }</code></pre>
-    <div class="src">참조: iiot-system-arch <code>IProtocolDriver</code> 패턴 · 대응 개발 Step: 03_개발_Step맵.html CT-09(인터페이스)·PD-01a/b(Modbus 구현)·PD-01c(시뮬레이터), S7은 RM-05(로드맵)</div>
+    <div class="src">참조: iiot-system-arch <code>IProtocolDriver</code> 패턴 · 대응 개발 Step: 03_개발_Step맵.html CT-09(인터페이스+동적 등록 구조, ★ v1.71)·PD-01a/b(Modbus TCP/RTU 구현)·PD-01c(시뮬레이터), S7·LS산전 XGT·미쯔비시 A/QnA·CIMON HD는 플러그인 드라이버로 추후 구현(10번 탭 카드14 로드맵)</div>
   </div>
 </section>
 
