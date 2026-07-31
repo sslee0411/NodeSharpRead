@@ -42,6 +42,9 @@
     <!-- CT-06a(03번 개발 Step맵.html) — PluginLoadContext/PluginLoader가 실제로는 Contracts가 아니라
          Registry 소속으로 확정되어(아래 NodeSharp.Registry.csproj 주석 참고) 예상보다 앞당겨 추가. -->
     <ProjectReference Include="..\..\src\NodeSharp.Registry\NodeSharp.Registry.csproj" />
+    <!-- CT-06b — SemVer(신규 도입 유틸리티)를 직접 테스트하기 위해 명시적으로 추가
+         (Registry → Util로 이미 전이 참조되지만, 테스트 대상을 명확히 하기 위해 직접 참조). -->
+    <ProjectReference Include="..\..\src\NodeSharp.Util\NodeSharp.Util.csproj" />
   </ItemGroup>
 
 </Project>

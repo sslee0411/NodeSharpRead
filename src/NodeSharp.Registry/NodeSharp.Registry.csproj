@@ -19,6 +19,11 @@
       ("노드 타입 스캔/로딩/버전관리")과 정확히 일치해 여기로 정정(v1.66, CT-03a NodeContext와
       동일 유형의 경로 오기). Step Id는 03번 Step맵의 표 위치를 유지하되 실제 구현 프로젝트만
       Registry로 바뀐 것 — CT-03a 선례와 동일한 처리 방식.
+
+    Step: CT-06b (03번 개발 Step맵.html, Phase 1 — 단, 실제 구현은 Registry 프로젝트)
+    - NodeTypeRegistry.cs 추가(10번 탭 카드8) — CT-06a와 동일한 사유로 Contracts가 아니라 Registry
+      소속. PluginManifest(Contracts, CT-06b 나머지)와 SemVer(NodeSharp.Util, CT-06b 나머지)를
+      사용해 로드 전 Contracts 버전 호환성을 가드한다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
