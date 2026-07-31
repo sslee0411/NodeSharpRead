@@ -183,11 +183,16 @@ graph TB
 │   ├── NodeSharp.Contracts\        ← net8.0 / 외부참조 0개
 │   │   ├── Interfaces\ (IFlowNode, INodeType, INodeRegistry, ISharedServiceNode ...)
 │   │   ├── Models\ (FlowDefinition, NodeConfig, Wire, Msg)
-│   │   └── Plugin\ (PluginLoadContext, PluginLoader, NodeTypeRegistry)
+│   │   └── Events\ (NodeStatusEvent, TagValueUpdatedEvent 등 — Runner→Editor 모니터링 페이로드)
 │   ├── NodeSharp.Util\             ← 로깅, JSON 직렬화, i18n
 │   ├── NodeSharp.Runtime\          ← net8.0 / FlowEngine, Flow, NodeContext, SharedResourceManager
 │   │                                  (Editor·Runner 둘 다 참조하는 공용 실행 엔진 — WPF 비의존)
 │   ├── NodeSharp.Registry\         ← 노드 타입 스캔/로딩/버전관리
+│   │   └── Plugin\ (PluginLoadContext, PluginLoader, NodeTypeRegistry)
+│   │       ★ v1.66 정정 — 이전 판(~v1.43)에는 이 3개 타입이 Contracts\Plugin\ 소속으로 잘못 표기돼
+│   │       있었다. AssemblyLoadContext 기반 동적 로딩·리플렉션은 "외부참조 0개"(Contracts 원칙)와
+│   │       맞지 않고, 바로 위 Registry 프로젝트의 존재 목적("노드 타입 스캔/로딩/버전관리")과 정확히
+│   │       일치해 Registry 소속으로 정정(CT-03a NodeContext 때와 동일 유형의 경로 오기).
 │   ├── NodeSharp.UI.Themes\        ← WPF 다크/라이트 테마 (기존 lssLib 자산 재사용)
 │   ├── NodeSharp.Editor\           ← net8.0-windows / UseWPF=true
 │   │   │                             ★ 설정 화면 전용 — FlowEngine을 "미리보기/검증"용으로만 로컬 실행,

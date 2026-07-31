@@ -39,6 +39,9 @@
     <!-- CT-02a(Msg)부터 Contracts의 Models/Enums를 테스트하므로 Contracts만 우선 참조.
          이후 Runtime/Registry 등을 테스트해야 하는 Step(RT-*, LL-*)에서 필요할 때 추가한다. -->
     <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+    <!-- CT-06a(03번 개발 Step맵.html) — PluginLoadContext/PluginLoader가 실제로는 Contracts가 아니라
+         Registry 소속으로 확정되어(아래 NodeSharp.Registry.csproj 주석 참고) 예상보다 앞당겨 추가. -->
+    <ProjectReference Include="..\..\src\NodeSharp.Registry\NodeSharp.Registry.csproj" />
   </ItemGroup>
 
 </Project>
