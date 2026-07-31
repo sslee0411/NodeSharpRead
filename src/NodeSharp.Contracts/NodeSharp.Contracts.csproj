@@ -54,6 +54,13 @@
       참조하고 있었다(NodeRef와 같은 유형의 공백). 새 Enum을 만들지 않고 기존 AlarmLevel(8번 탭 카드11)을
       그대로 재사용하도록 AlarmRaisedEvent를 정의하고, SequenceExecutor 예시의 AlarmSeverity.HH도
       AlarmLevel.HH로 정정(02번 문서 8번 탭 카드11·11번 탭 카드5 동시 수정).
+
+    Step: CT-05c (03번 개발 Step맵.html, Phase 1)
+    - src\Events\WidgetSequenceEvents.cs 추가 — WidgetValueUpdatedEvent/WidgetInteractionEvent(9번 탭
+      카드11), SequenceStepChangedEvent(9번 탭 카드12·11번 탭 카드5), NodeCompleteEvent(9번 탭 카드4)
+      4개 레코드를 02번 문서 그대로 선언. SequenceStepChangedEvent가 참조하는 SequenceState(Idle/
+      Running/Paused/Faulted/Completed, 11번 탭 카드5)는 별도 Step 없이 src\Enums\SequenceState.cs로
+      함께 정의(DispatchMode/BufFieldType과 동일한 선례 — 이 Step에서만 필요한 단일 소규모 Enum).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
