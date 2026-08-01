@@ -45,6 +45,8 @@
     <!-- CT-06b — SemVer(신규 도입 유틸리티)를 직접 테스트하기 위해 명시적으로 추가
          (Registry → Util로 이미 전이 참조되지만, 테스트 대상을 명확히 하기 위해 직접 참조). -->
     <ProjectReference Include="..\..\src\NodeSharp.Util\NodeSharp.Util.csproj" />
+    <!-- RT-01a(03번 개발 Step맵.html) — FlowEngine(NodeSharp.Runtime 최초 코드)을 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\src\NodeSharp.Runtime\NodeSharp.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

@@ -98,6 +98,12 @@
       Transport/ReconnectIntervalSeconds) 추가(9번 탭 카드17). 두 타입 모두 02번 문서에 필드까지
       정식 선언돼 있어 별도 공백 없이 그대로 포팅. CredentialRefId는 CT-04c ICredentialStore를
       참조만 하고 Url에는 절대 평문 자격증명을 저장하지 않는 원칙을 XML 주석에 명시.
+
+    Step: RT-01a (03번 개발 Step맵.html, Phase 2 — Phase 1 Contracts 마지막 코드화 이후 첫 Runtime Step)
+    - src\Interfaces\INodeRegistry.cs 추가(2번 탭 카드4·9). FlowEngine이 노드 타입 이름으로부터
+      IFlowNode 인스턴스를 만들 때 의존하는 계약 — 폴더 구조(1번 탭)가 애초에 Contracts 소속으로
+      명시. CreateInstance(NodeConfig) 1개 멤버만 정의(RT-01a 범위 한정, INodeTypeDescriptor.Factory
+      기반 Id 동기화는 RG-01에서 다룰 예정이라 지금은 다루지 않음).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

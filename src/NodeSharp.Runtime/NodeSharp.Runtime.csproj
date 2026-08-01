@@ -12,6 +12,12 @@
     Step: P0-1b (03번 개발 Step맵.html, Phase 0)
     - 1번 탭 의존성 그림에 따라 ProjectReference 추가: Runtime → Contracts, Runtime → Registry, Runtime → Util.
       (FlowEngine.DeployAsync가 노드 타입 인스턴스화를 위해 Registry를 사용하므로 Runtime이 Registry를 참조)
+
+    Step: RT-01a (03번 개발 Step맵.html, Phase 2 — 이 프로젝트의 최초 코드)
+    - FlowEngine.cs 추가(2번 탭 카드4·9, 3번 탭 카드3) — CreateInstance(NodeConfig)만 우선 구현
+      ("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1). 실제 타입 조회·생성은 INodeRegistry(Contracts,
+      신규)에 위임하고, 구현체는 NodeTypeRegistry(Registry, CT-06b+RT-01a). DeployAsync/RouteAsync
+      등 나머지 FlowEngine 멤버는 RT-01b 이후 순서대로 추가될 예정 — 지금은 없음.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

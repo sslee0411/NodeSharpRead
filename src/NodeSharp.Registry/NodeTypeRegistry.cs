@@ -1,3 +1,4 @@
+using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Util;
 
@@ -9,6 +10,8 @@ namespace NodeSharp.Registry;
 /// 버전을 비교해, 불일치하면 크래시 대신 해당 플러그인만 제외하고 계속 진행합니다.
 /// 설계 근거: 02번 문서 10번 탭 카드 8(플러그인 버전 호환성 검사). PluginLoadContext/PluginLoader와
 /// 동일한 사유(v1.66)로 Contracts가 아니라 Registry 소속입니다.
+/// (★ RT-01a 추가) <see cref="INodeRegistry"/>를 구현해 <c>FlowEngine</c>이 <see cref="CreateInstance"/>로
+/// <see cref="NodeConfig.Type"/> 문자열만으로 노드 인스턴스를 만들 수 있게 합니다(2번 탭 카드 4).
 /// </summary>
 /// <example>
 /// <code>
@@ -23,9 +26,13 @@ namespace NodeSharp.Registry;
 /// bool rejected = registry.TryRegister(
 ///     new PluginManifest("legacy", "0.9.0", RequiredContractsVersion: "2.0.0"), typeof(object));
 /// // rejected == false, registry.RegisteredTypes에 "legacy" 없음
+///
+/// // RT-01a: 등록된 타입 이름으로 인스턴스 생성
+/// var cfg = new NodeConfig("n1", "inject", "타이머", "f1", new Dictionary&lt;string, object?&gt;());
+/// IFlowNode node = registry.CreateInstance(cfg);   // typeof(InjectNode) 인스턴스 반환
 /// </code>
 /// </example>
-public sealed class NodeTypeRegistry
+public sealed class NodeTypeRegistry : INodeRegistry
 {
     private readonly Dictionary<string, Type> _types = new();
     private readonly string _contractsVersion;
@@ -48,5 +55,24 @@ public sealed class NodeTypeRegistry
 
         _types[manifest.TypeName] = nodeType;
         return true;
+    }
+
+    /// <summary>
+    /// (★ RT-01a) <paramref name="cfg"/>.Type에 등록된 타입을 <c>Activator.CreateInstance</c>로 생성합니다.
+    /// 노드 구현체는 공개 매개변수 없는 생성자를 가져야 합니다(<c>LssLibNodeAdapterBase</c> 관례).
+    /// <see cref="IFlowNode.Id"/>를 <paramref name="cfg"/>.Id와 동기화하는 정식 메커니즘은 <c>RG-01</c>에서
+    /// 다룰 예정이라 이 Step에서는 다루지 않습니다 — <see cref="IFlowNode.Name"/>만 <paramref name="cfg"/>.Name으로 설정합니다.
+    /// </summary>
+    /// <exception cref="InvalidOperationException"><paramref name="cfg"/>.Type이 <see cref="RegisteredTypes"/>에 없을 때.</exception>
+    public IFlowNode CreateInstance(NodeConfig cfg)
+    {
+        if (!_types.TryGetValue(cfg.Type, out var nodeType))
+        {
+            throw new InvalidOperationException($"노드 타입 '{cfg.Type}'을(를) 찾을 수 없습니다.");
+        }
+
+        var node = (IFlowNode)Activator.CreateInstance(nodeType)!;
+        node.Name = cfg.Name;
+        return node;
     }
 }
