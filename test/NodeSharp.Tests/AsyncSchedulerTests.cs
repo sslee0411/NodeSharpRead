@@ -119,7 +119,14 @@ public class AsyncSchedulerTests
     public async Task ScheduleDailyAt은_InitialDelay를_오늘_또는_내일_그_시각까지로_계산한다()
     {
         var scheduler = new AsyncScheduler();
-        var timeOfDay = DateTime.Now.TimeOfDay;   // 거의 즉시 도래하는 시각으로 설정
+
+        // ★(테스트 버그 수정) DateTime.Now.TimeOfDay를 미리 찍어서 그대로 넘기면, ScheduleDailyAt
+        // 내부에서 다시 읽는 DateTime.Now가 항상 그보다 조금이라도 더 늦은 시각이라 "next <= now"가
+        // 거의 100% 참이 되어 다음 실행이 내일로 밀린다(InitialDelay가 즉시가 아니라 거의 24시간이 됨,
+        // 그래서 아래 300ms 대기 안에 한 번도 실행되지 못해 항상 실패했다). 이 테스트는 "곧 도래하는
+        // 시각"을 검증하는 게 목적이므로, 미래로 살짝(50ms) 민 시각을 넘겨 확실히 오늘 안에(그리고
+        // 거의 즉시) 실행되도록 한다.
+        var timeOfDay = DateTime.Now.AddMilliseconds(50).TimeOfDay;
 
         var task = scheduler.ScheduleDailyAt(timeOfDay, _ => Task.CompletedTask, "daily");
         await Task.Delay(300);
