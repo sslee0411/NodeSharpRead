@@ -18,6 +18,16 @@
       ("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1). 실제 타입 조회·생성은 INodeRegistry(Contracts,
       신규)에 위임하고, 구현체는 NodeTypeRegistry(Registry, CT-06b+RT-01a). DeployAsync/RouteAsync
       등 나머지 FlowEngine 멤버는 RT-01b 이후 순서대로 추가될 예정 — 지금은 없음.
+
+    Step: RT-01b (03번 개발 Step맵.html, Phase 2)
+    - FlowEngine.cs에 DeployAsync(FlowDefinition, CancellationToken)(Full 모드만) 추가 — 노드
+      전체를 CreateInstance한 뒤(1단계) 전체 OnStartAsync를 순서대로 호출(2단계), 02번 문서 2번 탭
+      카드4 원본 두 루프 구조 그대로. Nodes 딕셔너리는 IFlowNode.Id가 아니라 NodeConfig.Id로 키를
+      삼음(RT-01a에서 Id 동기화를 RG-01로 미뤄뒀기 때문 — Wire.SourceNodeId/TargetNodeId가 참조하는
+      안정적 식별자 기준으로 관리). 착수 중 발견한 공백: BuildContext(node)가 3번 탭 카드6·2번 탭
+      카드8에 호출부만 있고 정식 선언이 없었다(NodeRef와 동일 유형) — NodeContext(RT-09) 준비 전까지
+      INodeContext의 임시 무동작 구현 NoOpNodeContext(사설 중첩 클래스)를 반환하도록 최초 구현.
+      노드별 예외 격리·MissingNode 대체(RT-02a/b)는 이 Step 범위 밖 — 예외는 그대로 전파됨.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
