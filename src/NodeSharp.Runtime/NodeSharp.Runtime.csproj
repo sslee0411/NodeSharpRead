@@ -28,6 +28,16 @@
       카드8에 호출부만 있고 정식 선언이 없었다(NodeRef와 동일 유형) — NodeContext(RT-09) 준비 전까지
       INodeContext의 임시 무동작 구현 NoOpNodeContext(사설 중첩 클래스)를 반환하도록 최초 구현.
       노드별 예외 격리·MissingNode 대체(RT-02a/b)는 이 Step 범위 밖 — 예외는 그대로 전파됨.
+
+    Step: RT-02a (03번 개발 Step맵.html, Phase 2)
+    - MissingNode.cs 신규 추가(2번 탭 카드4, v1.9 결함의 정식 반영) — 존재하지 않는 노드 타입 자리에
+      대신 배포되는 자리표시자. Id/Type을 원본 NodeConfig에서 보존, 입력은 그냥 버리고 출력 없음.
+      FlowEngine.DeployAsync의 1단계(생성)에서 CreateInstance가 InvalidOperationException을 던지면
+      배포를 중단하지 않고 MissingNode로 대체하도록 수정, 2단계(기동)에서는 MissingNode를 만나면
+      OnStartAsync 호출을 건너뜀(2번 탭 카드4 원본 주석 "자리표시자는 OnStartAsync 자체가 없음" 반영).
+      RT-01b가 확정했던 "예외 그대로 전파" 테스트는 이 Step의 목적상 의도적으로 동작이 바뀌어
+      "MissingNode로 대체, 배포는 계속 성공"으로 갱신. NodeErrorEvent 발행은 EventBus(RT-07) 없이는
+      불가능해 이 Step 범위 밖 — RT-07 이후 재검토.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

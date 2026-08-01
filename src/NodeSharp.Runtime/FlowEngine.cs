@@ -6,9 +6,10 @@ namespace NodeSharp.Runtime;
 /// <summary>
 /// 플로우 실행 엔진. Editor(미리보기 실행)와 Runner(운영 실행) 양쪽이 공유하는 순수 로직입니다
 /// (WPF 비의존, 1번 탭 카드2). 이 클래스는 <c>RT-01~11</c>에 걸쳐 증분으로 완성됩니다 — 지금까지는
-/// <see cref="CreateInstance"/>(<c>RT-01a</c>)와 Full 모드 <see cref="DeployAsync"/>(<c>RT-01b</c>)만
-/// 있습니다. 노드별 예외 격리·MissingNode 대체(<c>RT-02a/b</c>), 부분 재배포(<c>RT-03</c>), 메시지
-/// 라우팅(<c>RouteAsync</c>, <c>RT-04a</c>) 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
+/// <see cref="CreateInstance"/>(<c>RT-01a</c>), Full 모드 <see cref="DeployAsync"/>(<c>RT-01b</c>),
+/// <see cref="MissingNode"/> 대체(<c>RT-02a</c>)만 있습니다. <c>OnStartAsync</c> 실패까지 포함한 전체
+/// 노드별 예외 격리(<c>RT-02b</c>), 부분 재배포(<c>RT-03</c>), 메시지 라우팅(<c>RouteAsync</c>, <c>RT-04a</c>)
+/// 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본), 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 6
 /// (배포 예외 격리 — <c>BuildContext</c> 참조부).
 /// </summary>
@@ -33,8 +34,15 @@ namespace NodeSharp.Runtime;
 /// 호출부만 있고 정식 선언이 없던 공백입니다(<c>NodeRef</c>와 동일 유형) — 지금은 <c>NodeContext</c>
 /// (Runtime 구체 클래스, <c>RT-09</c>)가 아직 없어 <see cref="INodeContext"/>의 임시 무동작(no-op) 구현인
 /// <see cref="NoOpNodeContext"/>를 반환합니다. <c>RT-09</c>에서 실제 <c>NodeContext</c>로 교체될 때까지의
-/// 임시 자리표시자이며, <c>RT-02a</c>의 <c>MissingNode</c>와 동일한 "타입 시스템을 만족시키는 최소 스텁"
-/// 성격입니다.
+/// 임시 자리표시자이며, <see cref="MissingNode"/>와 동일한 "타입 시스템을 만족시키는 최소 스텁" 성격입니다.
+/// </para>
+/// <para>
+/// (★ RT-02a) <see cref="DeployAsync"/>의 1단계(생성)에서 <see cref="CreateInstance"/>가
+/// <see cref="InvalidOperationException"/>(등록되지 않은 타입)을 던지면, 배포 전체를 중단하는 대신
+/// 그 자리에 <see cref="MissingNode"/>를 대신 넣고 나머지 노드는 정상 진행합니다 — Node-RED "missing"
+/// 노드와 동일한 원칙(v1.9 결함의 정식 반영, 2번 탭 카드4). 2단계(기동)에서는 <see cref="MissingNode"/>를
+/// 만나면 <c>OnStartAsync</c> 호출 자체를 건너뜁니다(자리표시자는 "기동" 개념이 없음). <c>OnStartAsync</c>
+/// 자체가 실패하는 경우(예: 잘못된 IP)의 격리는 아직 없습니다 — <c>RT-02b</c>에서 다룹니다.
 /// </para>
 /// </remarks>
 /// <example>
@@ -47,10 +55,13 @@ namespace NodeSharp.Runtime;
 /// var cfg = new NodeConfig("n1", "inject", "타이머", "f1", new Dictionary&lt;string, object?&gt;());
 /// IFlowNode node = engine.CreateInstance(cfg);
 ///
-/// // RT-01b — Full 모드 배포(노드 3개 이상, CreateInstance 전체 → OnStartAsync 순서대로)
-/// var flow = new FlowDefinition("f1", "테스트", Nodes: new[] { cfg }, Wires: Array.Empty&lt;Wire&gt;());
+/// // RT-01b/RT-02a — Full 모드 배포. 등록되지 않은 타입이 섞여 있어도 예외 없이 완료되고,
+/// // 그 자리에는 MissingNode가 대신 배포된다.
+/// var badCfg = new NodeConfig("n2", "no-such-type", "삭제된 플러그인", "f1", new Dictionary&lt;string, object?&gt;());
+/// var flow = new FlowDefinition("f1", "테스트", Nodes: new[] { cfg, badCfg }, Wires: Array.Empty&lt;Wire&gt;());
 /// await engine.DeployAsync(flow, CancellationToken.None);
-/// IFlowNode deployed = engine.Nodes["n1"];   // NodeConfig.Id로 조회(IFlowNode.Id 아님)
+/// IFlowNode deployed = engine.Nodes["n1"];         // typeof(InjectNode) 인스턴스
+/// IFlowNode missing = engine.Nodes["n2"];           // MissingNode 인스턴스 — 배포는 계속 성공
 /// </code>
 /// </example>
 public sealed class FlowEngine
@@ -64,6 +75,8 @@ public sealed class FlowEngine
     /// <summary>
     /// <paramref name="cfg"/>.Type에 등록된 노드 타입의 인스턴스를 생성합니다. 실제 조회·생성 로직은
     /// <see cref="INodeRegistry.CreateInstance"/>(구현체: <c>NodeTypeRegistry</c>)에 위임합니다.
+    /// <see cref="DeployAsync"/>는 이 메서드가 던지는 예외를 잡아 <see cref="MissingNode"/>로 대체하지만,
+    /// 이 메서드를 직접 호출하면(<c>RT-01a</c> 당시와 동일하게) 예외가 그대로 전파됩니다.
     /// </summary>
     /// <exception cref="InvalidOperationException"><paramref name="cfg"/>.Type에 해당하는 등록된 노드 타입이 없을 때.</exception>
     public IFlowNode CreateInstance(NodeConfig cfg) => _registry.CreateInstance(cfg);
@@ -72,32 +85,43 @@ public sealed class FlowEngine
     public IReadOnlyDictionary<string, IFlowNode> Nodes => _nodes;
 
     /// <summary>
-    /// (★ RT-01b, Full 모드만) <paramref name="flow"/>의 모든 노드를 <see cref="CreateInstance"/>로 먼저
-    /// 전부 생성한 뒤, 그다음 전체 노드의 <c>OnStartAsync</c>를 <paramref name="flow"/>.Nodes 순서대로
-    /// 호출합니다. 예외 격리·MissingNode 대체는 <c>RT-02a/b</c>에서, 변경분만 재시작하는 부분 재배포는
-    /// <c>RT-03</c>에서 다룹니다 — 이 메서드는 아직 둘 다 하지 않습니다(노드 타입을 못 찾거나 기동이
-    /// 실패하면 예외가 그대로 전파됩니다).
+    /// (Full 모드만) <paramref name="flow"/>의 모든 노드를 <see cref="CreateInstance"/>로 먼저 전부 생성한
+    /// 뒤(등록되지 않은 타입은 <see cref="MissingNode"/>로 대체, <c>RT-02a</c>), 그다음 전체 노드의
+    /// <c>OnStartAsync</c>를 <paramref name="flow"/>.Nodes 순서대로 호출합니다(<see cref="MissingNode"/>는
+    /// 건너뜀). 변경분만 재시작하는 부분 재배포는 <c>RT-03</c>에서 다룹니다. <c>OnStartAsync</c> 자체가
+    /// 던지는 예외는 아직 격리하지 않습니다 — <c>RT-02b</c>에서 다룹니다.
     /// </summary>
     public async Task DeployAsync(FlowDefinition flow, CancellationToken ct)
     {
         var created = new List<IFlowNode>(flow.Nodes.Count);
         foreach (var cfg in flow.Nodes)
         {
-            var node = CreateInstance(cfg);
+            IFlowNode node;
+            try
+            {
+                node = CreateInstance(cfg);
+            }
+            catch (InvalidOperationException)
+            {
+                // ★ RT-02a: 노드 타입을 찾을 수 없어도 배포 전체를 실패시키지 않고 자리표시자로 대체
+                node = new MissingNode(cfg.Id, cfg.Type);
+            }
+
             _nodes[cfg.Id] = node;
             created.Add(node);
         }
 
         foreach (var node in created)
         {
+            if (node is MissingNode) continue;   // ★ RT-02a: 자리표시자는 OnStartAsync 자체가 없음(MissingNode.cs 참고)
             await node.OnStartAsync(BuildContext(node), ct);
         }
     }
 
     /// <summary>
-    /// (★ RT-01b) <paramref name="node"/>에 전달할 <see cref="INodeContext"/>를 만듭니다. 02번 문서
-    /// 3번 탭 카드6·2번 탭 카드8에 호출부만 있고 정식 선언이 없던 <c>BuildContext</c>를 이 Step에서
-    /// 처음 구현 — 실제 <c>NodeContext</c>(<c>RT-09</c>)가 준비되기 전까지는 <see cref="NoOpNodeContext"/>를
+    /// <paramref name="node"/>에 전달할 <see cref="INodeContext"/>를 만듭니다. 02번 문서 3번 탭 카드6·
+    /// 2번 탭 카드8에 호출부만 있고 정식 선언이 없던 <c>BuildContext</c>를 <c>RT-01b</c>에서 처음 구현
+    /// — 실제 <c>NodeContext</c>(<c>RT-09</c>)가 준비되기 전까지는 <see cref="NoOpNodeContext"/>를
     /// 반환하는 임시 자리표시자입니다.
     /// </summary>
     private INodeContext BuildContext(IFlowNode node) => new NoOpNodeContext();
