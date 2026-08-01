@@ -9,10 +9,13 @@ namespace NodeSharp.Runtime;
 /// (WPF 비의존, 1번 탭 카드2). 이 클래스는 <c>RT-01~11</c>에 걸쳐 증분으로 완성됩니다 — 지금까지는
 /// <see cref="CreateInstance"/>(<c>RT-01a</c>), Full 모드 <see cref="DeployAsync(FlowDefinition, CancellationToken)"/>(<c>RT-01b</c>),
 /// <see cref="MissingNode"/> 대체(<c>RT-02a</c>), CreateInstance/OnStartAsync 두 단계 전체 예외 격리
-/// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>)만 있습니다. 메시지
-/// 라우팅(<c>RouteAsync</c>, <c>RT-04a</c>) 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
+/// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>), 1:1 Wire 메시지 전달
+/// (<see cref="RouteAsync"/>, <c>RT-04a</c>)까지 있습니다. 출력 하나가 여러 Wire로 나가는 Fan-out
+/// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<c>RT-06</c>) 등은
+/// 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본)·카드 10(FlowDefinition/NodeConfig 정식 선언),
-/// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 5(배포 모드 세분화)·카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부).
+/// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 4(메시지 파이프라인 시퀀스)·카드 5(배포 모드 세분화)·
+/// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부).
 /// </summary>
 /// <remarks>
 /// <see cref="_registry"/>가 실제 인스턴스 생성을 담당합니다(<c>NodeSharp.Registry.NodeTypeRegistry</c>,
@@ -84,6 +87,36 @@ namespace NodeSharp.Runtime;
 /// <see cref="MissingNode"/>는 건너뜀) 순으로 처리됩니다. 재시작 대상이 아닌 기존 노드는 인스턴스를 그대로
 /// 유지합니다(연결이 끊기지 않음 — 이 Step의 존재 이유).
 /// </para>
+/// <para>
+/// (★ RT-04a) <see cref="RouteAsync"/>는 02번 문서 2번 탭 카드4 원본 스니펫(<c>RouteAsync(fromNodeId,
+/// outputPort, msg, ct)</c> — <c>_wires.Where(...)</c>로 대상을 찾아 <c>OnInputAsync</c> 호출)을 그대로
+/// 구현하되, 1:1 Wire 배달만 이 Step 범위입니다(출력 하나가 여러 Wire로 나가는 Fan-out의 순차/병렬
+/// 분기는 카드9·<c>RT-04b</c> 몫). 착수 중 발견한 공백과 그 처리:
+/// <list type="bullet">
+/// <item><b>Wire 저장소가 없음</b> — 카드4 원본은 <c>_wires</c> 필드에 <c>DeployAsync</c>가
+/// <c>_wires.AddRange(flow.Wires)</c>로 계속 누적하지만, <c>RT-03</c>이 이미 부분 재배포를 도입해
+/// <c>DeployAsync</c>가 여러 번 호출되는 구조가 됐으므로 그대로 누적하면 같은 Wire가 중복 등록됩니다.
+/// 별도 <c>_wires</c> 필드를 새로 두는 대신, <c>RT-03</c>이 이미 관리하는 <see cref="_currentFlow"/>
+/// (매 배포마다 최신 <see cref="FlowDefinition"/>으로 교체됨)의 <c>Wires</c>를 그대로 조회해 사용합니다 —
+/// 별도 동기화 없이 항상 "가장 최근 배포된 Wire 목록"을 반영합니다.</item>
+/// <item><b>Step맵 RT-04a 완료 기준 문구 정정</b> — 03번 Step맵 원문은 "A의 <c>OnInputAsync</c> 반환
+/// <c>Msg</c>가 B의 <c>OnInputAsync</c> 인자로 전달"이라고 서술하지만, 이미 확정·구현된
+/// <see cref="IFlowNode.OnInputAsync"/> 계약(<c>CT-04a</c>, 반환값 없는 <c>Task</c>)은 노드가
+/// <c>ctx.RouteAsync(...)</c>를 직접 호출하는 콜백 방식입니다(02번 문서 2번 탭 카드1 <c>PassThroughNode</c>
+/// 예제, 5번 탭 <c>FunctionNode</c> 예제 등 전부 이 방식). "반환된 Msg"는 <c>CT-04a</c> 이전 표현이 갱신되지
+/// 않고 남은 문구로 판단해, 실제 계약(노드가 <c>ctx.RouteAsync</c>로 명시 호출한 <c>Msg</c>가 Wire를 따라
+/// 다음 노드의 <c>OnInputAsync</c> 인자로 전달됨)에 맞춰 03번 Step맵 설명을 정정했습니다(판단 근거가
+/// 이미 확정된 인터페이스 계약이라 사용자 확인 없이 직접 반영, RT-01a/RT-02a 등과 동일한 처리 원칙).</item>
+/// <item><b>대상 노드별 예외 격리는 범위 밖</b> — 카드4 원본 <c>RouteAsync</c>에는 <c>try/catch</c>가 없고,
+/// 이 Step 완료 기준도 정상 경로(1:1 전달)만 요구합니다. 여러 대상 중 하나의 <c>OnInputAsync</c>가 예외를
+/// 던지면 나머지 대상에게 전달되지 않고 예외가 그대로 전파됩니다 — <c>DeployAsync</c>의 "노드 하나의
+/// 문제가 전체를 막지 않는다" 원칙(<c>RT-02b</c>)을 라우팅에도 적용할지는 향후 Step(<c>RT-06</c> 동시성
+/// 제한과 함께 재검토 예상)에서 다룰 별도 판단 사안으로 남겨둡니다.</item>
+/// </list>
+/// <see cref="BuildContext"/>가 만드는 <see cref="NoOpNodeContext"/>의 <c>RouteAsync</c>는 이제
+/// <see cref="FlowEngine.RouteAsync"/>로 실제 위임합니다(더 이상 무동작이 아님) — <c>SetStatus</c>만
+/// <c>RT-07</c> EventBus 연동 전까지 계속 무동작이라 클래스 이름은 그대로 유지했습니다.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -108,6 +141,14 @@ namespace NodeSharp.Runtime;
 /// var changedCfg = cfg with { Name = "타이머(변경됨)" };
 /// var flow2 = flow with { Nodes = new[] { changedCfg, badCfg } };
 /// await engine.DeployAsync(flow2, DeployMode.ModifiedNodes, CancellationToken.None);
+///
+/// // RT-04a — n1(inject) → n3(debug) 1:1 Wire 배포 후, n1이 ctx.RouteAsync로 보낸 Msg가
+/// // n3.OnInputAsync 인자로 그대로(Clone되어) 전달된다.
+/// var wired = new FlowDefinition("f2", "라우팅 테스트",
+///     Nodes: new[] { cfg, new NodeConfig("n3", "debug", "디버그", "f1", new Dictionary&lt;string, object?&gt;()) },
+///     Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n3", TargetPort: 0) });
+/// await engine.DeployAsync(wired, DeployMode.Full, CancellationToken.None);
+/// await engine.RouteAsync("n1", 0, new Msg { Payload = 42 }, CancellationToken.None);   // n3가 42를 받음
 /// </code>
 /// </example>
 public sealed class FlowEngine
@@ -271,6 +312,29 @@ public sealed class FlowEngine
     }
 
     /// <summary>
+    /// (★ RT-04a) <paramref name="fromNodeId"/>의 <paramref name="outputPort"/>번 출력에 연결된 모든
+    /// Wire(직전 배포 <see cref="_currentFlow"/>.Wires 기준)를 따라 <paramref name="msg"/>를 대상 노드의
+    /// <c>OnInputAsync</c>로 전달합니다(02번 문서 2번 탭 카드4 원본). 대상마다 <c>msg.Clone()</c>으로 깊은
+    /// 복제를 전달해 한 노드가 <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭
+    /// 카드4 데이터 격리 원칙). 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상
+    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나
+    /// 재배포로 제거된 경우) 조용히 건너뜁니다. 이 Step은 Wire 개수와 무관하게 순차로 처리합니다 —
+    /// <see cref="NodeConfig.OutputDispatch"/> 기반 병렬 분기는 <c>RT-04b</c> 몫입니다.
+    /// </summary>
+    public async Task RouteAsync(string fromNodeId, int outputPort, Msg msg, CancellationToken ct)
+    {
+        if (_currentFlow is null) return;   // 아직 배포된 적 없음 — 참조할 Wire 정보가 없음
+
+        foreach (var wire in _currentFlow.Wires)
+        {
+            if (wire.SourceNodeId != fromNodeId || wire.SourcePort != outputPort) continue;
+            if (!_nodes.TryGetValue(wire.TargetNodeId, out var target)) continue;   // 제거/미배포 노드는 스킵
+
+            await target.OnInputAsync(msg.Clone(), BuildContext(target), ct);
+        }
+    }
+
+    /// <summary>
     /// (★ RT-03) <paramref name="a"/>와 <paramref name="b"/>가 "내용상 같은 설정"인지 필드 단위로 비교합니다.
     /// <c>NodeConfig.cs</c> remarks가 명시하는 대로 record 기본 <c>==</c>에 의존하지 않습니다 — <see cref="NodeConfig.Properties"/>는
     /// 딕셔너리 참조 비교가 아니라 키/값 내용 비교로 판정합니다(<see cref="NodeConfig.Id"/>는 이미 같은 Id끼리
@@ -300,19 +364,27 @@ public sealed class FlowEngine
     /// <paramref name="node"/>에 전달할 <see cref="INodeContext"/>를 만듭니다. 02번 문서 3번 탭 카드6·
     /// 2번 탭 카드8에 호출부만 있고 정식 선언이 없던 <c>BuildContext</c>를 <c>RT-01b</c>에서 처음 구현
     /// — 실제 <c>NodeContext</c>(<c>RT-09</c>)가 준비되기 전까지는 <see cref="NoOpNodeContext"/>를
-    /// 반환하는 임시 자리표시자입니다.
+    /// 반환하는 임시 자리표시자입니다. (★ RT-04a) <paramref name="node"/> 자체는 아직 사용하지 않지만,
+    /// <c>RT-09</c>에서 노드별 Context(스코프가 다른 <c>Local</c>/<c>Env</c> 등)로 교체될 때 필요해질
+    /// 파라미터라 시그니처를 미리 유지합니다.
     /// </summary>
-    private INodeContext BuildContext(IFlowNode node) => new NoOpNodeContext();
+    private INodeContext BuildContext(IFlowNode node) => new NoOpNodeContext(this);
 
     /// <summary>
     /// <c>RT-09</c>에서 실제 <c>NodeContext</c>가 만들어지기 전까지
-    /// <see cref="BuildContext"/>가 반환하는 임시 무동작 구현입니다. <c>RouteAsync</c>는 아무 노드로도
-    /// 전달하지 않고(<c>RT-04a</c>가 실제 라우팅을 구현), <c>SetStatus</c>는 아무것도 하지 않습니다
-    /// (<c>RT-07</c> EventBus 연동 전까지).
+    /// <see cref="BuildContext"/>가 반환하는 임시 구현입니다. (★ RT-04a) <c>RouteAsync</c>는 더 이상
+    /// 무동작이 아니라 <see cref="FlowEngine.RouteAsync"/>로 실제 위임합니다(02번 문서 2번 탭 카드9
+    /// <c>NodeContext.RouteAsync</c> 원본과 동일한 위임 관계를 <c>RT-09</c> 이전에 미리 반영) — <c>SetStatus</c>만
+    /// <c>RT-07</c> EventBus 연동 전까지 계속 아무것도 하지 않아 클래스 이름(<c>NoOp</c>)은 그대로 둡니다.
     /// </summary>
     private sealed class NoOpNodeContext : INodeContext
     {
-        public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct) => Task.CompletedTask;
+        private readonly FlowEngine _engine;
+
+        public NoOpNodeContext(FlowEngine engine) => _engine = engine;
+
+        public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct) =>
+            _engine.RouteAsync(sourceNodeId, outputPort, msg, ct);
 
         public void SetStatus(string fill, string shape, string text) { }
     }

@@ -63,6 +63,20 @@
       없으므로 재생성은 하지 않음). FailedNodeIds는 매 배포마다 이번 배포의 재시작 대상 기준으로 다시
       계산(Clear 후 재기록)하도록 정정 — 부분 재배포가 생기기 전(RT-02b)에는 배포가 항상 1회성이라
       드러나지 않았던 동작.
+
+    Step: RT-04a (03번 개발 Step맵.html, Phase 2)
+    - FlowEngine.cs에 RouteAsync(fromNodeId, outputPort, msg, ct) 추가(2번 탭 카드4 원본, 3번 탭 카드4
+      메시지 파이프라인 시퀀스) — A→B 1:1 Wire를 따라 msg.Clone()을 대상 노드 OnInputAsync로 전달(Fan-out
+      순차/병렬 분기는 RT-04b 범위). 별도 _wires 필드 대신 RT-03이 이미 관리하는 _currentFlow.Wires를
+      재사용(중복 누적 방지). BuildContext가 반환하는 NoOpNodeContext.RouteAsync를 무동작에서
+      FlowEngine.RouteAsync 위임으로 전환(SetStatus만 RT-07 전까지 계속 무동작). 착수 중 발견한 공백:
+      03번 Step맵 RT-04a 설명이 "OnInputAsync가 반환한 Msg"라고 서술하지만, 이미 확정된 IFlowNode 계약
+      (CT-04a)은 반환값 없는 Task이고 노드가 ctx.RouteAsync를 직접 호출하는 콜백 방식 — 이미 확정된
+      인터페이스와의 단순 문구 불일치라 사용자 확인 없이 Step맵 설명을 실제 계약에 맞게 정정(FlowEngine.cs
+      XML 주석 ★ RT-04a 참고). test\NodeSharp.Tests\FlowEngineRouteAsyncTests.cs 신규 작성(5건) — 1:1 전달,
+      Clone 격리, Wire 불일치 시 무시, 배포 전 호출 시 무해, MissingNode 대상 시 무해, PassThroughNode
+      콜백 호출 자체가 예외 없이 동작하는지 확인(단, 노드 자기 Id 기반 Wire 연쇄 매칭은 IFlowNode.Id가
+      아직 NodeConfig.Id와 동기화되지 않아(RG-01 대기, RT-01a Ver History 참고) 이 Step 범위 밖으로 명시).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
