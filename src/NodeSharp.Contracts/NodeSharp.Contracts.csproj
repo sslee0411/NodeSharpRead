@@ -127,6 +127,13 @@
       IDisposable 반환)·Publish&lt;TEvent&gt; 2개 멤버만 최소로 선언. 실제 구현체(NodeSharp.Util로 포팅된
       EventBus를 감싸는 EventBusAdapter)는 NodeSharp.Runtime.csproj RT-07 참고. INodeContext와 동일한
       점진적 확장 원칙 — 지금은 완료 기준에 필요한 멤버만, 필요해질 때(예: 비동기 발행) 추가 예정.
+
+    Step: RT-09a (03번 개발 Step맵.html, Phase 2 — Context 변수 Global/Flow 2단계)
+    - src\Interfaces\IContextStore.cs 신규 추가(02번 문서 6번 탭 카드1) — Get&lt;T&gt;/Set/Keys 3개 멤버,
+      값 하나를 (scope, scopeId, key) 세 값으로 구분해 저장·조회한다. 실제 구현체(메모리 기반
+      InMemoryContextStore)와 이를 짧게 감싸는 ContextScope는 NodeSharp.Runtime.csproj RT-09a 참고.
+      Node 단계 스코프(NodeContext.Local)와 파일/DB 기반 구현으로 교체하는 DI 구조는 RT-09b 범위 —
+      이 인터페이스 자체는 scope 이름을 하드코딩하지 않아 RT-09b가 별도 수정 없이 그대로 재사용한다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

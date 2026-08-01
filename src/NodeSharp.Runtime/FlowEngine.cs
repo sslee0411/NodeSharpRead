@@ -12,7 +12,9 @@ namespace NodeSharp.Runtime;
 /// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>), 1:1 Wire 메시지 전달
 /// (<see cref="RouteAsync"/>, <c>RT-04a</c>), 출력 하나가 여러 Wire로 나가는 Fan-out 순차/병렬 하이브리드
 /// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<see cref="NodeExecutionGate"/>,
-/// <c>RT-06</c>)까지 있습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
+/// <c>RT-06</c>), <see cref="BuildContext"/>가 실제 <see cref="NodeContext"/>(<c>Local</c>/<c>Flow</c>/
+/// <c>Global</c>/<c>Env</c> 4개 스코프 + <c>RouteAsync</c>/<c>SetStatus</c>)를 만들도록 교체(<c>RT-09b</c>)
+/// 까지 있습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본)·카드 10(FlowDefinition/NodeConfig 정식 선언),
 /// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 4(메시지 파이프라인 시퀀스)·카드 5(배포 모드 세분화)·
 /// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부), 5번 탭 카드 1(Fan-out 순차/병렬 하이브리드)·
@@ -38,8 +40,10 @@ namespace NodeSharp.Runtime;
 /// (★ RT-01b) <see cref="BuildContext"/>는 02번 문서 3번 탭 카드6·2번 탭 카드8(2602행)에 <c>BuildContext(node)</c>
 /// 호출부만 있고 정식 선언이 없던 공백입니다(<c>NodeRef</c>와 동일 유형) — 지금은 <c>NodeContext</c>
 /// (Runtime 구체 클래스, <c>RT-09</c>)가 아직 없어 <see cref="INodeContext"/>의 임시 무동작(no-op) 구현인
-/// <see cref="NoOpNodeContext"/>를 반환합니다. <c>RT-09</c>에서 실제 <c>NodeContext</c>로 교체될 때까지의
-/// 임시 자리표시자이며, <see cref="MissingNode"/>와 동일한 "타입 시스템을 만족시키는 최소 스텁" 성격입니다.
+/// <c>NoOpNodeContext</c>를 반환합니다. <c>RT-09</c>에서 실제 <c>NodeContext</c>로 교체될 때까지의
+/// 임시 자리표시자이며, <see cref="MissingNode"/>와 동일한 "타입 시스템을 만족시키는 최소 스텁" 성격입니다
+/// (★ RT-09b: 실제로 <see cref="NodeContext"/>로 교체되면서 <c>NoOpNodeContext</c>는 제거됐습니다 —
+/// 아래 <see cref="BuildContext"/> 문서 참고).
 /// </para>
 /// <para>
 /// ★ MissingNode 한줄 요약(★ RT-02a): <see cref="MissingNode"/>는 <b>"노드 타입을 찾을 수 없을 때"만</b>
@@ -114,9 +118,11 @@ namespace NodeSharp.Runtime;
 /// 문제가 전체를 막지 않는다" 원칙(<c>RT-02b</c>)을 라우팅에도 적용할지는 향후 Step(<c>RT-06</c> 동시성
 /// 제한과 함께 재검토 예상)에서 다룰 별도 판단 사안으로 남겨둡니다.</item>
 /// </list>
-/// <see cref="BuildContext"/>가 만드는 <see cref="NoOpNodeContext"/>의 <c>RouteAsync</c>는 이제
+/// <see cref="BuildContext"/>가 만들던 <c>NoOpNodeContext</c>의 <c>RouteAsync</c>는 이 시점부터
 /// <see cref="FlowEngine.RouteAsync"/>로 실제 위임합니다(더 이상 무동작이 아님) — <c>SetStatus</c>만
-/// <c>RT-07</c> EventBus 연동 전까지 계속 무동작이라 클래스 이름은 그대로 유지했습니다.
+/// <c>RT-07</c> EventBus 연동 전까지 계속 무동작이라 클래스 이름은 그대로 유지했습니다(★ RT-09b:
+/// <c>SetStatus</c>도 실제 발행으로 교체되면서 <c>NoOpNodeContext</c> 자체가 <see cref="NodeContext"/>로
+/// 대체·제거됐습니다).
 /// </para>
 /// <para>
 /// (★ RT-04b) <see cref="RouteAsync"/>는 05번 탭(동작모델) 카드1 원본 스니펫대로 <see cref="NodeConfig.OutputDispatch"/>가
@@ -188,6 +194,39 @@ namespace NodeSharp.Runtime;
 /// 낡은 상한을 계속 쓰게 되는 공백이 있어, <see cref="DeployAsync(FlowDefinition, DeployMode, CancellationToken)"/>가
 /// 노드를 닫을 때(재시작 대상·삭제 대상 모두) <see cref="NodeExecutionGate.RemoveGate"/>도 함께 호출하도록
 /// 추가했습니다 — 다음 배포에서 같은 Id로 노드가 다시 만들어지면 새 게이트가 최신 설정으로 생성됩니다.</item>
+/// </list>
+/// </para>
+/// <para>
+/// (★ RT-09b) <see cref="BuildContext"/>가 <c>NoOpNodeContext</c> 대신 실제 <see cref="NodeContext"/>
+/// (02번 문서 2번 탭 카드9 "정식 통합판" 중 <c>Local</c>/<c>Flow</c>/<c>Global</c>/<c>Env</c> 4개 스코프 +
+/// <c>RouteAsync</c>/<c>SetStatus</c>만 우선 구현, <c>Shared</c>/<c>Scheduler</c>/<c>Structure</c>는 아직
+/// 없음 — 사용자 확인 완료, 향후 같은 클래스에 멤버만 추가 예정)를 만들도록 바뀌었습니다. 착수 중 발견한
+/// 공백과 그 처리:
+/// <list type="bullet">
+/// <item><b><c>BuildContext</c>가 <c>flowId</c>를 알아야 함</b> — <see cref="NodeContext"/>의
+/// <see cref="NodeContext.Flow"/> 스코프는 <c>scopeId</c>로 <c>flowId</c>가 필요하지만, 기존
+/// <c>BuildContext(IFlowNode node)</c> 시그니처는 <c>flowId</c>도 <c>NodeConfig.Id</c>도 받지 못했습니다
+/// (호출부가 <see cref="IFlowNode"/> 인스턴스만 넘김). 세 호출부(<c>DeployAsync</c> 종료 루프의 <c>id</c>,
+/// 기동 루프의 <c>cfgId</c>, <see cref="DispatchOneAsync"/>의 <c>wire.TargetNodeId</c>)가 이미 각자
+/// 안정적인 <see cref="NodeConfig.Id"/>를 알고 있었으므로, <c>BuildContext</c>에
+/// <c>nodeConfigId</c> 매개변수를 추가해 그 값을 그대로 전달받고, <see cref="_currentFlow"/>.Nodes에서
+/// 그 Id로 <c>NodeConfig</c>를 찾아 <c>FlowId</c>를 읽도록 했습니다(찾지 못하면 빈 문자열 — <c>RT-04b</c>의
+/// <c>OutputDispatch</c> 조회 실패 시 기본값 대체와 동일한 원칙).</item>
+/// <item><b><c>ContextStore</c>/<c>EventBus</c>를 어디서 만들 것인가</b> — 카드9 원본은 <c>FlowEngine</c>이
+/// 이미 <c>ContextStore</c>/<c>EventBus</c> 프로퍼티를 갖고 있다고 전제하지만 이 Step 이전에는 없었습니다.
+/// 기존 1-인자 생성자(<c>RT-01a</c>부터의 모든 테스트가 사용)를 깨지 않기 위해, 새 생성자 매개변수 2개를
+/// 선택적(<c>= null</c>)으로 추가하고 생략 시 각각 새 <see cref="InMemoryContextStore"/>/
+/// <see cref="EventBusAdapter"/>를 만들어 씁니다 — 테스트에서는 명시적으로 주입해 격리할 수 있습니다.</item>
+/// <item><b><c>NoOpNodeContext</c> 제거</b> — <c>RT-01b</c>부터 있던 사설 중첩 클래스는 더 이상 참조하는
+/// 곳이 없어 그대로 제거했습니다(<see cref="NodeContext"/>가 <c>RouteAsync</c>/<c>SetStatus</c> 둘 다
+/// 동등하게 대체). <c>SetStatus</c>는 이제 무동작이 아니라 <see cref="IEventBus.Publish{TEvent}"/>로
+/// <c>NodeStatusEvent</c>를 실제 발행합니다(<c>RT-07</c> EventBus가 준비된 뒤 처음으로 실사용).</item>
+/// <item><b><c>Shared</c>/<c>Scheduler</c>/<c>Structure</c>는 범위 밖</b> — 카드9 원본 <c>NodeContext</c>는
+/// 이 3개 멤버도 갖지만, 각각 <c>SharedResourceManager</c>(<c>RT-10</c>, 아직 없음)·<c>IScheduler</c>
+/// (<c>RT-08</c>로 어댑터는 있지만 노드별 인스턴스 배선은 별도 Step)·<c>IStructureService</c>
+/// (<c>CT-04b</c>로 인터페이스는 있지만 실 구현 연동은 별도 Step)가 필요해 이 Step 범위 밖으로 남겨두고,
+/// 준비되는 대로 같은 <see cref="NodeContext"/> 클래스에 멤버만 추가할 예정입니다(새 클래스를 만들지
+/// 않기로 사용자와 확인 완료).</item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -267,6 +306,8 @@ public sealed class FlowEngine
     private readonly List<string> _failedNodes = new();
     private readonly List<(string NodeId, string MsgId)> _loopGuardTrips = new();
     private readonly NodeExecutionGate _gate = new();
+    private readonly IContextStore _contextStore;
+    private readonly IEventBus _eventBus;
 
     /// <summary>
     /// (★ RT-03) 직전 <c>DeployAsync</c> 호출에 사용된 <see cref="FlowDefinition"/>입니다. 부분 재배포 모드
@@ -276,8 +317,33 @@ public sealed class FlowEngine
     /// </summary>
     private FlowDefinition? _currentFlow;
 
-    /// <summary>노드 타입 조회·인스턴스 생성을 위임할 레지스트리를 받아 엔진을 생성합니다.</summary>
-    public FlowEngine(INodeRegistry registry) => _registry = registry;
+    /// <summary>
+    /// 노드 타입 조회·인스턴스 생성을 위임할 레지스트리를 받아 엔진을 생성합니다.
+    /// (★ RT-09b) <paramref name="contextStore"/>/<paramref name="eventBus"/>는 <see cref="BuildContext"/>가
+    /// 만드는 <c>NodeContext</c>가 공유할 재료입니다 — 생략하면 각각 새 <see cref="InMemoryContextStore"/>/
+    /// <see cref="EventBusAdapter"/>(<c>EventBus.Instance</c> 감쌈)를 만들어 씁니다. 기존 1-인자 호출부
+    /// (<c>RT-01a</c>부터의 모든 테스트)는 그대로 동작합니다(선택적 매개변수라 하위 호환 유지).
+    /// </summary>
+    public FlowEngine(INodeRegistry registry, IContextStore? contextStore = null, IEventBus? eventBus = null)
+    {
+        _registry = registry;
+        _contextStore = contextStore ?? new InMemoryContextStore();
+        _eventBus = eventBus ?? new EventBusAdapter();
+    }
+
+    /// <summary>
+    /// (★ RT-09b) <see cref="BuildContext"/>가 만드는 모든 <c>NodeContext</c>가 공유하는
+    /// <see cref="IContextStore"/>입니다(02번 문서 2번 탭 카드9 <c>FlowEngine.ContextStore</c>). 외부에서
+    /// 배포 전 값을 미리 넣거나 테스트에서 직접 조회할 때 사용합니다.
+    /// </summary>
+    public IContextStore ContextStore => _contextStore;
+
+    /// <summary>
+    /// (★ RT-09b) <see cref="BuildContext"/>가 만드는 모든 <c>NodeContext</c>의 <c>SetStatus</c>가
+    /// 발행 대상으로 쓰는 <see cref="IEventBus"/>입니다(02번 문서 2번 탭 카드9 <c>FlowEngine.EventBus</c>).
+    /// 노드 상태 변경(<c>NodeStatusEvent</c>)을 외부에서 구독하려면 이 프로퍼티로 구독하십시오.
+    /// </summary>
+    public IEventBus EventBus => _eventBus;
 
     /// <summary>
     /// <paramref name="cfg"/>.Type에 등록된 노드 타입의 인스턴스를 생성합니다. 실제 조회·생성 로직은
@@ -383,7 +449,7 @@ public sealed class FlowEngine
             {
                 try
                 {
-                    await existing.OnCloseAsync(BuildContext(existing));
+                    await existing.OnCloseAsync(BuildContext(id, existing));
                 }
                 catch (Exception)
                 {
@@ -432,7 +498,7 @@ public sealed class FlowEngine
 
             try
             {
-                await node.OnStartAsync(BuildContext(node), ct);
+                await node.OnStartAsync(BuildContext(cfgId, node), ct);
             }
             catch (Exception)
             {
@@ -522,7 +588,7 @@ public sealed class FlowEngine
         await gate.WaitAsync(ct);
         try
         {
-            await target.OnInputAsync(msg.Clone(), BuildContext(target), ct);
+            await target.OnInputAsync(msg.Clone(), BuildContext(wire.TargetNodeId, target), ct);
         }
         finally
         {
@@ -557,31 +623,21 @@ public sealed class FlowEngine
     }
 
     /// <summary>
-    /// <paramref name="node"/>에 전달할 <see cref="INodeContext"/>를 만듭니다. 02번 문서 3번 탭 카드6·
-    /// 2번 탭 카드8에 호출부만 있고 정식 선언이 없던 <c>BuildContext</c>를 <c>RT-01b</c>에서 처음 구현
-    /// — 실제 <c>NodeContext</c>(<c>RT-09</c>)가 준비되기 전까지는 <see cref="NoOpNodeContext"/>를
-    /// 반환하는 임시 자리표시자입니다. (★ RT-04a) <paramref name="node"/> 자체는 아직 사용하지 않지만,
-    /// <c>RT-09</c>에서 노드별 Context(스코프가 다른 <c>Local</c>/<c>Env</c> 등)로 교체될 때 필요해질
-    /// 파라미터라 시그니처를 미리 유지합니다.
+    /// <paramref name="nodeConfigId"/>/<paramref name="node"/>에 전달할 <see cref="INodeContext"/>를
+    /// 만듭니다. 02번 문서 3번 탭 카드6·2번 탭 카드8에 호출부만 있고 정식 선언이 없던 <c>BuildContext</c>를
+    /// <c>RT-01b</c>에서 <c>NoOpNodeContext</c>(임시 무동작 구현)로 처음 만들었고, (★ RT-09b) 이제 실제
+    /// <see cref="NodeContext"/>(<see cref="NodeContext.Local"/>/<see cref="NodeContext.Flow"/>/
+    /// <see cref="NodeContext.Global"/>/<see cref="NodeContext.Env"/> 4개 스코프 + <c>RouteAsync</c>/
+    /// <c>SetStatus</c>)로 교체했습니다 — <c>NoOpNodeContext</c>는 더 이상
+    /// 필요 없어 제거했습니다. <see cref="NodeContext"/>가 필요로 하는 <c>flowId</c>는
+    /// <paramref name="nodeConfigId"/>로 <see cref="_currentFlow"/>.Nodes를 조회해 얻습니다(아직 배포된
+    /// 적이 없거나 해당 Id를 찾지 못하면 빈 문자열 — <c>RT-04b</c>의 <c>OutputDispatch</c> 조회 실패 시
+    /// 기본값 대체와 동일한 원칙). <paramref name="node"/>는 이 Step에서는 쓰이지 않지만, 노드 인스턴스별로
+    /// 다른 Context가 필요해질 향후 확장을 대비해 시그니처를 유지합니다(<c>RT-04a</c> 당시와 동일한 판단).
     /// </summary>
-    private INodeContext BuildContext(IFlowNode node) => new NoOpNodeContext(this);
-
-    /// <summary>
-    /// <c>RT-09</c>에서 실제 <c>NodeContext</c>가 만들어지기 전까지
-    /// <see cref="BuildContext"/>가 반환하는 임시 구현입니다. (★ RT-04a) <c>RouteAsync</c>는 더 이상
-    /// 무동작이 아니라 <see cref="FlowEngine.RouteAsync"/>로 실제 위임합니다(02번 문서 2번 탭 카드9
-    /// <c>NodeContext.RouteAsync</c> 원본과 동일한 위임 관계를 <c>RT-09</c> 이전에 미리 반영) — <c>SetStatus</c>만
-    /// <c>RT-07</c> EventBus 연동 전까지 계속 아무것도 하지 않아 클래스 이름(<c>NoOp</c>)은 그대로 둡니다.
-    /// </summary>
-    private sealed class NoOpNodeContext : INodeContext
+    private INodeContext BuildContext(string nodeConfigId, IFlowNode node)
     {
-        private readonly FlowEngine _engine;
-
-        public NoOpNodeContext(FlowEngine engine) => _engine = engine;
-
-        public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct) =>
-            _engine.RouteAsync(sourceNodeId, outputPort, msg, ct);
-
-        public void SetStatus(string fill, string shape, string text) { }
+        var flowId = _currentFlow?.Nodes.FirstOrDefault(n => n.Id == nodeConfigId)?.FlowId ?? string.Empty;
+        return new NodeContext(this, _eventBus, _contextStore, flowId, nodeConfigId);
     }
 }
