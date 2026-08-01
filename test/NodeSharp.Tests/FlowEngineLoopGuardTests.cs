@@ -129,8 +129,20 @@ public class FlowEngineLoopGuardTests
     {
         var engine = BuildEngine();
         engine.MaxHopCount = 10;   // 빠른 테스트를 위해 작게 설정
-        var n1 = new NodeConfig("n1", "looping", "A", "f1", new Dictionary<string, object?>());
-        var n2 = new NodeConfig("n2", "looping", "B", "f1", new Dictionary<string, object?>());
+
+        // ★(발견한 공백, RT-05/RT-06 상호작용) NodeExecutionGate(RT-06)의 노드별 동시 실행 제한
+        // (MaxConcurrency 기본값 1)과 이 테스트의 재귀형 순환 라우팅(A→B→A→B→...)이 함께 있으면
+        // 교착상태(deadlock)가 생긴다 — RouteAsync가 매 홉을 "직접 재귀 호출(중첩 await)"로 처리하기
+        // 때문에, 같은 노드를 다시 거치는 시점에는 그 노드의 이전 호출이 아직 끝나지 않은 채로
+        // 게이트를 다시 요청하게 된다. 게이트 입장에서는 "동시에 2번 호출됨"으로 보여 두 번째 요청을
+        // 막는데, 그 두 번째 호출이 끝나야 첫 번째도 끝날 수 있는 구조라 서로가 서로를 막아 영원히
+        // 대기하게 된다(HopCount가 MaxHopCount에 도달하기도 전에 멈춤). 이 테스트는 hop-count 가드
+        // 자체를 검증하는 것이 목적이므로, MaxConcurrency를 이 재귀 깊이(MaxHopCount=10, 각 노드를
+        // 최대 5번 정도 거침)보다 충분히 크게(20) 줘서 게이트가 막지 않게 우회했다. 게이트와 재귀
+        // 라우팅이 실제로 충돌할 수 있다는 사실 자체는 근본 해결이 필요한 별도 공백으로 README에
+        // 기록하고, 이번 테스트에서는 hop-count 가드 검증만 다룬다.
+        var n1 = new NodeConfig("n1", "looping", "A", "f1", new Dictionary<string, object?>(), MaxConcurrency: 20);
+        var n2 = new NodeConfig("n2", "looping", "B", "f1", new Dictionary<string, object?>(), MaxConcurrency: 20);
         var flow = new FlowDefinition(
             Id: "f1", Name: "순환 테스트",
             Nodes: new[] { n1, n2 },

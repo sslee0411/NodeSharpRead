@@ -17,6 +17,22 @@
     - src\SemVer.cs 추가(10번 탭 카드8, NodeTypeRegistry의 버전 호환성 가드가 사용). lssLib에는
       대응 항목이 없는 신규 도입 유틸리티(INodeContext·CT-04a와 동일 유형) — LL-00 lssLib 포팅을
       기다리지 않고 이 Step에서 먼저 추가.
+
+    Step: RT-07 (03번 개발 Step맵.html, Phase 2)
+    - src\Messaging\{EventMessage,IEventHandler,EventBus}.cs 3개 추가 — lssLib.Messaging.EventBus를
+      구조·이름 그대로 포팅(복사). EventBus는 Lazy<T> 기반 싱글턴(Instance)으로 Subscribe(동기)/
+      SubscribeAsync(비동기)/Publish/PublishAsync를 제공하고, 구독은 IDisposable 토큰을 반환해 Dispose로
+      해제한다(02번 문서 3번 탭 카드5 "이벤트 구독/해제 규칙"). 착수 중 발견한 공백 2건: ① dev-csharp
+      스킬 문서의 EventBus API 예제에는 제네릭 제약(where TEvent : EventMessage)이 명시돼 있지 않았고,
+      Contracts의 IEventBus(카드5 원본)도 제약 없는 시그니처(IDisposable Subscribe&lt;TEvent&gt;(...))였다
+      — 제약을 걸면 NodeSharp.Runtime.EventBusAdapter가 IEventBus를 구현할 때 제네릭 제약이 서로 맞지
+      않아 그대로 위임할 수 없으므로, EventBus/IEventHandler 모두 제약 없이 구현해 Contracts의 IEventBus와
+      시그니처를 일치시켰다(EventMessage는 이벤트 record가 관례적으로 상속하는 공통 베이스로만 유지).
+      ② 처음에는 동기 Subscribe(Action&lt;TEvent&gt;)와 비동기 Subscribe(Func&lt;TEvent, Task&gt;)를 같은
+      이름의 오버로드로 만들었으나, C#은 `async e =&gt; await ...`처럼 반환값 없는 비동기 람다를 두
+      델리게이트 타입(Action/Func&lt;Task&gt;) 중 어느 쪽으로 볼지 정하지 못해 "모호한 호출"(CS0121)
+      컴파일 오류를 낸다는 것을 테스트 작성 중 인지 — 비동기 버전 이름을 SubscribeAsync로 분리해
+      이 문제를 원천 차단했다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

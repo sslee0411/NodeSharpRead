@@ -121,6 +121,12 @@
       "RT-06에서 추가 예정"이라고 예고돼 있던 항목). 실제 게이트(NodeExecutionGate, 세마포어 크기 결정)는
       NodeConfig.MaxConcurrency(배포된 사용자 설정값)를 우선 사용하고 이 멤버는 대체값으로만 쓰인다 —
       실제 구현은 NodeSharp.Runtime.csproj RT-06 참고.
+
+    Step: RT-07 (03번 개발 Step맵.html, Phase 2 — Runtime EventBusAdapter와 짝을 이루는 인터페이스)
+    - src\Interfaces\IEventBus.cs 신규 추가(02번 문서 3번 탭 카드5) — Subscribe&lt;TEvent&gt;(구독 토큰
+      IDisposable 반환)·Publish&lt;TEvent&gt; 2개 멤버만 최소로 선언. 실제 구현체(NodeSharp.Util로 포팅된
+      EventBus를 감싸는 EventBusAdapter)는 NodeSharp.Runtime.csproj RT-07 참고. INodeContext와 동일한
+      점진적 확장 원칙 — 지금은 완료 기준에 필요한 멤버만, 필요해질 때(예: 비동기 발행) 추가 예정.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

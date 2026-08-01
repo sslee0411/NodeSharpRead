@@ -127,6 +127,26 @@
       3건 동시 요청 시 3번째가 대기하는지(완료 기준 직접 검증), MaxConcurrency 미지정 시 기본값 1로
       순차 실행되는지, NodeExecutionGate의 동일 Id 재요청 시 인스턴스 재사용, RemoveGate 이후 새 인스턴스
       생성, MaxConcurrency 0 이하도 최소 1로 보정되는지.
+
+    Step: RT-07 (03번 개발 Step맵.html, Phase 2)
+    - EventBusAdapter.cs 신규 추가 — Contracts.IEventBus를 NodeSharp.Util.Messaging.EventBus(포팅된
+      lssLib.Messaging.EventBus)로 그대로 위임하는 어댑터. 기본 생성자는 EventBus.Instance(앱 전체 공유
+      싱글턴)를 감싸고, 테스트용으로 특정 EventBus 인스턴스를 주입하는 생성자도 별도 제공(테스트끼리
+      구독이 섞이지 않게 하기 위함). 실제 이벤트 저장·발행 로직은 전부 NodeSharp.Util.Messaging.EventBus에
+      있고 이 어댑터는 호출만 전달한다(NodeExecutionGate가 SemaphoreSlim을 감싸는 것과 같은 역할).
+      착수 중 발견한 공백: 완료 기준(03번 Step맵)이 요구하는 "OnCloseAsync에서 Dispose 누락이 리뷰
+      체크리스트로 걸러지는지" 항목은 02번 문서 3번 탭 카드5가 이미 "Linter 검사 추가" 표에서 Roslyn
+      분석기 기반 정적 검사를 10번 탭 FlowLinter(향후 Step)에 배정해 뒀음을 확인 — RT-07 시점에는 아직
+      구현할 노드가 없어(EventBus를 실제로 Subscribe하는 IFlowNode는 RT-09 NodeContext 연동 이후 등장)
+      코드로 검증할 대상 자체가 없으므로, 이번 Step에서는 "구독 해제(Dispose)를 실제로 호출하면 그 이후
+      이벤트를 받지 않는다"는 메커니즘 자체가 정상 동작하는지를 EventBusTests로 검증하고, "리뷰 체크리스트
+      반영"은 이 csproj 주석과 IEventBus/EventBus의 XML 주석에 규칙을 명시하는 것으로 갈음했다(실제 노드
+      코드에 적용하는 검증은 해당 노드가 구현되는 Step에서 재확인 예정). 테스트 작성 중 추가로 발견한
+      공백은 NodeSharp.Util.csproj RT-07 참고(Subscribe/SubscribeAsync 이름 분리, CS0121 회피).
+      test\NodeSharp.Tests\EventBusTests.cs 신규 작성(10건) — Subscribe/Publish 왕복, 다중 구독자 전원
+      호출, 다른 이벤트 타입 구독자는 호출 안 됨, Dispose 이후 이벤트 미수신, Dispose 중복 호출 안전,
+      SubscribeAsync + PublishAsync가 비동기 핸들러를 모두 기다림, IEventHandler 구현체로 구독,
+      EventBusAdapter가 IEventBus로 동일하게 동작, EventMessage.Timestamp 자동 설정.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
