@@ -4,6 +4,8 @@ using NodeSharp.Contracts.Models;
 namespace NodeSharp.Runtime;
 
 /// <summary>
+/// ★ 한줄 요약: <b>"노드 타입을 찾을 수 없을 때"만</b> 쓰는 자리표시자입니다 — JSON 파싱 실패·빈 값이나
+/// <c>OnStartAsync</c> 실행 중 다른 이유의 기동 실패(<c>RT-02b</c>가 별도 처리)와는 무관합니다.
 /// 존재하지 않는(또는 삭제된 플러그인의) 노드 타입 자리에 대신 배포되는 자리표시자입니다.
 /// Node-RED Editor의 "missing" 노드와 동일한 개념 — 캔버스에는 빨간 테두리 + "⚠ 알 수 없는 타입:
 /// {Type}"로 표시되어, 사용자가 플러그인을 다시 설치하거나 노드를 삭제하도록 유도합니다.

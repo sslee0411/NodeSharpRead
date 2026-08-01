@@ -380,6 +380,7 @@ public sealed record NodePort(int Index, string Label);</code></pre>
 
   <div class="card">
     <h2><span class="num">4</span> FlowEngine (런타임 핵심)</h2>
+    <p><b>★ MissingNode 한줄 요약</b>: <b>"노드 타입을 찾을 수 없을 때"만</b> 쓰는 자리표시자다 — JSON 파싱 실패·빈 값(그런 경우는 <c>NodeConfig</c> 자체가 안 만들어짐, 파일 로딩 단계에서 걸러짐)이나 <c>OnStartAsync</c> 실행 중 다른 이유의 기동 실패(예: 잘못된 IP, 아래 <c>catch (Exception ex)</c> 블록이 <code>_failedNodes</code>로 별도 처리)와는 무관하다. 오직 <code>NodeConfig.Type</code> 문자열이 <code>NodeTypeRegistry</code>에 등록되어 있지 않은 경우(플러그인 삭제/미설치)에만 이 자리표시자가 대신 배포된다.</p>
     <pre><code>// NodeSharp.Runtime/FlowEngine.cs
 public sealed class FlowEngine
 {
