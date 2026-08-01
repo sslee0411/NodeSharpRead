@@ -33,6 +33,19 @@
       델리게이트 타입(Action/Func&lt;Task&gt;) 중 어느 쪽으로 볼지 정하지 못해 "모호한 호출"(CS0121)
       컴파일 오류를 낸다는 것을 테스트 작성 중 인지 — 비동기 버전 이름을 SubscribeAsync로 분리해
       이 문제를 원천 차단했다.
+
+    Step: RT-08 (03번 개발 Step맵.html, Phase 2)
+    - src\Messaging\{ScheduleOptions,ScheduledTask,AsyncScheduler}.cs 3개 추가 — lssLib.Messaging.AsyncScheduler를
+      구조·이름 그대로 포팅(복사). AsyncScheduler는 EventBus와 동일하게 Lazy&lt;T&gt; 기반 싱글턴(Instance)이며,
+      ScheduleRecurring/ScheduleOnce/ScheduleDailyAt/Schedule(세밀 설정)로 예약하면 ScheduledTask 핸들을
+      돌려준다(Pause/Resume/Cancel, RunCount/IsRunning/LastError로 상태 확인). src\Messaging\CronExpression.cs
+      신규 추가(신규 도입 타입, lssLib에 대응 항목 없음) — 착수 중 발견한 공백: Contracts의 IScheduler
+      (CT-04b, 02번 문서 6번 탭 카드5)는 ScheduleCron(ownerId, cronExpression, callback)을 요구하는데,
+      포팅 대상인 AsyncScheduler(dev-csharp 스킬 API)에는 cron 표현식을 해석하는 기능이 원래 없다
+      (반복 간격/1회성/매일 정해진 시각만 지원) — "초 분 시 일 월 요일" 6칸을 해석하는 최소 파서를
+      새로 만들어 대응(현재는 `*`와 쉼표 목록만 지원, 범위·간격 문법은 범위 밖 — CT-03b의 BufFieldType
+      최소 목록 후 확장 선례와 동일한 처리). 실제 IScheduler 어댑터 구현은 NodeSharp.Runtime.csproj
+      RT-08 참고.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

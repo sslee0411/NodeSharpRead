@@ -147,6 +147,22 @@
       호출, 다른 이벤트 타입 구독자는 호출 안 됨, Dispose 이후 이벤트 미수신, Dispose 중복 호출 안전,
       SubscribeAsync + PublishAsync가 비동기 핸들러를 모두 기다림, IEventHandler 구현체로 구독,
       EventBusAdapter가 IEventBus로 동일하게 동작, EventMessage.Timestamp 자동 설정.
+
+    Step: RT-08 (03번 개발 Step맵.html, Phase 2)
+    - AsyncSchedulerAdapter.cs 신규 추가 — IScheduler를 NodeSharp.Util.Messaging.AsyncScheduler(포팅된
+      lssLib.Messaging.AsyncScheduler)로 구현. EventBusAdapter와 같은 위임 어댑터 역할이지만 두 멤버는
+      직접 구현이 필요했다: ① Unschedule(ownerId) — 포팅한 AsyncScheduler는 "이름으로 취소"하는 기능이
+      없고 Schedule이 돌려주는 ScheduledTask 핸들에서만 Cancel() 가능 — 어댑터가 Dictionary&lt;string,
+      List&lt;ScheduledTask&gt;&gt;로 ownerId별 핸들을 직접 추적해 Unschedule 시 전부 Cancel(). ② ScheduleCron
+      — 포팅한 AsyncScheduler에 cron 해석 기능이 없어(NodeSharp.Util.csproj RT-08 참고), 1초 간격
+      ScheduleRecurring 하나를 등록해 매초 CronExpression.IsMatch로 조건을 확인하고 맞을 때만 실제 콜백을
+      호출하는 방식으로 조합 구현(초 단위보다 정밀한 cron 문법은 다루지 않음).
+      test\NodeSharp.Tests\{AsyncSchedulerTests,CronExpressionTests,AsyncSchedulerAdapterTests}.cs 신규
+      작성(총 20건) — 반복/1회성/취소/일시정지-재개/예외 시 LastError 기록·ContinueOnError 분기/
+      ScheduleDailyAt InitialDelay 계산/StopAsync 전체 취소(AsyncScheduler), cron 파싱·매칭·범위 오류
+      (CronExpression), SchedulePeriodic 반복·Unschedule·같은 ownerId 다중 예약 일괄 취소·ScheduleCron
+      조건부 호출(AsyncSchedulerAdapter, 완료 기준 직접 검증). 시간에 민감한 테스트라 간격을 짧게(20ms)
+      두고 tolerant한 범위(InRange)로 검증했다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
