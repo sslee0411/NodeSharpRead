@@ -11,11 +11,12 @@ namespace NodeSharp.Runtime;
 /// <see cref="MissingNode"/> 대체(<c>RT-02a</c>), CreateInstance/OnStartAsync 두 단계 전체 예외 격리
 /// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>), 1:1 Wire 메시지 전달
 /// (<see cref="RouteAsync"/>, <c>RT-04a</c>), 출력 하나가 여러 Wire로 나가는 Fan-out 순차/병렬 하이브리드
-/// (<c>RT-04b</c>)까지 있습니다. 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<c>RT-06</c>)
+/// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>)까지 있습니다. 노드별 동시성 제한(<c>RT-06</c>)
 /// 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본)·카드 10(FlowDefinition/NodeConfig 정식 선언),
 /// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 4(메시지 파이프라인 시퀀스)·카드 5(배포 모드 세분화)·
-/// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부), 5번 탭 카드 1(Fan-out 순차/병렬 하이브리드).
+/// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부), 5번 탭 카드 1(Fan-out 순차/병렬 하이브리드)·
+/// 카드 2(순환 구조 hop-count 안전장치).
 /// </summary>
 /// <remarks>
 /// <see cref="_registry"/>가 실제 인스턴스 생성을 담당합니다(<c>NodeSharp.Registry.NodeTypeRegistry</c>,
@@ -139,6 +140,30 @@ namespace NodeSharp.Runtime;
 /// Node-RED 기본 동작과 동일하게 안전한 쪽으로 처리).</item>
 /// </list>
 /// </para>
+/// <para>
+/// (★ RT-05) <see cref="RouteAsync"/> 진입부에 05번 탭 카드2 원본과 동일한 hop-count 가드를 추가했습니다
+/// — <see cref="Msg.HopCount"/>가 <see cref="MaxHopCount"/> 이상이면 라우팅을 중단해, A→B→A 같은 순환
+/// Wire에서 노드가 <c>OnInputAsync</c> 안에서 <c>ctx.RouteAsync</c>를 다시 호출하는 재귀 체인이 콜스택을
+/// 무한히 쌓지 않도록 막습니다. 착수 중 발견한 공백과 그 처리:
+/// <list type="bullet">
+/// <item><b>refcell 오기</b> — 03번 Step맵 <c>RT-05</c> 행의 설계 근거 칸도 <c>RT-04b</c>와 같은 유형으로
+/// "2번 탭"이었지만, hop-count 가드 원본 코드의 실제 위치는 5번 탭 카드2입니다 — 동일한 원칙(<c>RT-02b</c>·
+/// <c>RT-04b</c> refcell 정정)으로 "5번 탭 카드 2"로 정정.</item>
+/// <item><b><c>MaxHopCount</c>를 상수가 아니라 프로퍼티로</b> — 카드2 원본은 <c>private const int MaxHopCount = 1000</c>이지만
+/// 주석에 "설정 파일로 조정 가능"이라고 명시돼 있습니다. 설정 파일 인프라가 아직 없어(향후 Step), 지금은
+/// 공개 <c>{ get; set; }</c> 프로퍼티(기본값 1000)로 두어 나중에 설정 파일 로딩 코드가 이 값을 바꿀 수
+/// 있게 하고, 테스트도 작은 값으로 빠르게 검증할 수 있게 했습니다.</item>
+/// <item><b><c>FlowLoopGuardTrippedEvent</c> → <c>LoopGuardTrips</c></b> — 카드2 원본은 <c>EventBus.Publish</c>로
+/// 경고 이벤트를 발행하지만 <c>EventBus</c>(<c>RT-07</c>)가 아직 없습니다. <see cref="FailedNodeIds"/>
+/// (<c>RT-02b</c>)와 동일한 선례로, 실제 이벤트 대신 관찰 가능한 <see cref="LoopGuardTrips"/> 프로퍼티에
+/// (발신 노드 Id, 중단된 <see cref="Msg.Id"/>) 기록만 남깁니다 — <c>RT-07</c> 이후 실제
+/// <c>FlowLoopGuardTrippedEvent</c> 발행으로 교체 예정.</item>
+/// <item><b>배포 시 정적 순환 감지(<c>DetectCycles</c>)는 범위 밖</b> — 카드2 원본은 배포 시점 DFS 기반
+/// 순환 그래프 탐지(Editor 경고 표시용)도 함께 보여주지만, 03번 Step맵을 확인한 결과 이 부분은 이미
+/// <c>OP-04</c>(FlowLinter 통합, "순환 참조" 검사 포함, Phase 10)가 정식으로 담당하도록 별도 Step이
+/// 배정돼 있어 중복 구현하지 않았습니다 — <c>RT-05</c>는 런타임 hop-count 가드만 담당.</item>
+/// </list>
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -190,6 +215,14 @@ namespace NodeSharp.Runtime;
 ///     });
 /// await engine.DeployAsync(fanOutFlow, DeployMode.Full, CancellationToken.None);
 /// await engine.RouteAsync("n1", 0, new Msg { Payload = "알람" }, CancellationToken.None);   // n4·n5 동시 수신
+///
+/// // RT-05 — 이미 999홉을 돈 Msg를 RouteAsync에 넣으면(기본 MaxHopCount=1000) 1번만 더 라우팅되고
+/// // 그 다음 홉에서 자동 차단된다. 테스트에서는 MaxHopCount를 작게 낮춰 빠르게 검증한다.
+/// engine.MaxHopCount = 3;
+/// var almostLooped = new Msg { Payload = "루프" };
+/// almostLooped.HopCount = 3;   // 이미 임계값에 도달한 상태를 시뮬레이션
+/// await engine.RouteAsync("n1", 0, almostLooped, CancellationToken.None);   // 대상에게 전달되지 않음
+/// var trip = engine.LoopGuardTrips[^1];   // ("n1", almostLooped.Id) — 어떤 노드에서 언제 중단됐는지 확인
 /// </code>
 /// </example>
 public sealed class FlowEngine
@@ -197,6 +230,7 @@ public sealed class FlowEngine
     private readonly INodeRegistry _registry;
     private readonly Dictionary<string, IFlowNode> _nodes = new();
     private readonly List<string> _failedNodes = new();
+    private readonly List<(string NodeId, string MsgId)> _loopGuardTrips = new();
 
     /// <summary>
     /// (★ RT-03) 직전 <c>DeployAsync</c> 호출에 사용된 <see cref="FlowDefinition"/>입니다. 부분 재배포 모드
@@ -229,6 +263,23 @@ public sealed class FlowEngine
     /// 남지 않습니다(항상 "가장 최근 배포 결과"를 반영).
     /// </summary>
     public IReadOnlyList<string> FailedNodeIds => _failedNodes;
+
+    /// <summary>
+    /// (★ RT-05) 순환 구조(A→B→A)에서 <see cref="Msg.HopCount"/>가 이 값 이상이 되면 <see cref="RouteAsync"/>가
+    /// 라우팅을 중단합니다(02번 문서 5번 탭 카드2 <c>MaxHopCount</c>). 원본 상수(<c>1000</c>)를 "설정 파일로
+    /// 조정 가능"하다고 명시했지만 설정 시스템이 아직 없어, 대신 언제든 바꿀 수 있는 공개 프로퍼티로
+    /// 노출합니다(테스트에서도 작은 값으로 빠르게 검증할 수 있음).
+    /// </summary>
+    public int MaxHopCount { get; set; } = 1000;
+
+    /// <summary>
+    /// (★ RT-05) <see cref="MaxHopCount"/> 초과로 <see cref="RouteAsync"/>가 라우팅을 중단시킨 이력입니다.
+    /// 02번 문서 5번 탭 카드2 원본은 <c>FlowLoopGuardTrippedEvent</c>를 <c>EventBus</c>로 발행하지만,
+    /// <c>EventBus</c>(<c>RT-07</c>)가 아직 없어 <see cref="FailedNodeIds"/>(<c>RT-02b</c>)와 동일한 방식의
+    /// 임시 대체(관찰 가능한 프로퍼티)로 구현했습니다 — <c>RT-07</c> 이후 실제 이벤트 발행으로 교체될
+    /// 예정이며, 그 전까지는 이 목록으로 "언제 어떤 노드에서 순환이 감지됐는지" 확인할 수 있습니다.
+    /// </summary>
+    public IReadOnlyList<(string NodeId, string MsgId)> LoopGuardTrips => _loopGuardTrips;
 
     /// <summary>
     /// (★ RT-03) 하위 호환용 2-인자 오버로드입니다. <c>RT-01b</c>부터 있던 기존 시그니처를 유지하기 위해
@@ -355,17 +406,32 @@ public sealed class FlowEngine
     /// <summary>
     /// <paramref name="fromNodeId"/>의 <paramref name="outputPort"/>번 출력에 연결된 모든 Wire(직전 배포
     /// <see cref="_currentFlow"/>.Wires 기준)를 따라 <paramref name="msg"/>를 대상 노드의 <c>OnInputAsync</c>로
-    /// 전달합니다(02번 문서 2번 탭 카드4 원본 + 5번 탭 카드1 Fan-out 확장, <c>RT-04a/RT-04b</c>). 발신
-    /// 노드의 <see cref="NodeConfig.OutputDispatch"/>가 <c>Parallel</c>이면 모든 대상에 <c>Task.WhenAll</c>로
-    /// 동시 전달(순서 보장 없음), 기본값 <c>Sequential</c>이면 Wire 순서대로 하나씩 <c>await</c>합니다.
-    /// 대상마다 <see cref="DispatchOneAsync"/>가 <c>msg.Clone()</c>으로 깊은 복제를 전달해 한 노드가
-    /// <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭 카드4 데이터 격리 원칙).
-    /// 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상 <see cref="NodeConfig.Id"/>가
-    /// <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나 재배포로 제거된 경우) 해당
-    /// 대상만 조용히 건너뜁니다.
+    /// 전달합니다(02번 문서 2번 탭 카드4 원본 + 5번 탭 카드1 Fan-out 확장·카드2 hop-count 가드,
+    /// <c>RT-04a/RT-04b/RT-05</c>). (★ RT-05) 진입 즉시 <paramref name="msg"/>.<see cref="Msg.HopCount"/>가
+    /// <see cref="MaxHopCount"/> 이상이면 <see cref="LoopGuardTrips"/>에 기록만 하고 라우팅을 중단합니다
+    /// (순환 구조에서 무한 재귀 방지 — A→B→A처럼 노드가 <c>OnInputAsync</c> 안에서 <c>ctx.RouteAsync</c>를
+    /// 다시 호출하는 체인은 매 홉마다 이 메서드가 재귀 호출되므로, 이 가드가 없으면 콜스택이 끝없이
+    /// 쌓입니다). 통과하면 <c>HopCount</c>를 1 증가시킨 뒤(모든 분기가 이 증가된 값을 공유하도록 Clone
+    /// 이전에 수행) 발신 노드의 <see cref="NodeConfig.OutputDispatch"/>가 <c>Parallel</c>이면 모든 대상에
+    /// <c>Task.WhenAll</c>로 동시 전달(순서 보장 없음), 기본값 <c>Sequential</c>이면 Wire 순서대로 하나씩
+    /// <c>await</c>합니다. 대상마다 <see cref="DispatchOneAsync"/>가 <c>msg.Clone()</c>으로 깊은 복제를
+    /// 전달해 한 노드가 <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭 카드4
+    /// 데이터 격리 원칙). 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상
+    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나
+    /// 재배포로 제거된 경우) 해당 대상만 조용히 건너뜁니다.
     /// </summary>
     public async Task RouteAsync(string fromNodeId, int outputPort, Msg msg, CancellationToken ct)
     {
+        if (msg.HopCount >= MaxHopCount)
+        {
+            // ★ RT-05: 카드2 원본은 여기서 FlowLoopGuardTrippedEvent를 발행하지만 EventBus(RT-07)가
+            //   아직 없어 LoopGuardTrips 기록으로 대체(클래스 remarks·프로퍼티 문서 참고). 메시지는
+            //   폐기되지만 플로우 자체(다른 메시지·다른 노드)는 계속 정상 동작한다(카드2 원본 주석과 동일).
+            _loopGuardTrips.Add((fromNodeId, msg.Id));
+            return;
+        }
+        msg.HopCount++;
+
         if (_currentFlow is null) return;   // 아직 배포된 적 없음 — 참조할 Wire 정보가 없음
 
         var targets = _currentFlow.Wires

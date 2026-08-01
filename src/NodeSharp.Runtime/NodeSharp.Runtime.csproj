@@ -90,6 +90,23 @@
       기본값). test\NodeSharp.Tests\FlowEngineFanOutTests.cs 신규 작성(4건 + Theory 2케이스) — Sequential
       순서 보장, Parallel 전체 도달, 분기마다 다른 Msg 인스턴스로 Payload 변경 격리(Sequential/Parallel
       각각), OutputDispatch 미지정 시 기본값 Sequential 동작 확인.
+
+    Step: RT-05 (03번 개발 Step맵.html, Phase 2)
+    - FlowEngine.RouteAsync 진입부에 hop-count 가드 추가(05번 탭 카드2 원본) — Msg.HopCount(Contracts,
+      RT-05)가 MaxHopCount(신규 공개 프로퍼티, 기본 1000) 이상이면 라우팅을 중단하고 LoopGuardTrips에
+      기록만 남긴 뒤 즉시 반환, 통과하면 HopCount를 1 증가시킨 뒤 기존 Fan-out 로직(RT-04b) 그대로 진행.
+      착수 중 발견한 공백 3건: ① 03번 Step맵 RT-05의 refcell도 RT-04b와 같은 유형으로 "2번 탭" 오기 —
+      grep으로 원문(5번 탭 카드2) 확인 후 직접 정정(RT-02b·RT-04b와 동일한 처리 원칙). ② 카드2 원본은
+      MaxHopCount를 private const로 선언하지만 "설정 파일로 조정 가능"이라는 주석과 모순 — 설정 파일
+      인프라가 없는 지금은 공개 프로퍼티로 열어 향후 설정 로딩 코드가 재사용하고 테스트도 작은 값으로
+      빠르게 검증 가능하게 함. ③ 카드2 원본의 FlowLoopGuardTrippedEvent 발행은 EventBus(RT-07)가 없어
+      RT-02b의 FailedNodeIds와 동일한 선례로 관찰 가능한 LoopGuardTrips 프로퍼티((발신 NodeId, Msg.Id)
+      목록)로 대체, RT-07 이후 실제 이벤트로 교체 예정. 카드2 원본의 배포 시 정적 순환 감지(DetectCycles)는
+      03번 Step맵에 이미 OP-04(FlowLinter 통합, Phase 10)가 "순환 참조" 검사로 별도 배정돼 있어 중복
+      구현하지 않고 범위 밖으로 명시. test\NodeSharp.Tests\FlowEngineLoopGuardTests.cs 신규 작성(5건) —
+      MaxHopCount 기본값 1000 확인, RouteAsync가 HopCount를 1씩 증가시키는지, 임계값 이상이면 차단+
+      LoopGuardTrips 기록, A↔B 순환 Wire의 실제 재귀 체인이 무한루프/StackOverflow 없이 종료되는지,
+      임계값 미만이면 정상 전달되는지.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

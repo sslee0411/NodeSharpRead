@@ -110,6 +110,11 @@
       4종은 이 Step 착수 이전에 이미 파일로 존재했으나(값 정의·XML 주석 모두 카드5와 일치, 코드 변경
       없음) 어느 Step 이력에도 기록되어 있지 않던 공백이 있었다 — 이 Step에서 FlowEngine.DeployAsync
       실제 구현(NodeSharp.Runtime.csproj RT-03 참고)과 짝지어 이력을 정식으로 남긴다.
+
+    Step: RT-05 (03번 개발 Step맵.html, Phase 2 — Runtime FlowEngine.RouteAsync hop-count 가드와 짝을 이루는 필드)
+    - src\Models\Msg.cs에 HopCount 프로퍼티 추가(5번 탭 카드2 `_hopCount` 동적 필드 그대로). FlowEngine이
+      매 RouteAsync 호출마다 1씩 증가시켜 순환 구조(A→B→A)에서 무한 재귀를 막는 데 사용(실제 가드 로직은
+      NodeSharp.Runtime.csproj RT-05 참고). <example> 6번 시나리오 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

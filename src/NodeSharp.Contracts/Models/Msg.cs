@@ -51,6 +51,10 @@ namespace NodeSharp.Contracts.Models;
 /// // 5) Debug 노드 출력 등에서의 JSON 왕복(중첩 객체/배열도 그대로 복원)
 /// string json = msg.ToJson();
 /// Msg restored = Msg.FromJson(json);
+///
+/// // 6) 순환 구조 안전장치(RT-05) — FlowEngine.RouteAsync가 매 홉마다 1씩 증가시킴, 직접 조작할 일은 거의 없음
+/// var looped = new Msg();
+/// looped.HopCount = 999;   // FlowEngine.MaxHopCount(기본 1000) 직전까지 도달한 상태를 시뮬레이션
 /// </code>
 /// </example>
 public sealed class Msg : DynamicObject
@@ -76,6 +80,18 @@ public sealed class Msg : DynamicObject
     {
         get => _data.TryGetValue("topic", out var v) ? v as string : null;
         set => _data["topic"] = value;
+    }
+
+    /// <summary>
+    /// (★ RT-05) 이 메시지가 <c>FlowEngine.RouteAsync</c>를 거쳐 지금까지 몇 번 전달됐는지(02번 문서
+    /// 5번 탭 카드2 <c>_hopCount</c> 동적 필드). 순환 구조(A→B→A)에서 무한 루프에 빠지지 않도록 매
+    /// <c>RouteAsync</c> 호출마다 1씩 증가하고, <c>FlowEngine.MaxHopCount</c>를 넘으면 라우팅이 중단됩니다.
+    /// 값이 없으면(아직 한 번도 라우팅되지 않은 새 메시지) 0을 반환합니다.
+    /// </summary>
+    public int HopCount
+    {
+        get => _data.TryGetValue("_hopCount", out var v) && v is int h ? h : 0;
+        set => _data["_hopCount"] = value;
     }
 
     /// <summary>
