@@ -11,12 +11,12 @@ namespace NodeSharp.Runtime;
 /// <see cref="MissingNode"/> 대체(<c>RT-02a</c>), CreateInstance/OnStartAsync 두 단계 전체 예외 격리
 /// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>), 1:1 Wire 메시지 전달
 /// (<see cref="RouteAsync"/>, <c>RT-04a</c>), 출력 하나가 여러 Wire로 나가는 Fan-out 순차/병렬 하이브리드
-/// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>)까지 있습니다. 노드별 동시성 제한(<c>RT-06</c>)
-/// 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
+/// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<see cref="NodeExecutionGate"/>,
+/// <c>RT-06</c>)까지 있습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본)·카드 10(FlowDefinition/NodeConfig 정식 선언),
 /// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 4(메시지 파이프라인 시퀀스)·카드 5(배포 모드 세분화)·
 /// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부), 5번 탭 카드 1(Fan-out 순차/병렬 하이브리드)·
-/// 카드 2(순환 구조 hop-count 안전장치).
+/// 카드 2(순환 구조 hop-count 안전장치)·카드 3(병렬 처리 — 노드별 동시성 제한).
 /// </summary>
 /// <remarks>
 /// <see cref="_registry"/>가 실제 인스턴스 생성을 담당합니다(<c>NodeSharp.Registry.NodeTypeRegistry</c>,
@@ -141,10 +141,11 @@ namespace NodeSharp.Runtime;
 /// </list>
 /// </para>
 /// <para>
-/// (★ RT-05) <see cref="RouteAsync"/> 진입부에 05번 탭 카드2 원본과 동일한 hop-count 가드를 추가했습니다
-/// — <see cref="Msg.HopCount"/>가 <see cref="MaxHopCount"/> 이상이면 라우팅을 중단해, A→B→A 같은 순환
-/// Wire에서 노드가 <c>OnInputAsync</c> 안에서 <c>ctx.RouteAsync</c>를 다시 호출하는 재귀 체인이 콜스택을
-/// 무한히 쌓지 않도록 막습니다. 착수 중 발견한 공백과 그 처리:
+/// (★ RT-05) <see cref="RouteAsync"/> 맨 앞에 05번 탭 카드2 원본과 같은 hop-count(거쳐온 횟수) 가드를
+/// 추가했습니다. <see cref="Msg.HopCount"/>가 <see cref="MaxHopCount"/> 이상이면 라우팅을 멈춥니다.
+/// A→B→A처럼 서로를 계속 부르는 순환 Wire 구조에서는, 한 노드가 <c>OnInputAsync</c> 안에서
+/// <c>ctx.RouteAsync</c>를 또 호출하고 그 안에서 다시 호출하는 식으로 메서드 호출이 끝없이 이어질 수
+/// 있습니다. 이 가드가 그 무한 호출을 막아줍니다. 착수 중 발견한 공백과 그 처리:
 /// <list type="bullet">
 /// <item><b>refcell 오기</b> — 03번 Step맵 <c>RT-05</c> 행의 설계 근거 칸도 <c>RT-04b</c>와 같은 유형으로
 /// "2번 탭"이었지만, hop-count 가드 원본 코드의 실제 위치는 5번 탭 카드2입니다 — 동일한 원칙(<c>RT-02b</c>·
@@ -162,6 +163,31 @@ namespace NodeSharp.Runtime;
 /// 순환 그래프 탐지(Editor 경고 표시용)도 함께 보여주지만, 03번 Step맵을 확인한 결과 이 부분은 이미
 /// <c>OP-04</c>(FlowLinter 통합, "순환 참조" 검사 포함, Phase 10)가 정식으로 담당하도록 별도 Step이
 /// 배정돼 있어 중복 구현하지 않았습니다 — <c>RT-05</c>는 런타임 hop-count 가드만 담당.</item>
+/// </list>
+/// </para>
+/// <para>
+/// (★ RT-06) <see cref="DispatchOneAsync"/>가 대상 노드의 <c>OnInputAsync</c>를 호출하기 전에
+/// <see cref="NodeExecutionGate"/>로 동시 실행 개수를 제한합니다(05번 탭 카드3 원본). 착수 중 발견한
+/// 공백과 그 처리:
+/// <list type="bullet">
+/// <item><b>refcell 오기</b> — 03번 Step맵 <c>RT-06</c> 행도 <c>RT-04b</c>/<c>RT-05</c>와 같은 유형으로
+/// "2번 탭"이었지만, 실제 코드 위치는 5번 탭 카드3 — 동일한 원칙으로 "5번 탭 카드 3"으로 정정.</item>
+/// <item><b>게이트 키를 <c>IFlowNode.Id</c>가 아니라 <c>NodeConfig.Id</c>로</b> — 카드3 원본은
+/// <c>_gates[node.Id]</c>를 쓰지만, <c>IFlowNode.Id</c>는 <c>RG-01</c> 전까지 신뢰할 수 없는 값입니다
+/// (<c>RT-01b</c>부터 이어진 원칙). <see cref="DispatchOneAsync"/>는 이미 <c>wire.TargetNodeId</c>(안정적인
+/// <see cref="NodeConfig.Id"/>)를 알고 있으므로 이 값을 그대로 게이트 키로 사용합니다
+/// (<see cref="NodeExecutionGate"/> 자체 문서 참고).</item>
+/// <item><b>동시성 상한은 <c>NodeConfig.MaxConcurrency</c> 우선</b> — 카드3 원본은
+/// <c>node.MaxConcurrency</c>(<see cref="IFlowNode"/> 기본 구현 멤버, 코드 레벨 타입 기본값)만 참조하지만,
+/// <see cref="NodeConfig.MaxConcurrency"/>(<c>CT-02b</c>에 이미 있던 필드 — "5번 탭 <c>IFlowNode.MaxConcurrency</c>
+/// 기본값과 동일 의미"라고 스스로 명시)가 사용자가 Editor에서 실제로 지정하는 값이라 우선순위가 더
+/// 높아야 합니다(<c>RT-04b</c>의 <c>OutputDispatch</c> 우선순위 결정과 동일한 판단). <see cref="_currentFlow"/>.Nodes에서
+/// 대상 <see cref="NodeConfig"/>를 찾아 그 값을 쓰고, 배포 정보를 못 찾을 때만 <see cref="IFlowNode.MaxConcurrency"/>
+/// 기본값으로 대체합니다.</item>
+/// <item><b>재배포 시 게이트 갱신</b> — <c>MaxConcurrency</c> 설정이 바뀐 채로 재배포되면 기존 게이트가
+/// 낡은 상한을 계속 쓰게 되는 공백이 있어, <see cref="DeployAsync(FlowDefinition, DeployMode, CancellationToken)"/>가
+/// 노드를 닫을 때(재시작 대상·삭제 대상 모두) <see cref="NodeExecutionGate.RemoveGate"/>도 함께 호출하도록
+/// 추가했습니다 — 다음 배포에서 같은 Id로 노드가 다시 만들어지면 새 게이트가 최신 설정으로 생성됩니다.</item>
 /// </list>
 /// </para>
 /// </remarks>
@@ -223,6 +249,15 @@ namespace NodeSharp.Runtime;
 /// almostLooped.HopCount = 3;   // 이미 임계값에 도달한 상태를 시뮬레이션
 /// await engine.RouteAsync("n1", 0, almostLooped, CancellationToken.None);   // 대상에게 전달되지 않음
 /// var trip = engine.LoopGuardTrips[^1];   // ("n1", almostLooped.Id) — 어떤 노드에서 언제 중단됐는지 확인
+///
+/// // RT-06 — n6의 MaxConcurrency를 2로 설정하고 동시에 3개를 라우팅하면, 3번째 호출은 앞선 두 건 중
+/// // 하나가 끝날 때까지(OnInputAsync 완료 + gate.Release) 대기한 뒤에야 처리된다.
+/// var gatedCfg = new NodeConfig("n6", "inject", "제한된 노드", "f1", new Dictionary&lt;string, object?&gt;(), MaxConcurrency: 2);
+/// var gatedFlow = new FlowDefinition("f4", "동시성 테스트", Nodes: new[] { gatedCfg }, Wires: Array.Empty&lt;Wire&gt;());
+/// await engine.DeployAsync(gatedFlow, DeployMode.Full, CancellationToken.None);
+/// var t1 = engine.RouteAsync("src", 0, new Msg(), CancellationToken.None);   // 즉시 통과(1/2)
+/// var t2 = engine.RouteAsync("src", 0, new Msg(), CancellationToken.None);   // 즉시 통과(2/2)
+/// var t3 = engine.RouteAsync("src", 0, new Msg(), CancellationToken.None);   // t1/t2 중 하나가 끝날 때까지 대기
 /// </code>
 /// </example>
 public sealed class FlowEngine
@@ -231,6 +266,7 @@ public sealed class FlowEngine
     private readonly Dictionary<string, IFlowNode> _nodes = new();
     private readonly List<string> _failedNodes = new();
     private readonly List<(string NodeId, string MsgId)> _loopGuardTrips = new();
+    private readonly NodeExecutionGate _gate = new();
 
     /// <summary>
     /// (★ RT-03) 직전 <c>DeployAsync</c> 호출에 사용된 <see cref="FlowDefinition"/>입니다. 부분 재배포 모드
@@ -355,6 +391,10 @@ public sealed class FlowEngine
                     //   재배포 전체를 막아서는 안 된다(연결이 이미 끊겨 있는 등 종료 자체가 실패할 수 있음).
                 }
             }
+
+            // ★ RT-06: MaxConcurrency 설정이 바뀐 채로 재배포될 수 있으므로, 닫히는 노드의 게이트도 함께
+            //   제거한다 — 다음 배포에서 같은 Id로 노드가 다시 만들어지면 최신 설정으로 새 게이트가 생성된다.
+            _gate.RemoveGate(id);
         }
 
         foreach (var id in closeOnlyIds)
@@ -407,26 +447,28 @@ public sealed class FlowEngine
     /// <paramref name="fromNodeId"/>의 <paramref name="outputPort"/>번 출력에 연결된 모든 Wire(직전 배포
     /// <see cref="_currentFlow"/>.Wires 기준)를 따라 <paramref name="msg"/>를 대상 노드의 <c>OnInputAsync</c>로
     /// 전달합니다(02번 문서 2번 탭 카드4 원본 + 5번 탭 카드1 Fan-out 확장·카드2 hop-count 가드,
-    /// <c>RT-04a/RT-04b/RT-05</c>). (★ RT-05) 진입 즉시 <paramref name="msg"/>.<see cref="Msg.HopCount"/>가
-    /// <see cref="MaxHopCount"/> 이상이면 <see cref="LoopGuardTrips"/>에 기록만 하고 라우팅을 중단합니다
-    /// (순환 구조에서 무한 재귀 방지 — A→B→A처럼 노드가 <c>OnInputAsync</c> 안에서 <c>ctx.RouteAsync</c>를
-    /// 다시 호출하는 체인은 매 홉마다 이 메서드가 재귀 호출되므로, 이 가드가 없으면 콜스택이 끝없이
-    /// 쌓입니다). 통과하면 <c>HopCount</c>를 1 증가시킨 뒤(모든 분기가 이 증가된 값을 공유하도록 Clone
-    /// 이전에 수행) 발신 노드의 <see cref="NodeConfig.OutputDispatch"/>가 <c>Parallel</c>이면 모든 대상에
-    /// <c>Task.WhenAll</c>로 동시 전달(순서 보장 없음), 기본값 <c>Sequential</c>이면 Wire 순서대로 하나씩
-    /// <c>await</c>합니다. 대상마다 <see cref="DispatchOneAsync"/>가 <c>msg.Clone()</c>으로 깊은 복제를
-    /// 전달해 한 노드가 <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭 카드4
-    /// 데이터 격리 원칙). 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상
-    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나
-    /// 재배포로 제거된 경우) 해당 대상만 조용히 건너뜁니다.
+    /// <c>RT-04a/RT-04b/RT-05</c>). (★ RT-05) 시작하자마자 <paramref name="msg"/>.<see cref="Msg.HopCount"/>
+    /// (지금까지 거쳐온 횟수)가 <see cref="MaxHopCount"/> 이상이면 <see cref="LoopGuardTrips"/>에 기록만
+    /// 남기고 라우팅을 멈춥니다. A→B→A 같은 순환 구조에서는 노드가 <c>OnInputAsync</c> 안에서
+    /// <c>ctx.RouteAsync</c>를 또 부르고, 그 안에서 이 메서드가 다시 호출되는 식으로 매 홉마다 호출이
+    /// 반복됩니다. 이 가드가 없으면 이 호출이 끝없이 이어져 메서드 호출 스택이 계속 쌓이게 됩니다.
+    /// 가드를 통과하면 <c>HopCount</c>를 1 늘린 뒤(모든 분기가 늘어난 값을 함께 쓰도록 복제 전에 미리
+    /// 수행) 발신 노드의 <see cref="NodeConfig.OutputDispatch"/>가 <c>Parallel</c>이면 모든 대상에게
+    /// <c>Task.WhenAll</c>로 한꺼번에 전달합니다(도착 순서는 보장되지 않음). 기본값인 <c>Sequential</c>이면
+    /// Wire 순서대로 하나씩 <c>await</c>합니다. 대상마다 <see cref="DispatchOneAsync"/>가
+    /// <c>msg.Clone()</c>으로 메시지를 통째로 복사해서 전달하므로, 한 노드가 <c>Payload</c>를 바꿔도 다른
+    /// 분기에는 영향이 없습니다(2번 탭 카드2·3번 탭 카드4 데이터 격리 원칙). 아직 한 번도 배포된 적이
+    /// 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상 <see cref="NodeConfig.Id"/>가
+    /// <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남았거나 재배포로 제거된 경우) 해당
+    /// 대상만 조용히 건너뜁니다.
     /// </summary>
     public async Task RouteAsync(string fromNodeId, int outputPort, Msg msg, CancellationToken ct)
     {
         if (msg.HopCount >= MaxHopCount)
         {
             // ★ RT-05: 카드2 원본은 여기서 FlowLoopGuardTrippedEvent를 발행하지만 EventBus(RT-07)가
-            //   아직 없어 LoopGuardTrips 기록으로 대체(클래스 remarks·프로퍼티 문서 참고). 메시지는
-            //   폐기되지만 플로우 자체(다른 메시지·다른 노드)는 계속 정상 동작한다(카드2 원본 주석과 동일).
+            //   아직 없어 LoopGuardTrips 기록으로 대체(클래스 remarks·프로퍼티 문서 참고). 이 메시지 하나만
+            //   버려지고 플로우 자체(다른 메시지·다른 노드)는 계속 정상 동작한다(카드2 원본 주석과 동일).
             _loopGuardTrips.Add((fromNodeId, msg.Id));
             return;
         }
@@ -458,16 +500,35 @@ public sealed class FlowEngine
     }
 
     /// <summary>
-    /// (★ RT-04b) <paramref name="wire"/>의 대상 노드 하나에게 <paramref name="msg"/>를 <c>Clone()</c>해
-    /// 전달합니다(05번 탭 카드1 <c>DispatchOneAsync</c> 원본과 동일) — <see cref="RouteAsync"/>의
-    /// Sequential/Parallel 두 경로가 모두 이 메서드로 각 대상 전달을 위임해, 분기 방식과 무관하게
-    /// "대상마다 독립된 <see cref="Msg"/> 인스턴스를 받는다"는 격리 규칙이 항상 지켜집니다. 대상
-    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면 조용히 완료합니다.
+    /// <paramref name="wire"/>의 대상 노드 하나에게 <paramref name="msg"/>를 <c>Clone()</c>해 전달합니다
+    /// (05번 탭 카드1 <c>DispatchOneAsync</c> 원본 + 카드3 <see cref="NodeExecutionGate"/> 동시성 제한,
+    /// <c>RT-04b/RT-06</c>) — <see cref="RouteAsync"/>의 Sequential/Parallel 두 경로가 모두 이 메서드로
+    /// 각 대상 전달을 위임해, 분기 방식과 무관하게 "대상마다 독립된 <see cref="Msg"/> 인스턴스를 받는다"는
+    /// 격리 규칙이 항상 지켜집니다. (★ RT-06) 실제 <c>OnInputAsync</c> 호출 전에
+    /// <see cref="NodeExecutionGate.GetGate"/>로 얻은 <see cref="SemaphoreSlim"/>을 통과해야 합니다 —
+    /// 상한은 <see cref="_currentFlow"/>에서 찾은 대상 <see cref="NodeConfig.MaxConcurrency"/>를 우선 쓰고
+    /// (사용자가 Editor에서 지정한 값), 배포 정보를 찾을 수 없으면 <see cref="IFlowNode.MaxConcurrency"/>
+    /// 기본 구현(1)으로 대체합니다. 대상 <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면 게이트를
+    /// 거치지 않고 조용히 완료합니다.
     /// </summary>
-    private Task DispatchOneAsync(Wire wire, Msg msg, CancellationToken ct) =>
-        _nodes.TryGetValue(wire.TargetNodeId, out var target)
-            ? target.OnInputAsync(msg.Clone(), BuildContext(target), ct)
-            : Task.CompletedTask;
+    private async Task DispatchOneAsync(Wire wire, Msg msg, CancellationToken ct)
+    {
+        if (!_nodes.TryGetValue(wire.TargetNodeId, out var target)) return;
+
+        var maxConcurrency = _currentFlow?.Nodes.FirstOrDefault(n => n.Id == wire.TargetNodeId)?.MaxConcurrency
+            ?? target.MaxConcurrency;
+        var gate = _gate.GetGate(wire.TargetNodeId, maxConcurrency);
+
+        await gate.WaitAsync(ct);
+        try
+        {
+            await target.OnInputAsync(msg.Clone(), BuildContext(target), ct);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
 
     /// <summary>
     /// (★ RT-03) <paramref name="a"/>와 <paramref name="b"/>가 "내용상 같은 설정"인지 필드 단위로 비교합니다.

@@ -37,7 +37,7 @@ public interface ICredentialStore
     /// <summary>지정한 노드의 지정한 필드에 저장된 비밀값을 복호화해 반환합니다. 저장된 값이 없으면 <c>null</c>.</summary>
     string? Get(string nodeId, string field);
 
-    /// <summary>현재 저장된 모든 암호화 값을 <paramref name="path"/>(<c>credentials.json</c>)에 원자적으로 저장합니다.</summary>
+    /// <summary>현재 저장된 모든 암호화 값을 <paramref name="path"/>(<c>credentials.json</c>)에 저장합니다. 저장 도중 오류가 나도 파일이 절반만 쓰인 채로 남지 않도록 안전하게 처리합니다.</summary>
     void Save(string path);
 
     /// <summary><paramref name="path"/>(<c>credentials.json</c>)에서 암호화된 값을 불러와 메모리에 복원합니다.</summary>

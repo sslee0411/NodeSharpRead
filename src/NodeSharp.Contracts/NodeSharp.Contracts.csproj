@@ -115,6 +115,12 @@
     - src\Models\Msg.cs에 HopCount 프로퍼티 추가(5번 탭 카드2 `_hopCount` 동적 필드 그대로). FlowEngine이
       매 RouteAsync 호출마다 1씩 증가시켜 순환 구조(A→B→A)에서 무한 재귀를 막는 데 사용(실제 가드 로직은
       NodeSharp.Runtime.csproj RT-05 참고). <example> 6번 시나리오 추가.
+
+    Step: RT-06 (03번 개발 Step맵.html, Phase 2 — Runtime NodeExecutionGate와 짝을 이루는 인터페이스 멤버)
+    - src\Interfaces\IFlowNode.cs에 MaxConcurrency 기본 구현 멤버(=> 1) 추가(05번 탭 카드3, CT-04a 시점부터
+      "RT-06에서 추가 예정"이라고 예고돼 있던 항목). 실제 게이트(NodeExecutionGate, 세마포어 크기 결정)는
+      NodeConfig.MaxConcurrency(배포된 사용자 설정값)를 우선 사용하고 이 멤버는 대체값으로만 쓰인다 —
+      실제 구현은 NodeSharp.Runtime.csproj RT-06 참고.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

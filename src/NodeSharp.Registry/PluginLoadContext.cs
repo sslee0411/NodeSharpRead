@@ -16,10 +16,11 @@ namespace NodeSharp.Registry;
 /// Contracts의 "외부참조 0개" 원칙과 맞지 않는다. <c>NodeSharp.Registry</c>가 정확히 "노드 타입
 /// 스캔/로딩/버전관리"를 목적으로 이미 존재하므로(1번 탭 솔루션 구조), 이 클래스는 처음부터 여기
 /// 소속이어야 했다 — <c>CT-03a</c>(NodeContext)에서 발견한 것과 같은 유형의 경로 오기.</item>
-/// <item><b>Contracts 타입 identity 공유</b>: <see cref="Load"/>를 오버라이드해 <c>NodeSharp.Contracts</c>
-/// 어셈블리는 이 컨텍스트에서 다시 로드하지 않고 <c>null</c>을 반환해 기본 컨텍스트로 위임한다.
-/// 그렇지 않으면 플러그인이 구현한 <c>IFlowNode</c>가 호스트(Registry/Runtime)가 아는 <c>IFlowNode</c>와
-/// 다른 타입으로 인식되어 캐스팅이 실패한다(.NET 플러그인 패턴의 잘 알려진 함정).</item>
+/// <item><b>Contracts 타입을 "같은 타입"으로 공유</b>: <see cref="Load"/>를 재정의해, <c>NodeSharp.Contracts</c>
+/// 어셈블리만큼은 이 격리된 컨텍스트에서 따로 로드하지 않고 <c>null</c>을 반환해 기본 컨텍스트에
+/// 맡깁니다. 이렇게 하지 않으면, 플러그인이 구현한 <c>IFlowNode</c>와 호스트(Registry/Runtime)가 아는
+/// <c>IFlowNode</c>가 겉보기엔 같은 타입이어도 서로 다른 로드 컨텍스트에서 온 것이라 C# 런타임이
+/// 이를 다른 타입으로 취급해 캐스팅이 실패합니다(.NET 플러그인 방식에서 자주 걸리는 함정).</item>
 /// </list>
 /// </remarks>
 /// <example>

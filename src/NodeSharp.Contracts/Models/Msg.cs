@@ -59,7 +59,7 @@ namespace NodeSharp.Contracts.Models;
 /// </example>
 public sealed class Msg : DynamicObject
 {
-    /// <summary>실제 데이터가 저장되는 내부 컨테이너입니다. 인덱서로 다루면 리플렉션 없이 빠르게 필드를 읽고 씁니다.</summary>
+    /// <summary>실제 데이터가 저장되는 내부 컨테이너입니다. 인덱서(<c>_data["key"]</c>)로 다루면 타입 정보를 검사하는 과정(리플렉션) 없이 빠르게 필드를 읽고 씁니다.</summary>
     private readonly IDictionary<string, object?> _data = new ExpandoObject();
 
     /// <summary>새 <see cref="Msg"/>를 생성하고, Node-RED의 <c>msg._msgid</c>와 동일한 역할을 하는 고유 식별자를 자동으로 부여합니다.</summary>
@@ -100,8 +100,8 @@ public sealed class Msg : DynamicObject
     /// 않습니다(Node-RED의 <c>msg.foo</c>가 <c>undefined</c>를 반환하는 것과 동일한 관용).
     /// </summary>
     /// <remarks>
-    /// 반드시 항상 <c>true</c>를 반환해야 합니다 — C#의 동적 바인딩 규약상 <c>false</c>를 반환하면
-    /// "이 멤버를 찾지 못했다"는 뜻이 되어 런타임이 <c>RuntimeBinderException</c>을 던집니다.
+    /// 반드시 항상 <c>true</c>를 반환해야 합니다. C#의 <c>dynamic</c> 규칙상 <c>false</c>를 반환하면
+    /// "이 필드를 찾지 못했다"는 뜻이 되어, 실행 중 <c>RuntimeBinderException</c> 예외가 발생합니다.
     /// </remarks>
     public override bool TryGetMember(GetMemberBinder binder, out object? result)
     {

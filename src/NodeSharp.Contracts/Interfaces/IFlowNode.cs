@@ -10,13 +10,17 @@ namespace NodeSharp.Contracts.Interfaces;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item><b>ctx 파라미터</b>: <see cref="INodeContext"/>를 받습니다 — 구체 타입 <c>NodeContext</c>는
-/// NodeSharp.Runtime 소속이라 Contracts에 정의된 이 인터페이스가 직접 참조하면 순환 참조가 됩니다
+/// <item><b>ctx 파라미터</b>: <see cref="INodeContext"/>를 받습니다. 실제 구현 클래스인 <c>NodeContext</c>는
+/// NodeSharp.Runtime 프로젝트에 있는데, 이 인터페이스는 Contracts 프로젝트에 있습니다. 만약 이 인터페이스가
+/// <c>NodeContext</c>를 직접 참조하면 두 프로젝트가 서로를 참조하게 되어(순환 참조) 빌드가 되지 않습니다
 /// (v1.57, 02번 문서 2번 탭 카드 1 참고).</item>
 /// <item><b>생성</b>: 이 인터페이스는 인스턴스 생성 방법을 정의하지 않습니다 — 노드 타입 메타데이터와
 /// 팩토리는 <c>RG-01</c>의 <c>INodeTypeDescriptor</c>가 별도로 담당합니다.</item>
-/// <item><b>동시성</b>: 노드별 동시 처리 개수 제한(<c>MaxConcurrency</c>)은 아직 이 인터페이스에
-/// 없습니다 — <c>RT-06</c>에서 기본 구현 멤버로 추가될 예정입니다.</item>
+/// <item><b>동시성</b>: 노드별 동시 처리 개수 제한은 <see cref="MaxConcurrency"/> 기본 구현 멤버로
+/// 노출합니다(<c>RT-06</c>). 실제 게이트(<c>NodeExecutionGate</c>, <c>NodeSharp.Runtime</c>)는 배포된
+/// <see cref="NodeConfig.MaxConcurrency"/>(사용자가 Editor에서 설정한 값)를 우선 사용하고, 배포 정보를
+/// 찾을 수 없을 때만 이 기본 구현 멤버로 대체합니다 — 자세한 내용은 <c>NodeSharp.Runtime.FlowEngine</c>
+/// XML 주석(★ RT-06)을 참고하십시오.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -77,4 +81,13 @@ public interface IFlowNode
 
     /// <summary>재배포 또는 종료 시 1회 호출됩니다. <see cref="OnStartAsync"/>에서 구독한 이벤트·연결을 여기서 해제해야 합니다(공통 규칙 ②).</summary>
     Task OnCloseAsync(INodeContext ctx);
+
+    /// <summary>
+    /// (★ RT-06) 이 노드 타입이 동시에 처리할 수 있는 최대 <see cref="OnInputAsync"/> 호출 수의
+    /// 코드 레벨 기본값입니다(05번 탭 카드3). 기본값 1은 노드 내부 상태(커넥션·카운터 등)를 순차
+    /// 처리로 안전하게 지키고, HTTP 요청처럼 진짜 비동기 I/O를 쓰는 노드는 이 멤버를 재정의해 상향할
+    /// 수 있습니다. 실제 배포에서는 사용자가 Editor에서 지정한 <see cref="NodeConfig.MaxConcurrency"/>가
+    /// 이 기본값보다 우선합니다 — 이 멤버는 배포 정보를 찾을 수 없을 때의 대체값입니다.
+    /// </summary>
+    int MaxConcurrency => 1;
 }

@@ -107,6 +107,26 @@
       MaxHopCount 기본값 1000 확인, RouteAsync가 HopCount를 1씩 증가시키는지, 임계값 이상이면 차단+
       LoopGuardTrips 기록, A↔B 순환 Wire의 실제 재귀 체인이 무한루프/StackOverflow 없이 종료되는지,
       임계값 미만이면 정상 전달되는지.
+
+    Step: RT-06 (03번 개발 Step맵.html, Phase 2)
+    - NodeExecutionGate.cs 신규 추가(05번 탭 카드3 원본을 별도 파일로 그대로 분리) — 노드 인스턴스별
+      SemaphoreSlim을 Dictionary로 관리, GetGate(id, maxConcurrency)/RemoveGate(id) 2개 멤버. FlowEngine의
+      DispatchOneAsync가 대상 노드의 OnInputAsync 호출 전에 이 게이트를 통과하도록 async Task로 전환
+      (기존 3항 연산자 식 본문 → try/finally). 착수 중 발견한 공백 3건: ① 03번 Step맵 RT-06의 refcell도
+      RT-04b/RT-05와 같은 유형으로 "2번 탭" 오기 — "5번 탭 카드 3"으로 정정. ② 카드3 원본은 게이트 키로
+      IFlowNode.Id를 쓰지만 RG-01 전까지 신뢰 불가(RT-01b부터 이어진 원칙) — DispatchOneAsync가 이미 아는
+      안정적인 wire.TargetNodeId(NodeConfig.Id)로 대체. ③ 카드3 원본은 node.MaxConcurrency(IFlowNode 기본
+      구현 멤버)만 참조하지만, NodeConfig.MaxConcurrency(CT-02b부터 있던 필드, "IFlowNode.MaxConcurrency
+      기본값과 동일 의미"라고 자체 명시)가 사용자가 Editor에서 실제 지정하는 값이라 우선순위가 높아야
+      함(RT-04b의 OutputDispatch 우선순위 결정과 동일한 판단) — _currentFlow.Nodes 조회로 우선 사용, 못
+      찾으면 IFlowNode.MaxConcurrency로 대체. 추가로 재배포 시 MaxConcurrency가 바뀌어도 기존 게이트가
+      낡은 상한을 유지하는 공백을 발견해, DeployAsync가 노드를 닫을 때(재시작·삭제 대상 모두)
+      NodeExecutionGate.RemoveGate도 함께 호출하도록 신규 처리. src\Interfaces\IFlowNode.cs(Contracts)에
+      MaxConcurrency 기본 구현 멤버(=> 1) 추가(CT-04a 시점부터 "RT-06에서 추가 예정"이라고 예고된 항목).
+      test\NodeSharp.Tests\FlowEngineConcurrencyGateTests.cs 신규 작성(5건) — MaxConcurrency=2인 노드에
+      3건 동시 요청 시 3번째가 대기하는지(완료 기준 직접 검증), MaxConcurrency 미지정 시 기본값 1로
+      순차 실행되는지, NodeExecutionGate의 동일 Id 재요청 시 인스턴스 재사용, RemoveGate 이후 새 인스턴스
+      생성, MaxConcurrency 0 이하도 최소 1로 보정되는지.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
