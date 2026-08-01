@@ -77,6 +77,19 @@
       Clone 격리, Wire 불일치 시 무시, 배포 전 호출 시 무해, MissingNode 대상 시 무해, PassThroughNode
       콜백 호출 자체가 예외 없이 동작하는지 확인(단, 노드 자기 Id 기반 Wire 연쇄 매칭은 IFlowNode.Id가
       아직 NodeConfig.Id와 동기화되지 않아(RG-01 대기, RT-01a Ver History 참고) 이 Step 범위 밖으로 명시).
+
+    Step: RT-04b (03번 개발 Step맵.html, Phase 2)
+    - FlowEngine.RouteAsync를 Fan-out 순차/병렬 하이브리드로 확장(05번 탭 카드1 원본) — 발신 노드의
+      NodeConfig.OutputDispatch가 Parallel이면 Task.WhenAll로 전체 대상 동시 전달, 기본값 Sequential이면
+      Wire 순서대로 하나씩 await. 각 대상 전달은 신규 사설 DispatchOneAsync(msg.Clone() 격리)로 통일.
+      착수 중 발견한 공백 2건: ① 03번 Step맵 RT-04b의 refcell이 "2번 탭"으로 오기돼 있었으나 실제
+      DispatchMode 기반 RouteAsync 확장 코드는 5번 탭(동작모델) 카드1 — grep으로 원문 위치 확인 후
+      직접 정정(RT-02b refcell 정정과 동일한 처리 원칙). ② 카드1 원본의 `fromNode.Config.OutputDispatch`는
+      IFlowNode(CT-04a 확정)에 없는 Config 프로퍼티를 전제 — 대신 RT-03부터 있는 _currentFlow.Nodes에서
+      fromNodeId로 NodeConfig를 찾아 OutputDispatch를 읽도록 구현(찾지 못하면 DispatchMode.Sequential
+      기본값). test\NodeSharp.Tests\FlowEngineFanOutTests.cs 신규 작성(4건 + Theory 2케이스) — Sequential
+      순서 보장, Parallel 전체 도달, 분기마다 다른 Msg 인스턴스로 Payload 변경 격리(Sequential/Parallel
+      각각), OutputDispatch 미지정 시 기본값 Sequential 동작 확인.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

@@ -10,12 +10,12 @@ namespace NodeSharp.Runtime;
 /// <see cref="CreateInstance"/>(<c>RT-01a</c>), Full 모드 <see cref="DeployAsync(FlowDefinition, CancellationToken)"/>(<c>RT-01b</c>),
 /// <see cref="MissingNode"/> 대체(<c>RT-02a</c>), CreateInstance/OnStartAsync 두 단계 전체 예외 격리
 /// (<c>RT-02b</c>), <see cref="DeployMode"/> 4종에 따른 부분 재배포(<c>RT-03</c>), 1:1 Wire 메시지 전달
-/// (<see cref="RouteAsync"/>, <c>RT-04a</c>)까지 있습니다. 출력 하나가 여러 Wire로 나가는 Fan-out
-/// (<c>RT-04b</c>), 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<c>RT-06</c>) 등은
-/// 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
+/// (<see cref="RouteAsync"/>, <c>RT-04a</c>), 출력 하나가 여러 Wire로 나가는 Fan-out 순차/병렬 하이브리드
+/// (<c>RT-04b</c>)까지 있습니다. 순환 구조 hop-count 안전장치(<c>RT-05</c>), 노드별 동시성 제한(<c>RT-06</c>)
+/// 등은 아직 없습니다("뼈대 우선, 확장" 원칙, 03번 Step맵 카드1).
 /// 설계 근거: 02번 문서 2번 탭 카드 4·카드 9(정식 기준본)·카드 10(FlowDefinition/NodeConfig 정식 선언),
 /// 3번 탭 카드 3(노드 생명주기 시퀀스)·카드 4(메시지 파이프라인 시퀀스)·카드 5(배포 모드 세분화)·
-/// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부).
+/// 카드 6(배포 예외 격리 — <c>BuildContext</c> 참조부), 5번 탭 카드 1(Fan-out 순차/병렬 하이브리드).
 /// </summary>
 /// <remarks>
 /// <see cref="_registry"/>가 실제 인스턴스 생성을 담당합니다(<c>NodeSharp.Registry.NodeTypeRegistry</c>,
@@ -117,6 +117,28 @@ namespace NodeSharp.Runtime;
 /// <see cref="FlowEngine.RouteAsync"/>로 실제 위임합니다(더 이상 무동작이 아님) — <c>SetStatus</c>만
 /// <c>RT-07</c> EventBus 연동 전까지 계속 무동작이라 클래스 이름은 그대로 유지했습니다.
 /// </para>
+/// <para>
+/// (★ RT-04b) <see cref="RouteAsync"/>는 05번 탭(동작모델) 카드1 원본 스니펫대로 <see cref="NodeConfig.OutputDispatch"/>가
+/// <c>DispatchMode.Parallel</c>이면 <c>Task.WhenAll</c>로 모든 대상에 동시 전달하고, 기본값
+/// <c>Sequential</c>이면 Wire 순서대로 하나씩 <c>await</c>합니다(대상별 <c>OnInputAsync</c>는 여전히
+/// <see cref="DispatchOneAsync"/>로 위임, 각 대상은 <c>msg.Clone()</c>을 받아 분기 간 데이터가 격리됨 —
+/// <c>RT-04a</c>와 동일한 격리 원칙). 착수 중 발견한 공백과 그 처리:
+/// <list type="bullet">
+/// <item><b>refcell 오기</b> — 03번 Step맵 <c>RT-04b</c> 행의 설계 근거 칸이 "2번 탭"으로 돼 있었지만,
+/// <c>DispatchMode</c> 기반 <c>RouteAsync</c> 확장 코드의 실제 위치는 5번 탭(동작모델) 카드1입니다(grep으로
+/// 원문 위치 확인). 이미 확정된 카드 번호를 가리키는 참조 오류라 사용자 확인 없이 정정(<c>RT-02b</c>
+/// refcell 정정과 동일한 처리 원칙).</item>
+/// <item><b><c>fromNode.Config.OutputDispatch</c> — <see cref="IFlowNode"/>에 없는 멤버</b> — 카드1 원본
+/// 스니펫은 <c>_nodes[fromNodeId].Config.OutputDispatch</c>로 발신 노드의 <c>DispatchMode</c>를 읽지만,
+/// <see cref="IFlowNode"/>(<c>CT-04a</c>로 이미 확정)에는 <c>Config</c> 프로퍼티가 없습니다 — 노드
+/// 인스턴스가 자신을 만든 <see cref="NodeConfig"/>를 들고 있지 않기 때문입니다(<c>RT-01a</c>에서
+/// <c>CreateInstance</c>가 <c>Name</c>만 동기화하고 나머지는 옮기지 않음). <see cref="IFlowNode"/>에
+/// 멤버를 추가하는 대신, <c>RT-03</c>부터 이미 있는 <see cref="_currentFlow"/>.Nodes에서
+/// <paramref name="fromNodeId"/>와 일치하는 <see cref="NodeConfig"/>를 찾아 <c>OutputDispatch</c>를
+/// 읽습니다(찾지 못하면 <c>DispatchMode.Sequential</c> 기본값 — 발신 노드 설정을 알 수 없는 경우
+/// Node-RED 기본 동작과 동일하게 안전한 쪽으로 처리).</item>
+/// </list>
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -149,6 +171,25 @@ namespace NodeSharp.Runtime;
 ///     Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n3", TargetPort: 0) });
 /// await engine.DeployAsync(wired, DeployMode.Full, CancellationToken.None);
 /// await engine.RouteAsync("n1", 0, new Msg { Payload = 42 }, CancellationToken.None);   // n3가 42를 받음
+///
+/// // RT-04b — n1의 0번 출력이 n4/n5 두 곳으로 Fan-out. OutputDispatch가 기본값(Sequential)이면
+/// // n4→n5 순서로 하나씩, Parallel이면 Task.WhenAll로 동시에 전달된다 — 어느 쪽이든 각자 다른
+/// // Msg 인스턴스를 받아 한쪽에서 Payload를 바꿔도 다른 쪽에 영향이 없다.
+/// var fanOutCfg = cfg with { OutputDispatch = DispatchMode.Parallel };   // n1을 병렬 분기로 전환
+/// var fanOutFlow = new FlowDefinition("f3", "Fan-out 테스트",
+///     Nodes: new[]
+///     {
+///         fanOutCfg,
+///         new NodeConfig("n4", "debug", "알림1", "f1", new Dictionary&lt;string, object?&gt;()),
+///         new NodeConfig("n5", "debug", "알림2", "f1", new Dictionary&lt;string, object?&gt;()),
+///     },
+///     Wires: new[]
+///     {
+///         new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n4", TargetPort: 0),
+///         new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n5", TargetPort: 0),
+///     });
+/// await engine.DeployAsync(fanOutFlow, DeployMode.Full, CancellationToken.None);
+/// await engine.RouteAsync("n1", 0, new Msg { Payload = "알람" }, CancellationToken.None);   // n4·n5 동시 수신
 /// </code>
 /// </example>
 public sealed class FlowEngine
@@ -312,27 +353,55 @@ public sealed class FlowEngine
     }
 
     /// <summary>
-    /// (★ RT-04a) <paramref name="fromNodeId"/>의 <paramref name="outputPort"/>번 출력에 연결된 모든
-    /// Wire(직전 배포 <see cref="_currentFlow"/>.Wires 기준)를 따라 <paramref name="msg"/>를 대상 노드의
-    /// <c>OnInputAsync</c>로 전달합니다(02번 문서 2번 탭 카드4 원본). 대상마다 <c>msg.Clone()</c>으로 깊은
-    /// 복제를 전달해 한 노드가 <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭
-    /// 카드4 데이터 격리 원칙). 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상
-    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나
-    /// 재배포로 제거된 경우) 조용히 건너뜁니다. 이 Step은 Wire 개수와 무관하게 순차로 처리합니다 —
-    /// <see cref="NodeConfig.OutputDispatch"/> 기반 병렬 분기는 <c>RT-04b</c> 몫입니다.
+    /// <paramref name="fromNodeId"/>의 <paramref name="outputPort"/>번 출력에 연결된 모든 Wire(직전 배포
+    /// <see cref="_currentFlow"/>.Wires 기준)를 따라 <paramref name="msg"/>를 대상 노드의 <c>OnInputAsync</c>로
+    /// 전달합니다(02번 문서 2번 탭 카드4 원본 + 5번 탭 카드1 Fan-out 확장, <c>RT-04a/RT-04b</c>). 발신
+    /// 노드의 <see cref="NodeConfig.OutputDispatch"/>가 <c>Parallel</c>이면 모든 대상에 <c>Task.WhenAll</c>로
+    /// 동시 전달(순서 보장 없음), 기본값 <c>Sequential</c>이면 Wire 순서대로 하나씩 <c>await</c>합니다.
+    /// 대상마다 <see cref="DispatchOneAsync"/>가 <c>msg.Clone()</c>으로 깊은 복제를 전달해 한 노드가
+    /// <c>Payload</c>를 바꿔도 다른 분기에 영향이 없습니다(2번 탭 카드2·3번 탭 카드4 데이터 격리 원칙).
+    /// 아직 배포된 적이 없거나(<see cref="_currentFlow"/>가 <c>null</c>) 대상 <see cref="NodeConfig.Id"/>가
+    /// <see cref="Nodes"/>에 없으면(예: <see cref="MissingNode"/>로 남거나 재배포로 제거된 경우) 해당
+    /// 대상만 조용히 건너뜁니다.
     /// </summary>
     public async Task RouteAsync(string fromNodeId, int outputPort, Msg msg, CancellationToken ct)
     {
         if (_currentFlow is null) return;   // 아직 배포된 적 없음 — 참조할 Wire 정보가 없음
 
-        foreach (var wire in _currentFlow.Wires)
-        {
-            if (wire.SourceNodeId != fromNodeId || wire.SourcePort != outputPort) continue;
-            if (!_nodes.TryGetValue(wire.TargetNodeId, out var target)) continue;   // 제거/미배포 노드는 스킵
+        var targets = _currentFlow.Wires
+            .Where(w => w.SourceNodeId == fromNodeId && w.SourcePort == outputPort)
+            .ToList();
+        if (targets.Count == 0) return;
 
-            await target.OnInputAsync(msg.Clone(), BuildContext(target), ct);
+        // ★ RT-04b: IFlowNode에는 자신을 만든 NodeConfig에 대한 접근 수단이 없어(위 remarks 참고),
+        //   발신 노드의 OutputDispatch는 _currentFlow.Nodes에서 별도로 조회한다. 찾지 못하면(예:
+        //   RouteAsync를 배포되지 않은 Id로 직접 호출한 테스트 상황) Sequential로 안전하게 처리한다.
+        var dispatch = _currentFlow.Nodes.FirstOrDefault(n => n.Id == fromNodeId)?.OutputDispatch ?? DispatchMode.Sequential;
+
+        if (dispatch == DispatchMode.Parallel)
+        {
+            await Task.WhenAll(targets.Select(w => DispatchOneAsync(w, msg, ct)));
+        }
+        else
+        {
+            foreach (var wire in targets)
+            {
+                await DispatchOneAsync(wire, msg, ct);
+            }
         }
     }
+
+    /// <summary>
+    /// (★ RT-04b) <paramref name="wire"/>의 대상 노드 하나에게 <paramref name="msg"/>를 <c>Clone()</c>해
+    /// 전달합니다(05번 탭 카드1 <c>DispatchOneAsync</c> 원본과 동일) — <see cref="RouteAsync"/>의
+    /// Sequential/Parallel 두 경로가 모두 이 메서드로 각 대상 전달을 위임해, 분기 방식과 무관하게
+    /// "대상마다 독립된 <see cref="Msg"/> 인스턴스를 받는다"는 격리 규칙이 항상 지켜집니다. 대상
+    /// <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면 조용히 완료합니다.
+    /// </summary>
+    private Task DispatchOneAsync(Wire wire, Msg msg, CancellationToken ct) =>
+        _nodes.TryGetValue(wire.TargetNodeId, out var target)
+            ? target.OnInputAsync(msg.Clone(), BuildContext(target), ct)
+            : Task.CompletedTask;
 
     /// <summary>
     /// (★ RT-03) <paramref name="a"/>와 <paramref name="b"/>가 "내용상 같은 설정"인지 필드 단위로 비교합니다.
