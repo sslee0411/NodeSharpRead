@@ -49,6 +49,20 @@
       Id 동기화를 RG-01로 미룬 것과 동일 사유) — DeployAsync 내부 created 리스트를 (CfgId, Node) 튜플
       리스트로 바꿔 안정적인 Id를 함께 들고 다니도록 수정. NodeErrorEvent 발행은 여전히 EventBus(RT-07)
       없이 불가능해 범위 밖.
+
+    Step: RT-03 (03번 개발 Step맵.html, Phase 2)
+    - FlowEngine.cs에 DeployAsync(FlowDefinition, DeployMode, CancellationToken) 오버로드 추가(2번 탭
+      카드4·9, 3번 탭 카드5) — Full/ModifiedFlows/ModifiedNodes/RestartFlows 4종에 따라 재배포 범위를
+      좁힘. 기존 2-인자 DeployAsync(RT-01b)는 DeployMode.Full로 위임하는 얇은 래퍼로 남겨 하위 호환 유지.
+      착수 중 발견한 공백과 처리: (1) 카드5 의사코드의 DiffNodeConfigs는 호출부만 있고 정식 선언이
+      없어, NodeConfig.cs remarks(record 기본 ==가 Properties 딕셔너리를 참조 비교하므로 필드 단위 비교
+      필요)를 근거로 NodeConfigsDiffer(사설 정적 메서드)를 신규 구현. (2) ChangedFlowIds도 호출부만
+      있어, 직전 배포(_currentFlow, 신규 필드)와 이번 flow를 노드 단위로 비교해 "추가/변경/삭제된 노드가
+      속한 FlowId 집합"으로 정의. (3) 카드5 의사코드가 다루지 않는 "새 FlowDefinition에서 사라진 노드"는
+      재시작 대상 범위 안이면 OnCloseAsync 호출 후 Nodes에서 제거하도록 신규 처리(재생성할 새 설정이
+      없으므로 재생성은 하지 않음). FailedNodeIds는 매 배포마다 이번 배포의 재시작 대상 기준으로 다시
+      계산(Clear 후 재기록)하도록 정정 — 부분 재배포가 생기기 전(RT-02b)에는 배포가 항상 1회성이라
+      드러나지 않았던 동작.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

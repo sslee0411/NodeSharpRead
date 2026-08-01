@@ -104,6 +104,12 @@
       IFlowNode 인스턴스를 만들 때 의존하는 계약 — 폴더 구조(1번 탭)가 애초에 Contracts 소속으로
       명시. CreateInstance(NodeConfig) 1개 멤버만 정의(RT-01a 범위 한정, INodeTypeDescriptor.Factory
       기반 Id 동기화는 RG-01에서 다룰 예정이라 지금은 다루지 않음).
+
+    Step: RT-03 (03번 개발 Step맵.html, Phase 2 — Runtime FlowEngine.DeployAsync 부분 재배포와 짝을 이루는 Enum)
+    - src\Enums\DeployMode.cs 기록 보완(3번 탭 카드5). Full/ModifiedFlows/ModifiedNodes/RestartFlows
+      4종은 이 Step 착수 이전에 이미 파일로 존재했으나(값 정의·XML 주석 모두 카드5와 일치, 코드 변경
+      없음) 어느 Step 이력에도 기록되어 있지 않던 공백이 있었다 — 이 Step에서 FlowEngine.DeployAsync
+      실제 구현(NodeSharp.Runtime.csproj RT-03 참고)과 짝지어 이력을 정식으로 남긴다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
