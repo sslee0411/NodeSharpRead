@@ -240,6 +240,22 @@
       호출(완료 기준 직접 검증), 서로 다른 id는 독립적으로 관리, 등록되지 않은 id를 Release해도 예외
       없이 무시, 재해제해도 StopAsync가 다시 호출되지 않음, 같은 id로 동시에 20번 Acquire해도 factory는
       정확히 1번만 실행(레이스 컨디션 수정 직접 검증)).
+
+    Step: RT-10b (03번 개발 Step맵.html, Phase 2 — 재배포-싱글턴 서비스 관계 검증)
+    - 이 Step은 신규 프로덕션 .cs가 없다 — RT-10에서 이미 완성한 SharedResourceManager가 02번 문서 2번
+      탭 카드3 시퀀스 다이어그램("재배포되는 노드가 ReleaseAsync 후 다시 AcquireAsync해도, 다른 노드가
+      계속 참조 중이면 StopAsync는 한 번도 안 불리고 TcpListener는 끊기지 않는다")대로 실제 재배포
+      경로(RT-03의 DeployMode.ModifiedFlows/ModifiedNodes)에서도 동작하는지 검증만 하는 Step. NodeContext
+      (RT-09b)에 아직 Shared 프로퍼티가 배선되지 않아(RT-10 주석 참고, 범위 밖으로 이미 명시된 사항) 실제
+      노드 대신 test\NodeSharp.Tests\RedeployVsSharedResourceTests.cs 안의 사설 FakeTcpInNode(IFlowNode)가
+      정적 필드로 SharedResourceManager/가짜 서버(FakeSharedServer, ISharedServiceNode)를 직접 캡처해
+      OnStartAsync/OnCloseAsync에서 AcquireAsync/ReleaseAsync를 호출하는 방식으로 카드2 TcpInNode 예제의
+      배선을 재현했다. 신규 작성(3건): ①ModifiedFlows로 변경된 Flow 탭만 재시작돼도 다른 탭의 노드가
+      계속 참조 중이면 StopCount==0 유지(완료 기준 직접 검증). ②ModifiedNodes로 한 노드만 재시작돼도
+      같은 탭의 다른 노드가 참조 중이면 StopCount==0. ③대조군 — 참조 노드가 전부 삭제되면 StopCount==1
+      (참조 카운트가 실제로 0에 도달했을 때만 해제됨을 함께 증명, RT-10 테스트와 다른 각도의 재확인).
+      발견한 공백 없음 — RT-10에서 구현한 SharedResourceManager/ISharedServiceNode 조합이 설계 그대로
+      재배포 경로에서도 정확히 동작함을 확인.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
