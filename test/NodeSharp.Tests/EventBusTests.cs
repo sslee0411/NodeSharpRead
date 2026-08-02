@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Runtime;
 using NodeSharp.Util.Messaging;
@@ -90,8 +91,14 @@ public class EventBusTests
     [Fact]
     public async Task PublishAsync는_비동기_핸들러가_모두_끝날_때까지_기다린다()
     {
+        // 버그 수정(2026-08-02): completedOrder를 List<int>로 두면, Task.Delay(30)/Task.Delay(10)
+        // 두 핸들러의 완료 콜백이 서로 다른 스레드풀 스레드에서 거의 동시에 Add를 호출할 수 있는데
+        // List<T>는 스레드 안전하지 않아 드물게 한쪽 Add가 씹혀 Count가 2가 아니라 1로 나오는
+        // 간헐적 실패가 있었다(EventBus.PublishAsync 자체는 Task.WhenAll로 두 핸들러를 정확히 다
+        // 기다리는 것을 코드로 확인 — 프로덕션 버그가 아니라 이 테스트의 집계 방식 버그). 여러
+        // 스레드에서 동시에 Add해도 안전한 ConcurrentBag<int>로 교체해 수정.
         var bus = new EventBus();
-        var completedOrder = new List<int>();
+        var completedOrder = new ConcurrentBag<int>();
 
         bus.SubscribeAsync<PingEvent>(async _ =>
         {

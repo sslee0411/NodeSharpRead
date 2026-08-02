@@ -11,7 +11,9 @@ namespace NodeSharp.Tests;
 /// <summary>
 /// <see cref="RunnerHealthState"/>·<see cref="RunnerHealthSnapshot"/>(RN-04a)에 대한 테스트입니다.
 /// 완료 기준(03번 Step맵 RN-04a): "/health 호출 시 Uptime·배포 노드 수·실패 노드 목록 3개 값이
-/// JSON으로 반환되는지 확인".
+/// JSON으로 반환되는지 확인". (RN-05a) RecordClockDrift가 Snapshot에 반영되는지 검증하는
+/// 테스트 1개를 추가했습니다 — 실제 w32tm 읽기 자체는 ClockDriftMonitorTests에서 가짜 reader로
+/// 다루므로 여기서는 RunnerHealthState 쪽 배선만 확인합니다.
 /// </summary>
 public class RunnerHealthStateTests
 {
@@ -93,5 +95,20 @@ public class RunnerHealthStateTests
         Assert.Contains("DeployedNodeCount", json);
         Assert.Contains("LastDeployAt", json);
         Assert.Contains("FailedNodeIds", json);
+    }
+
+    [Fact]
+    public void 완료_기준_직접_검증__RecordClockDrift_후_Snapshot의_ClockDrift가_채워진다()
+    {
+        var state = new RunnerHealthState();
+        Assert.Null(state.Snapshot().ClockDrift);   // 확인 전에는 null
+
+        var drift = new ClockDriftStatus(OffsetSeconds: 2.5, Level: ClockDriftLevel.Warning, CheckedAt: DateTime.UtcNow);
+        state.RecordClockDrift(drift);
+
+        var snapshot = state.Snapshot();
+        Assert.NotNull(snapshot.ClockDrift);
+        Assert.Equal(ClockDriftLevel.Warning, snapshot.ClockDrift!.Level);
+        Assert.Equal(2.5, snapshot.ClockDrift!.OffsetSeconds);
     }
 }

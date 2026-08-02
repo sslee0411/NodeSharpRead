@@ -96,6 +96,38 @@
       후 Snapshot이 실제 FlowEngine의 배포 노드 수·실패 노드 목록을 반영, JsonSerializer로
       직렬화한 결과에 UptimeSeconds/DeployedNodeCount/LastDeployAt/FailedNodeIds 속성 이름이
       모두 포함돼 "JSON으로 반환되는지" 기준을 검증).
+
+    Step: RN-05a (03번 개발 Step맵.html, Phase 4 — ClockDriftMonitor)
+    - 완료 기준("로컬 시각을 인위적으로 어긋나게 한 뒤 차이를 감지해 /health 값에 반영하는지
+      확인")을 검토하다, 실제 오프셋을 읽는 w32tm 파싱은 Windows 전용이라 이 개발 환경(Linux
+      샌드박스, w32tm 자체가 없음)에서 자동 검증이 불가능함을 발견 — AskUserQuestion으로 확인,
+      "판정 로직만 xUnit, 실제 w32tm은 사용자 수동 확인(추천)" 선택. NodeTypeRegistry.LoadPlugins의
+      PluginLoader 주입과 동일한 패턴으로 오프셋 reader를 주입 가능하게 설계.
+    - src\NodeSharp.Runner\Health\ClockDriftLevel.cs 신규 — Ok/Warning/Critical 3단계 enum.
+    - src\NodeSharp.Runner\Health\ClockDriftStatus.cs 신규 — OffsetSeconds/Level/CheckedAt
+      3개 필드 레코드.
+    - src\NodeSharp.Runner\Health\ClockDriftMonitor.cs 신규 — CheckAsync(ct)가 주입된
+      offsetReader(생략 시 기본값인 w32tm /query /status 파싱)로 오프셋을 얻어 절대값 1초 미만
+      Ok/5초 미만 Warning/그 이상 Critical로 분류(02번 문서 7번 탭 카드12 그대로). w32tm 파싱은
+      "Phase Offset: N.NNNNNNNs" 패턴을 정규식으로 찾고, 못 찾으면 InvalidOperationException을
+      던져 Worker의 주기 루프에서 격리 처리하도록 함 — 정확한 w32tm 출력 형식은 Windows 버전에
+      따라 다를 수 있어 사용자의 실제 확인이 필요함을 클래스 주석에 명시.
+    - src\NodeSharp.Runner\Health\RunnerHealthSnapshot.cs 수정 — ClockDriftStatus? ClockDrift
+      필드(기본값 null) 추가.
+    - src\NodeSharp.Runner\Health\RunnerHealthState.cs 수정 — RecordClockDrift(status) 메서드
+      추가, Snapshot()이 최신 ClockDrift 값을 포함하도록 갱신.
+    - src\NodeSharp.Runner\Worker.cs 수정 — 생성자가 ClockDriftMonitor?도 선택적으로 주입받도록
+      확장(생략 시 실제 w32tm을 읽는 기본 인스턴스). ExecuteAsync가 배포 시도 이후 취소될 때까지
+      5분 주기로 CheckAsync → RecordClockDrift를 반복(StartupSequencer의 "단계별 격리" 원칙과
+      동일하게, 한 번의 확인 실패가 전체 루프를 멈추지 않도록 try/catch로 감쌈).
+    - test\NodeSharp.Tests\RunnerWorkerTests.cs 수정 — Worker의 새 생성자 파라미터에 맞춰 두
+      테스트 모두 가짜 offsetReader를 가진 ClockDriftMonitor를 함께 준비(실제 w32tm.exe 호출
+      없이 빠르고 결정적으로 테스트가 끝나도록).
+    - test\NodeSharp.Tests\ClockDriftMonitorTests.cs 신규 — 판정 경계값 이론 테스트 9개(0.0/0.9/
+      -0.9 Ok, 1.0/3.0/-4.9 Warning, 5.0/10.0/-100.0 Critical) + CheckedAt이 확인 시각 UTC로
+      채워지는지 테스트 1개.
+    - test\NodeSharp.Tests\RunnerHealthStateTests.cs에 테스트 1개 추가 — RecordClockDrift 호출
+      전에는 Snapshot().ClockDrift가 null, 호출 후에는 그 값을 그대로 반영하는지 확인.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
