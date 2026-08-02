@@ -67,6 +67,35 @@
       status-ping 1개를 배포하면 콘솔에 상태 로그 출력, flows.json 단계 실패 시 배포 시도 안 함,
       flows.json 단계가 결과 목록에 아예 없을 때도 배포 시도 안 함) 작성 — 더미 노드는 테스트
       파일 안에서만 정의(private 중첩 클래스)하고 production 코드에는 포함하지 않음.
+
+    Step: RN-04a (03번 개발 Step맵.html, Phase 4 — Kestrel /health 엔드포인트, 기본 3값)
+    - 원래 RN-04 완료 기준(Uptime/배포 노드 수/활성 알람/실패 노드 목록 4개)을 검토하다 활성 알람
+      (ActiveAlarmCount)은 AlarmStateManager(ED-D07a, Phase 9)가 있어야 나오는 값인데 아직
+      미착수임을 발견 — 사용자 확인을 거쳐 RN-04a(지금 구현 가능한 3값)/RN-04b(ActiveAlarmCount,
+      ED-D07a 완료 후)로 분리(RN-01→RN-01a/RN-01b 분리와 동일한 판단).
+    - src\NodeSharp.Runner\Health\RunnerHealthSnapshot.cs 신규 — Status/UptimeSeconds/
+      DeployedNodeCount/LastDeployAt/FailedNodeIds 5개 필드 레코드(Status는 이 Step에서 항상
+      "Healthy"). src\NodeSharp.Runner\Health\RunnerHealthState.cs 신규 — DI 싱글턴, 생성 시각을
+      StartedAt으로 기록, Worker가 배포 성공 시 RecordDeploy(engine)을 호출하면 그 FlowEngine
+      기준으로 Snapshot()이 값을 계산(Nodes.Count/FailedNodeIds는 RT-01a/RT-02b가 이미 제공).
+    - src\NodeSharp.Runner\Worker.cs 수정 — 생성자에 RunnerHealthState를 주입받고, FlowDeployer가
+      배포에 성공하면(engine이 null이 아니면) healthState.RecordDeploy(engine) 호출.
+    - src\NodeSharp.Runner\Program.cs 수정 — 설계 근거(02번 문서 7번 탭 카드11 app.MapGet("/health",
+      ...))가 Kestrel 미니멀 API를 쓰므로, RN-B0이 선택한 Host.CreateApplicationBuilder 대신
+      WebApplication.CreateBuilder로 전환(WebApplication은 Generic Host의 상위 호환이라
+      AddHostedService&lt;Worker&gt;() 등록은 그대로 유지되고 Kestrel만 추가된 것이라 Worker/
+      StartupSequencer/FlowDeployer의 기존 동작은 바뀌지 않음). 아래 FrameworkReference로
+      Sdk=Microsoft.NET.Sdk를 유지한 채(Sdk.Web 전환 없이) ASP.NET Core API만 쓸 수 있게 함.
+      /health는 로컬호스트 전용 포트(기본 47500, 카드11 근거)로만 바인딩.
+    - test\NodeSharp.Tests\RunnerWorkerTests.cs도 Worker 생성자 변경에 맞춰 함께 수정
+      (new Worker() → new Worker(new RunnerHealthState()), DI 테스트에는
+      AddSingleton&lt;RunnerHealthState&gt;() 추가) — 이미 확인된 RN-B0 테스트의 로직·Assert
+      자체는 바꾸지 않고 생성자 시그니처 변경만 반영.
+    - test\NodeSharp.Tests\RunnerHealthStateTests.cs 신규 — 테스트 3개(완료 기준 직접 검증: 배포
+      전 Snapshot은 DeployedNodeCount=0·LastDeployAt=null·FailedNodeIds 빈 목록, RecordDeploy
+      후 Snapshot이 실제 FlowEngine의 배포 노드 수·실패 노드 목록을 반영, JsonSerializer로
+      직렬화한 결과에 UptimeSeconds/DeployedNodeCount/LastDeployAt/FailedNodeIds 속성 이름이
+      모두 포함돼 "JSON으로 반환되는지" 기준을 검증).
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -81,6 +110,13 @@
     <!-- RN-B0 — Generic Host(Host.CreateApplicationBuilder/BackgroundService)로 DI 컨테이너·기동/
          종료 수명주기를 구성. RN-03a(Windows Service 설치)가 그대로 얹을 수 있는 .NET 표준 패턴. -->
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- RN-04a — Sdk=Microsoft.NET.Sdk(Sdk.Web 아님)를 유지한 채 WebApplication/Kestrel 미니멀
+         API(app.MapGet)를 쓰기 위한 ASP.NET Core 공유 프레임워크 참조. Worker Service에 헬스체크
+         엔드포인트를 추가하는 표준 방식(Microsoft 공식 가이드)이라 Sdk 전환 없이 이 한 줄만 추가. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
