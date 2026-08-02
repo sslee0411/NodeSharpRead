@@ -47,6 +47,10 @@
     <ProjectReference Include="..\..\src\NodeSharp.Util\NodeSharp.Util.csproj" />
     <!-- RT-01a(03번 개발 Step맵.html) — FlowEngine(NodeSharp.Runtime 최초 코드)을 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\src\NodeSharp.Runtime\NodeSharp.Runtime.csproj" />
+    <!-- RN-B0(03번 개발 Step맵.html) — NodeSharp.Runner의 Worker(BackgroundService)를 테스트하기 위해 추가.
+         Runner는 OutputType=Exe(콘솔/Worker Service)지만 ProjectReference로 그 안의 public 타입을
+         그대로 테스트할 수 있음(Program.cs 최상위 문의 진입점은 호출하지 않고 Worker 클래스만 사용). -->
+    <ProjectReference Include="..\..\src\NodeSharp.Runner\NodeSharp.Runner.csproj" />
   </ItemGroup>
 
 </Project>
