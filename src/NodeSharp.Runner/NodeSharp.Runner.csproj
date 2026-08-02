@@ -25,6 +25,28 @@
       Worker(BackgroundService)는 이 Step에서는 빈 뼈대(ExecuteAsync가 아무 일도 안 함)만 두고,
       실제 기동 시퀀스(device.json→sequences.json→flows.json→FlowEngine.DeployAsync, 02번 문서
       3번 탭 카드8)는 RN-01에서 이 클래스 안에 채운다.
+
+    Step: RN-01a (03번 개발 Step맵.html, Phase 4 — RN-01을 사용자 확인으로 RN-01a/RN-01b 2개로 분리)
+    - 설계 검토 중 발견한 이중 공백: ① RN-01 원래 완료 기준 중 "flows.json 손상 시 다세대 백업으로
+      자동 폴백"은 OP-09(Phase 14)에 의존하는데 OP-09가 아직 미착수 — 이 부분을 RN-01b로 분리(OP-09
+      완료 후 착수). ② "로딩 순서를 바꾸면 TagRef 참조 실패가 재현되는지" 확인도 실제 IStructureService
+      구현체(device.json 로딩)가 있어야 하는데, 그 구현체는 Phase 9(ED-D01 구조 트리, ED-D03 device.json
+      저장)에서야 만들어져 지금은 존재하지 않음 — 사용자 확인을 거쳐 RN-01a 범위를 "로딩 순서 고정 +
+      파일별 장애 격리"로 좁히고, TagRef 검증은 Phase 9 이후로 명시적으로 미룸.
+    - src\NodeSharp.Runner\StartupStageResult.cs 신규 추가 — 파일 하나의 로딩 결과(FileName/Succeeded/
+      ErrorMessage) 레코드.
+    - src\NodeSharp.Runner\StartupSequencer.cs 신규 추가 — device.json→sequences.json→flows.json→
+      dashboard.json을 항상 고정 순서로 로딩(02번 문서 3번 탭 카드8 "참조 대상 → 참조하는 쪽" 원칙).
+      각 단계는 개별 try/catch로 격리해, 파일 하나가 없거나 손상돼도 예외를 밖으로 던지지 않고 다음
+      단계를 계속 진행한다(카드8 마지막 줄 원칙). device.json 단계는 아직 실제 구조 트리를 파싱하지
+      않고 파일 존재 여부만 확인(위 공백 ② 근거). sequences.json/flows.json/dashboard.json은
+      System.Text.Json으로 각각 SequenceDefinition/FlowDefinition/DashboardDefinition으로 역직렬화만
+      한다 — FlowEngine.DeployAsync 호출은 RN-02 범위(RN-02 desc: "RN-01이 읽은 flows.json으로
+      DeployAsync 호출")라 이 Step에서는 하지 않음. RT-11 ConfigMigration 연동도 실제 저장 포맷이
+      RN-02 연동 시점에 확정될 예정이라 이번엔 연결하지 않음.
+      test\NodeSharp.Tests\StartupSequencerTests.cs에 테스트 4개(완료 기준 직접 검증: 고정 순서 로딩,
+      device.json 누락 시 나머지 3단계 격리 진행, flows.json 손상 시 dashboard.json 단계는 영향받지 않음,
+      전부 없어도 예외 없이 고정 순서 4개 결과 반환) 작성.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
