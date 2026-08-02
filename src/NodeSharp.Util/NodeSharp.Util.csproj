@@ -46,6 +46,29 @@
       새로 만들어 대응(현재는 `*`와 쉼표 목록만 지원, 범위·간격 문법은 범위 밖 — CT-03b의 BufFieldType
       최소 목록 후 확장 선례와 동일한 처리). 실제 IScheduler 어댑터 구현은 NodeSharp.Runtime.csproj
       RT-08 참고.
+
+    Step: RT-11 (03번 개발 Step맵.html, Phase 2 — 설정 파일 스키마 마이그레이션)
+    - src\Config\Migration\{MigrationRule,ConfigMigration}.cs 2개 추가 — 02번 문서 3번 탭 카드7
+      "설정 파일 스키마 마이그레이션(lssLib.Config 재사용)" 의사코드(FlowFileHeader/ConfigMigration.Apply/
+      BackupOriginal)를 근거로 구현. 착수 전 조사에서 발견한 공백: 카드7이 재사용을 전제하는
+      lssLib.Config의 Migration/ConfigMigration.cs·MigrationRule.cs가 dev-csharp 스킬 문서에 없고
+      (Config 모듈 자체가 스킬 범위 밖 — 스킬은 Binary/Extensions/Log/Utils/Messaging/Net/Sequence/
+      NetSequence/DB만 포함), GitHub 저장소(sslee0411/lssLib)도 이 개발 환경에서 접근할 수 없어(웹
+      조회 실패) 실제 원본 시그니처를 확인할 방법이 없었다(RT-09c의 "JsonWriteService" 공백과 동일한
+      유형) — AskUserQuestion으로 처리 방향을 확인, 사용자가 "직접 설계로 구현(추천)"을 선택해 원본
+      이름을 그대로 포팅하는 대신 의사코드의 동작 의도(버전 N→N+1 규칙을 체이닝, 규칙 없으면 실패로
+      표면화, 마이그레이션 전 원본 백업)만 살려 직접 설계했다. MigrationRule은 (FromVersion, ToVersion,
+      Transform: Func&lt;JObject,JObject&gt;) 레코드, ConfigMigration은 RegisterRule/Apply(rawJson,
+      fromVersion, toVersion)/MigrateIfNeeded(rawJson, header, backupPath)/BackupOriginal(path) 4개
+      멤버를 갖는 인스턴스 클래스(EventBus·AsyncScheduler와 동일하게 Instance 정적 싱글턴 + public
+      생성자 병행 — v1.91의 CS0122 교훈을 이번엔 처음부터 반영해 생성자를 애초부터 public으로 열어둠).
+      FlowFileHeader(SchemaVersion, SavedAt + CurrentSchemaVersion 상수)는 NodeSharp.Contracts.Models로
+      배치(NodeConfig.cs Step 주석 참고: 순수 데이터 모델은 Contracts 소속 원칙). NuGet
+      PackageReference Newtonsoft.Json 13.0.3 명시 추가(RT-09c와 동일 사유 — NodeSharp.Contracts가
+      이미 참조 중이지만 직접 쓰는 프로젝트에 명시). test\NodeSharp.Tests\ConfigMigrationTests.cs 신규
+      작성 — 실제 "v1 레거시 wires 인덱스 배열" 예시 JSON을 등록된 규칙으로 v2로 변환한 뒤
+      FlowDefinition으로 역직렬화해 FlowEngine.DeployAsync까지 성공하는 것을 확인(완료 기준 "정상
+      배포까지 이어지는지" 직접 검증) 포함 총 9건.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -54,6 +77,12 @@
     <RootNamespace>NodeSharp.Util</RootNamespace>
     <AssemblyName>NodeSharp.Util</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RT-11: Config\Migration\ConfigMigration.cs가 Newtonsoft.Json(JObject)을 직접 사용 —
+         NodeSharp.Contracts가 이미 참조 중인 것과 같은 버전으로 명시적으로도 추가(RT-09c와 동일 사유). -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
