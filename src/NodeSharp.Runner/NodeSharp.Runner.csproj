@@ -47,6 +47,26 @@
       test\NodeSharp.Tests\StartupSequencerTests.cs에 테스트 4개(완료 기준 직접 검증: 고정 순서 로딩,
       device.json 누락 시 나머지 3단계 격리 진행, flows.json 손상 시 dashboard.json 단계는 영향받지 않음,
       전부 없어도 예외 없이 고정 순서 4개 결과 반환) 작성.
+
+    Step: RN-02 (03번 개발 Step맵.html, Phase 4 — RN-01a로 확인만 하고 버려졌던 flows.json 내용을
+    실제로 배포)
+    - src\NodeSharp.Runner\NodeStatusConsoleLogger.cs 신규 추가 — IEventBus에 발행되는
+      NodeStatusEvent(NodeContext.SetStatus가 RT-09b부터 이미 발행 중)를 구독해 콘솔에 한 줄씩
+      Console.WriteLine으로 출력하는 얇은 구독자.
+    - src\NodeSharp.Runner\FlowDeployer.cs 신규 추가 — StartupSequencer(RN-01a)의 flows.json
+      단계가 성공했을 때만 파일을 한 번 더 읽어(RN-01a는 파싱 성공 여부만 확인하고 내용을 버리므로,
+      이미 확정된 그 API 시그니처를 바꾸지 않기 위해 이 클래스가 독립적으로 다시 읽음 — 약간의
+      중복이지만 확정 코드를 건드리지 않는 쪽을 택함) FlowEngine.DeployAsync(DeployMode.Full)를
+      호출하고 NodeStatusConsoleLogger를 EventBus에 연결한다. flows.json 단계가 없거나 실패했으면
+      아무 것도 하지 않고 null 반환.
+    - src\NodeSharp.Runner\Worker.cs 수정 — ExecuteAsync가 StartupSequencer → FlowDeployer 순으로
+      호출하도록 채움. 아직 실제 노드 타입(Inject/Function/Switch/Debug 등, Phase 7~8)이 없으므로
+      registry는 빈 NodeTypeRegistry만 생성해 넘김 — RG-02a/02b LoadPlugins 연동은 실제 노드
+      구현체가 생긴 뒤 이어서 연결할 예정.
+      test\NodeSharp.Tests\FlowDeployerTests.cs에 테스트 3개(완료 기준 직접 검증: 더미 노드
+      status-ping 1개를 배포하면 콘솔에 상태 로그 출력, flows.json 단계 실패 시 배포 시도 안 함,
+      flows.json 단계가 결과 목록에 아예 없을 때도 배포 시도 안 함) 작성 — 더미 노드는 테스트
+      파일 안에서만 정의(private 중첩 클래스)하고 production 코드에는 포함하지 않음.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
