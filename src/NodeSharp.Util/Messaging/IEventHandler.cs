@@ -1,5 +1,6 @@
 namespace NodeSharp.Util.Messaging;
 
+// 한글명: 이벤트 핸들러 계약
 /// <summary>
 /// 람다 대신 별도 클래스로 이벤트를 처리하고 싶을 때 구현하는 인터페이스입니다. lssLib.Messaging.EventBus
 /// 원본을 그대로 포팅(복사)했습니다 — 이벤트 하나에 처리 로직이 여러 줄이거나, 상태를 갖는 핸들러가

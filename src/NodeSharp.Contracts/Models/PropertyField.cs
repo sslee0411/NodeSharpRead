@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 속성 필드
 /// <summary>
 /// 노드 속성 편집 다이얼로그에 표시할 입력 필드 1개를 정의합니다. "PropertySchema"는 별도 타입이
 /// 아니라 이 레코드의 목록(<c>IReadOnlyList&lt;PropertyField&gt;</c>)을 가리키는 관례적 이름입니다
@@ -39,6 +40,7 @@ public sealed record PropertyField(
     string HelpText = "",
     string Example = "");
 
+// 한글명: 속성 스키마 검증기
 /// <summary>
 /// <see cref="PropertyField"/> 목록에서 <see cref="PropertyField.HelpText"/>/<see cref="PropertyField.Example"/>이
 /// 비어있는 필드를 찾아 "문서화 누락"을 표면화하는 헬퍼입니다. 노드 타입 등록(<c>NodeTypeRegistry</c>,

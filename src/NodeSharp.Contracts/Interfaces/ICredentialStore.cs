@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 자격 증명 저장소 계약
 /// <summary>
 /// 노드 설정(<c>flows.json</c>)에는 절대 평문으로 남지 않아야 하는 비밀값(API 키, MQTT 비밀번호 등)을
 /// 별도 파일(<c>credentials.json</c>)에 암호화해 저장·조회하는 계약입니다. <see cref="Models.NodeConfig.CredentialRefId"/>는

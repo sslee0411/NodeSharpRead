@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 속성 필드 타입
 /// <summary>
 /// 노드 속성 편집 다이얼로그에서 각 입력 필드가 어떤 UI 컨트롤로 자동 렌더링될지 지정하는
 /// 태그입니다. Node-RED의 <c>&lt;node&gt;.html</c> 편집 폼 정의와 동일한 역할을 하며,

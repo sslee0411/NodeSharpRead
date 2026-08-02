@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 플로우 정의
 /// <summary>
 /// 캔버스의 Flow 탭 하나에 대응하는 최상위 모델입니다. <c>flows.json</c>은 이
 /// <see cref="FlowDefinition"/>의 목록(사용자가 만든 Flow 탭 개수만큼)으로 구성됩니다.

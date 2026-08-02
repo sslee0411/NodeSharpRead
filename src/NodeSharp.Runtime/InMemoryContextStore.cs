@@ -3,6 +3,7 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
+// 한글명: 메모리 기반 컨텍스트 저장소
 /// <summary>
 /// <see cref="IContextStore"/>의 기본 구현입니다 — 값을 프로세스 메모리에만 들고 있고, Runner를 다시
 /// 시작하면 전부 사라집니다(Node-RED의 기본 memory Context Storage와 동일한 성격). <c>(scope, scopeId,

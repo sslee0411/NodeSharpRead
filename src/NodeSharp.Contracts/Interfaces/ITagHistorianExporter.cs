@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 태그 이력 내보내기 계약
 /// <summary>
 /// <see cref="ITagHistorian"/>에 조회만 되고 내보낼 방법이 없던 공백을 메우는 계약입니다 — 저장된
 /// 태그 이력을 CSV 파일로 내보내 Excel/보고서 도구 등 외부 시스템에서 활용할 수 있게 합니다.

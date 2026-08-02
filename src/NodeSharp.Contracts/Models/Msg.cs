@@ -4,6 +4,7 @@ using Newtonsoft.Json.Converters;
 
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 메시지
 /// <summary>
 /// Node-RED의 <c>msg</c> 객체에 대응하는 NodeSharpRead의 메시지 컨테이너입니다. 노드가
 /// 런타임에 임의의 필드를 자유롭게 추가/삭제할 수 있는 동적 객체이며, 내부적으로

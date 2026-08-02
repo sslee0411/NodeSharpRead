@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 타입 값 출처
 /// <summary>
 /// <see cref="Models.TypedValue"/>가 담는 값이 어디서 오는지를 나타냅니다. Node-RED의 TypedInput
 /// (파란 라벨 드롭다운)과 동일한 개념으로, Change/Range/Switch 노드처럼 값을 고정 문자열이 아니라

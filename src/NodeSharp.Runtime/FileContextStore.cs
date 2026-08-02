@@ -5,6 +5,7 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
+// 한글명: 파일 기반 컨텍스트 저장소
 /// <summary>
 /// <see cref="IContextStore"/>의 파일 기반 구현체입니다(RT-09c, 02번 문서 6번 탭 카드1 다이어그램의
 /// "파일 — lssLib JsonWriteService" 플러그인 슬롯). 모든 값을 메모리 캐시에 갖고 있으면서(빠른 읽기)

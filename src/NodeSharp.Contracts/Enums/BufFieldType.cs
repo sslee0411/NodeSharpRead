@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 버퍼 필드 타입
 /// <summary>
 /// PLC 레지스터/버퍼에서 읽은 원시 바이트를 실제 값(정수/실수/문자열 등)으로 해석하는 방식을
 /// 나타내는 필드 타입입니다. <see cref="Models.TagRuntimeInfo.BufType"/>이 이 값을 사용해

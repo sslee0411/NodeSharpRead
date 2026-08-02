@@ -2,6 +2,7 @@ using System.Reflection;
 
 namespace NodeSharp.Registry;
 
+// 한글명: 플러그인 로더
 /// <summary>
 /// <c>nodes/*.dll</c> 디렉터리를 탐색해 플러그인 dll 목록을 찾고, 각 dll을 개별
 /// <see cref="PluginLoadContext"/>로 격리 로드하는 진입점입니다. 실제로 로드된 어셈블리에서

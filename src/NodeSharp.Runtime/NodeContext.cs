@@ -4,6 +4,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Runtime;
 
+// 한글명: 노드 컨텍스트
 /// <summary>
 /// <see cref="INodeContext"/>의 정식 구현체입니다(RT-09b, 02번 문서 2번 탭 카드9 "정식 통합판" 중
 /// 이번 Step 범위 — <c>Local</c>/<c>Flow</c>/<c>Global</c>/<c>Env</c> 4개 <see cref="ContextScope"/>와

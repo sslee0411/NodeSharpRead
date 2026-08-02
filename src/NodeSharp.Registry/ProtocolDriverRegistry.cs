@@ -3,6 +3,7 @@ using NodeSharp.Util;
 
 namespace NodeSharp.Registry;
 
+// 한글명: 프로토콜 드라이버 레지스트리
 /// <summary>
 /// 런타임에 등록된 <c>IProtocolDriver</c> 구현체(문자열 프로토콜 식별자 → 드라이버 <see cref="Type"/>)를
 /// 관리합니다. <see cref="NodeTypeRegistry"/>(CT-06b, <c>IFlowNode</c> 플러그인용)와 정확히 동일한 구조를

@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Events;
 
+// 한글명: 태그 값 갱신 이벤트
 /// <summary>
 /// 태그 값이 실제로 바뀔 때만 발행되는 캔버스 실시간 오버레이 이벤트입니다. <c>DeviceMapPoller</c>가
 /// 폴링 캐시 갱신 직후 이전 값과 다를 때만 발행하며, 최대 초당 5회로 스로틀됩니다.
@@ -28,6 +29,7 @@ namespace NodeSharp.Contracts.Events;
 /// </example>
 public sealed record TagValueUpdatedEvent(string TagId, object? Value, AlarmLevel? Alarm, DateTime At);
 
+// 한글명: 알람 발생 이벤트
 /// <summary>
 /// 알람이 새로 발생했을 때만 발행되는 이벤트입니다(<c>AlarmStateManager.Evaluate</c>가 같은 알람을
 /// 반복 발행하지 않도록 관리). 이 문서(02번) 안에서 8곳이 이 타입을 언급했지만 정식 <c>record</c>

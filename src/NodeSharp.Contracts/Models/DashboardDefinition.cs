@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 대시보드 정의
 /// <summary>
 /// 운영자용 실시간 화면(웹 <c>/ui</c> + WPF 듀얼 렌더링)의 레이아웃 전체를 나타내는 최상위
 /// 모델입니다. <c>dashboard.json</c>으로 저장되며, Node-RED Dashboard(<c>node-red-dashboard</c>)와
@@ -34,6 +35,7 @@ namespace NodeSharp.Contracts.Models;
 /// </example>
 public sealed record DashboardDefinition(IReadOnlyList<DashboardTabDto> Tabs);
 
+// 한글명: 대시보드 탭
 /// <summary>
 /// <see cref="DashboardDefinition"/> 안의 탭 하나입니다. Node-RED Dashboard의 "Tab"에 대응합니다.
 /// </summary>
@@ -42,6 +44,7 @@ public sealed record DashboardDefinition(IReadOnlyList<DashboardTabDto> Tabs);
 /// <param name="Groups">이 탭 안에 배치된 그룹 목록.</param>
 public sealed record DashboardTabDto(string Id, string Name, IReadOnlyList<DashboardGroupDto> Groups);
 
+// 한글명: 대시보드 그룹
 /// <summary>
 /// <see cref="DashboardTabDto"/> 안의 그룹 하나입니다. Node-RED Dashboard의 "Group"(위젯을 묶는
 /// 카드형 패널)에 대응하며, 실제 위젯 인스턴스는 담지 않고 <see cref="WidgetNodeIds"/>로 Flow

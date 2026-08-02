@@ -1,5 +1,6 @@
 namespace NodeSharp.Util.Messaging;
 
+// 한글명: 이벤트 메시지(기반 타입)
 /// <summary>
 /// 모든 이벤트 메시지가 상속받는 기반 타입입니다. lssLib.Messaging.EventBus 원본을 그대로
 /// 포팅(복사)한 것입니다 — <c>D:\lssLib</c>를 직접 참조하지 않고 구조·이름만 똑같이 옮겨왔습니다.

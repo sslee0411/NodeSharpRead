@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: PLC 접속 설정
 /// <summary>
 /// <see cref="Interfaces.IProtocolDriver.ConnectAsync"/>에 전달하는 접속 정보입니다. TCP(<see cref="Host"/>/
 /// <see cref="Port"/>)와 Serial/RTU(<see cref="ComPort"/>/<see cref="BaudRate"/>) 두 모드를 함께 담으며,

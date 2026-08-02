@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 플러그인 매니페스트
 /// <summary>
 /// <c>nodes/*.dll</c> 플러그인이 자신을 설명하기 위해 포함하는 매니페스트입니다. 노드 플러그인
 /// 프로젝트는 Contracts만 참조하므로(1번 탭 솔루션 구조), 이 레코드는 Contracts에 있어야 플러그인

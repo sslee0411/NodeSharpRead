@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 구조 설정 서비스 계약
 /// <summary>
 /// 장비→PLC→디바이스맵→태그→스케일→알람 6단계 구조 설정을 헤드리스 Runner가 순수 데이터로만
 /// 읽고 쓰는 계약입니다. Editor 전용 <c>StructureTreeNode</c>(<c>ObservableCollection</c> 기반, WPF

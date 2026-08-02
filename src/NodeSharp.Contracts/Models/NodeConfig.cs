@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 노드 설정
 /// <summary>
 /// 캔버스에 배치된 노드 하나의 저장용 설정입니다. <c>flows.json</c>에 저장되는 노드 단위
 /// 레코드이며, Editor가 이 값을 채워 저장하고 Runner가 읽어 <c>FlowEngine.DeployAsync</c>로

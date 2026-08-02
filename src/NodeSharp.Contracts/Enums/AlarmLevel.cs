@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 알람 레벨
 /// <summary>
 /// 계층형 구조 설정(8번 탭)에서 태그 값에 매길 수 있는 알람 임계값 4단계입니다. 산업 현장의
 /// 일반적인 알람 표기법을 그대로 따릅니다: HH(High-High)·H(High)·L(Low)·LL(Low-Low).

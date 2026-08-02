@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 
 namespace NodeSharp.Registry;
 
+// 한글명: 플러그인 로드 컨텍스트
 /// <summary>
 /// 노드 플러그인(<c>nodes/*.dll</c>) 하나를 격리된 <see cref="AssemblyLoadContext"/>로 로드합니다.
 /// <c>isCollectible: true</c>로 생성되어, 플러그인을 제거하거나 갱신할 때 프로세스를 재시작하지 않고

@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 공유 서비스 노드 계약
 /// <summary>
 /// 여러 노드가 하나의 실제 리소스(TCP 서버, DB 커넥션 등)를 공유할 때 그 리소스의 생명주기를
 /// 나타내는 계약입니다. Node-RED의 "config node" 개념에 대응합니다.

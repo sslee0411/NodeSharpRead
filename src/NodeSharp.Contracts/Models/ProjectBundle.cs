@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 프로젝트 번들
 /// <summary>
 /// 프로젝트 번들(<c>.nsproj</c>, zip)이 실제로 포함하는 저장 파일 목록을 나타내는 순수 데이터
 /// 레코드입니다. 개발 PC에서 만든 설정을 운영 PC로 옮길 때 flows.json·device.json 등 여러

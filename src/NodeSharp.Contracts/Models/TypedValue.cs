@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 타입 값
 /// <summary>
 /// 값의 "출처"(<see cref="Source"/>)와 "실제 값/경로"(<see cref="Value"/>)를 함께 담는 모델입니다.
 /// <c>PropertyFieldType.TypedValue</c> 필드의 저장 값 타입이며, Change/Range/Switch 노드처럼 값을

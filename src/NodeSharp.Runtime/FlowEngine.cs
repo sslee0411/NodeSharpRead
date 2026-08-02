@@ -4,6 +4,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Runtime;
 
+// 한글명: 플로우 실행 엔진
 /// <summary>
 /// 플로우 실행 엔진. Editor(미리보기 실행)와 Runner(운영 실행) 양쪽이 공유하는 순수 로직입니다
 /// (WPF 비의존, 1번 탭 카드2). 이 클래스는 <c>RT-01~11</c>에 걸쳐 증분으로 완성됩니다 — 지금까지는

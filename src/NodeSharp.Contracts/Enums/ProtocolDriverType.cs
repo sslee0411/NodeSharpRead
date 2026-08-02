@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 프로토콜 드라이버 종류
 /// <summary>
 /// <c>IProtocolDriver.Type</c>에 사용하는 프로토콜 식별 문자열의 잘 알려진 값 모음입니다.
 /// (★ v1.71 정정) 애초 이 타입은 <c>enum ProtocolDriverType { Modbus }</c>(고정 집합, CT-09 최초 구현)

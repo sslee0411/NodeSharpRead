@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 노드 포트
 /// <summary>
 /// 노드 하나가 가질 수 있는 입력 또는 출력 포트 하나를 나타냅니다. 대부분의 Node-RED 노드는
 /// 입력 1개·출력 1개(또는 0개)뿐이지만, Switch 노드처럼 조건별로 여러 출력 포트를 갖는

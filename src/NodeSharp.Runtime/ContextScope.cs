@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
+// 한글명: 컨텍스트 스코프
 /// <summary>
 /// <see cref="IContextStore"/>의 특정 <c>scope</c>/<c>scopeId</c> 하나만 바라보는 좁은 창(view)입니다.
 /// 노드 코드가 매번 <c>store.Get&lt;T&gt;("flow", flowId, key)</c>처럼 scope/scopeId를 반복해서 넘기지

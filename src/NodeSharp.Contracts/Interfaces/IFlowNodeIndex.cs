@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 플로우 노드 역색인 계약
 /// <summary>
 /// 특정 시퀀스를 호출하는 Flow 노드(<c>SequenceTriggerNode</c>)를 역방향으로 찾는 계약입니다.
 /// <see cref="IStructureService.FindNodesByTagRef"/>와 대칭 구조로, Sequence Editor 창에서

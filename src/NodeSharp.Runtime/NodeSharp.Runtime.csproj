@@ -219,6 +219,27 @@
       값 복원(완료 기준 직접 검증), scope/scopeId 조합별 격리, Keys가 재로드 후에도 해당 scope만 열거,
       없는 키는 예외 없이 기본값, ContextScope로 감싸도 InMemoryContextStore↔FileContextStore DI 교체만
       으로 코드 변경 없이 동일하게 동작(완료 기준 직접 검증), Set 재호출 시 파일에서도 덮어쓰기).
+
+    Step: RT-10 (03번 개발 Step맵.html, Phase 2 — SharedResourceManager)
+    - SharedResourceManager.cs 신규 추가 — 참조 카운트 기반 공유 리소스 관리(02번 문서 2번 탭 카드2
+      원본, ISharedServiceNode는 CT-04a에서 이미 확정돼 있어 이번 Step은 그 계약을 실제로 관리하는
+      쪽만 구현). AcquireAsync&lt;T&gt;(id, factory, ct)는 같은 id로 여러 번 불러도 factory/StartAsync를
+      최초 1회만 실행하고 참조 카운트만 늘려 같은 인스턴스를 반환, ReleaseAsync(id)는 참조가 0이 될
+      때만 StopAsync를 호출. 착수 중 발견한 레이스 컨디션 1건과 처리: 카드2 원본 의사코드는 "①lock
+      안에서 기존 항목 확인 → 없으면 lock 밖에서 factory+StartAsync 실행 → ②다시 lock을 잡고 등록"
+      2단계 구조인데, ①과 ② 사이(lock이 풀려있는 구간)에 같은 id로 AcquireAsync가 동시에 두 번 들어오면
+      둘 다 factory+StartAsync를 실행하고 나중에 등록하는 쪽이 먼저 만든 리소스를 덮어써 StopAsync가
+      한 번도 안 불린 채 참조를 잃는 누수가 생길 수 있음을 확인 — AcquireAsync/ReleaseAsync 전체를
+      SemaphoreSlim(용량 1) 하나로 감싸 항상 순서대로만 실행되도록 수정(NodeExecutionGate처럼 id별로
+      나눠 잠그는 대신, 배포/종료 시점에만 드물게 호출되는 경로라 하나의 잠금으로 단순하게 정확성을
+      우선 — 상세 근거는 SharedResourceManager.cs XML 주석 참고). NodeContext(RT-09b)에 Shared 프로퍼티를
+      연결하는 배선은 이 Step 범위 밖(RT-09a→RT-09b→RT-09c에서 확립한 "재료 클래스부터 독립 완성, 실제
+      노드가 구현되는 Step에서 NodeContext 연동" 원칙과 동일하게 향후로 미룸). test\NodeSharp.Tests\
+      SharedResourceManagerTests.cs 신규 작성 — 테스트 7개(같은 id로 여러 번 Acquire해도 StartAsync는
+      최초 1회만, 참조가 남아있으면 Release해도 StopAsync 안 불림, 마지막 참조 해제 때만 StopAsync
+      호출(완료 기준 직접 검증), 서로 다른 id는 독립적으로 관리, 등록되지 않은 id를 Release해도 예외
+      없이 무시, 재해제해도 StopAsync가 다시 호출되지 않음, 같은 id로 동시에 20번 Acquire해도 factory는
+      정확히 1번만 실행(레이스 컨디션 수정 직접 검증)).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

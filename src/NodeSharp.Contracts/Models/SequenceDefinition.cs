@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 시퀀스 정의
 /// <summary>
 /// Flow 캔버스(<see cref="FlowDefinition"/>)와는 별개로 저장·편집되는 "단계형 시퀀스" 정의입니다.
 /// Node-RED 스타일 Flow는 "이벤트가 오면 흘려보내는" 모델이라 순서·타임아웃·실패 분기가 엄격한
@@ -42,6 +43,7 @@ public sealed record SequenceDefinition(
     IReadOnlyList<SequenceStepDto> Steps,
     IReadOnlyList<string> WatchedTagIds);
 
+// 한글명: 시퀀스 단계
 /// <summary>
 /// <see cref="SequenceDefinition"/> 안의 단계 하나입니다. 진입 조건(NCalc 표현식)·동작·타임아웃·
 /// 실패/타임아웃 시 이동할 단계를 정의합니다.

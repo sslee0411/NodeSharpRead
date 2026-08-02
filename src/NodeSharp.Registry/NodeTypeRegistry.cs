@@ -4,6 +4,7 @@ using NodeSharp.Util;
 
 namespace NodeSharp.Registry;
 
+// 한글명: 노드 타입 레지스트리
 /// <summary>
 /// <see cref="PluginLoader"/>가 로드한 플러그인 dll에서 발견한 노드 타입을 관리합니다.
 /// 등록 전에 <see cref="SemVer.IsCompatible"/>로 플러그인이 요구하는 Contracts 버전과 현재 Contracts

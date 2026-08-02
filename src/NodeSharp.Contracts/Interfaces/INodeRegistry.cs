@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 노드 레지스트리 계약
 /// <summary>
 /// <c>FlowEngine</c>이 <see cref="NodeConfig.Type"/> 문자열로부터 실제 <see cref="IFlowNode"/> 인스턴스를
 /// 만들 때 의존하는 계약입니다. 구현체는 <c>NodeSharp.Registry.NodeTypeRegistry</c>(<c>CT-06b</c>)이며,

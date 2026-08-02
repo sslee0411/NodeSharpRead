@@ -1,5 +1,6 @@
 namespace NodeSharp.Util.Messaging;
 
+// 한글명: 비동기 스케줄러
 /// <summary>
 /// 주기적/지연/일별 예약 실행을 <c>while(true)</c> 폴링 없이 처리하는 스케줄러입니다.
 /// lssLib.Messaging.AsyncScheduler 원본을 구조·이름 그대로 포팅(복사)했습니다 — <c>D:\lssLib</c>를 직접

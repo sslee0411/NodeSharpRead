@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Events;
 
+// 한글명: 위젯 값 갱신 이벤트
 /// <summary>
 /// Dashboard 위젯 값이 갱신됐음을 알리는 이벤트입니다(Flow → 대시보드 방향). 출력 전용 위젯
 /// (<c>UiGaugeNode</c>/<c>UiChartNode</c>/<c>UiTextNode</c>)이 msg를 받을 때마다 발행하며, 웹(<c>/ui</c>)과
@@ -20,6 +21,7 @@ namespace NodeSharp.Contracts.Events;
 /// </example>
 public sealed record WidgetValueUpdatedEvent(string NodeId, object? Value, DateTime At);
 
+// 한글명: 위젯 조작 이벤트
 /// <summary>
 /// 운영자가 Dashboard 위젯을 조작했음을 알리는 이벤트입니다(대시보드 → Flow 방향). 입력 겸용 위젯
 /// (<c>UiButtonNode</c>/<c>UiSwitchNode</c>/<c>UiSliderNode</c>)이 이 이벤트를 구독해 조작이 발생하면
@@ -42,6 +44,7 @@ public sealed record WidgetValueUpdatedEvent(string NodeId, object? Value, DateT
 /// </example>
 public sealed record WidgetInteractionEvent(string NodeId, object? UserInput, DateTime At);
 
+// 한글명: 시퀀스 단계 전환 이벤트
 /// <summary>
 /// <c>SequenceExecutor</c>가 단계를 전환할 때마다 발행하는 이벤트입니다. <c>UiSequenceStatusNode</c>가
 /// <see cref="SequenceId"/>로 필터링해 구독한 뒤 <see cref="WidgetValueUpdatedEvent"/>로 다시 감싸
@@ -56,6 +59,7 @@ public sealed record WidgetInteractionEvent(string NodeId, object? UserInput, Da
 /// </example>
 public sealed record SequenceStepChangedEvent(string SequenceId, string CurrentStepId, SequenceState State, long ElapsedMs);
 
+// 한글명: 노드 완료 이벤트
 /// <summary>
 /// <c>FlowEngine</c>이 노드의 <c>OnInputAsync</c> 처리를 완료할 때마다 발행하는 이벤트입니다.
 /// <c>CompleteNode</c>가 <see cref="NodeId"/>로 필터링해 구독하며, Node-RED의 Complete 노드처럼

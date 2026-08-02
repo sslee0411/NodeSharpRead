@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 이벤트 버스 계약
 /// <summary>
 /// 노드가 이벤트를 구독·발행할 때 쓰는 최소 계약입니다. 실제 구현체(<c>NodeSharp.Util.Messaging.EventBus</c>를
 /// 감싸는 어댑터)는 <c>NodeSharp.Runtime</c> 소속이며, Contracts는 이 인터페이스만 알면 되므로 Runtime을

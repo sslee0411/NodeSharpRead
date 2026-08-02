@@ -1,5 +1,6 @@
 namespace NodeSharp.Util.Messaging;
 
+// 한글명: 이벤트 버스
 /// <summary>
 /// 타입별로 이벤트를 구독·발행하는 Pub/Sub(발행-구독) 허브입니다. lssLib.Messaging.EventBus 원본을
 /// 구조·이름 그대로 포팅(복사)했습니다 — <c>D:\lssLib</c>를 직접 참조(ProjectReference)하지 않고,

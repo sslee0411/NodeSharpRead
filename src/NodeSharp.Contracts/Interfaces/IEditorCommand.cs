@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 에디터 명령 계약
 /// <summary>
 /// Editor의 Undo/Redo 스택(<c>CommandHistory</c>)에 들어가는 실행 취소 가능한 작업 하나를
 /// 나타내는 계약입니다. 캔버스 커맨드(노드 추가/삭제/이동)와 구조 트리 커맨드(태그 추가,

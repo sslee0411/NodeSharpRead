@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Models;
 
+// 한글명: 프로토콜 드라이버 매니페스트
 /// <summary>
 /// 프로토콜 드라이버 플러그인이 자신을 설명하는 매니페스트입니다. <c>PluginManifest</c>(CT-06b, 노드
 /// 플러그인용)와 동일한 목적을 <c>IProtocolDriver</c> 구현체(LS산전 XGT, 미쯔비시 A/QnA, CIMON HD 등)에

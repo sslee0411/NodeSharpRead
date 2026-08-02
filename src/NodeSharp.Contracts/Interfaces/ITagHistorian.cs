@@ -2,6 +2,7 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
+// 한글명: 태그 이력 저장소 계약
 /// <summary>
 /// 태그 값의 시계열 이력을 기록·조회하는 계약입니다. 원본(<c>RecordAsync</c>/<c>QueryAsync</c>)과
 /// 사전 집계(<c>RecordAggregateAsync</c>/<c>QueryAggregateAsync</c>) 두 층을 함께 선언합니다(v1.20 확장판).

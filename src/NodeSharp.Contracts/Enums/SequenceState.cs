@@ -1,5 +1,6 @@
 namespace NodeSharp.Contracts.Enums;
 
+// 한글명: 시퀀스 상태
 /// <summary>
 /// <c>SequenceExecutor</c>(<c>SQ-01</c>)가 시퀀스 하나를 실행하는 동안 가질 수 있는 상태입니다.
 /// <see cref="Events.SequenceStepChangedEvent"/>가 단계 전환마다 이 값을 함께 실어 발행합니다.
