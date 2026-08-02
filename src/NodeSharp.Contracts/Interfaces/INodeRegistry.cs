@@ -18,12 +18,15 @@ namespace NodeSharp.Contracts.Interfaces;
 /// 프로퍼티), 3번 탭 카드 3(노드 생명주기 시퀀스 — <c>Eng-&gt;&gt;Reg: CreateInstance(NodeConfig)</c>).
 /// </summary>
 /// <remarks>
-/// <b>RT-01a 범위 한정</b>: 이 Step은 "타입 이름으로 인스턴스를 만들 수 있는가"만 다룬다.
+/// <b>RT-01a 범위 한정</b>: 이 Step은 "타입 이름으로 인스턴스를 만들 수 있는가"만 다뤘다.
 /// <see cref="Type"/>을 찾아 <c>Activator.CreateInstance</c>로 생성하는 방식이라, 각 노드 구현체는
 /// 공개 매개변수 없는 생성자를 가져야 한다(<c>LssLibNodeAdapterBase</c>, 11번 탭 카드2가 이미 이
 /// 관례를 따름). 생성된 인스턴스의 <see cref="IFlowNode.Id"/>를 <see cref="NodeConfig.Id"/>와 동기화하는
-/// 정식 메커니즘(<c>INodeTypeDescriptor.Factory</c> 델리게이트 기반)은 <c>RG-01</c>에서 다룰 예정 — 지금은
-/// 다루지 않는다(2번 탭 카드1 <c>IFlowNode</c> 원본 주석의 "인스턴스 생성 방법은 정의하지 않는다" 참고).
+/// 정식 메커니즘은 <c>RG-01</c>에서 <c>INodeTypeDescriptor.Factory</c> 델리게이트(권장 경로)와, 기존
+/// <c>Activator.CreateInstance</c> 경로에 반사 기반 보정(<c>NodeSharp.Registry.NodeIdBinder</c>) 둘 다로
+/// 해소됐다 — 이 인터페이스의 <see cref="CreateInstance"/> 시그니처 자체는 변경 없음(2번 탭 카드1
+/// <c>IFlowNode</c> 원본 주석의 "인스턴스 생성 방법은 정의하지 않는다"는 여전히 유효, 생성 방식은
+/// 구현체인 <c>NodeTypeRegistry</c>의 책임).
 /// </remarks>
 /// <example>
 /// <code>

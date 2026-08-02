@@ -18,7 +18,8 @@ namespace NodeSharp.Contracts.Interfaces;
 /// <c>NodeContext</c>를 직접 참조하면 두 프로젝트가 서로를 참조하게 되어(순환 참조) 빌드가 되지 않습니다
 /// (v1.57, 02번 문서 2번 탭 카드 1 참고).</item>
 /// <item><b>생성</b>: 이 인터페이스는 인스턴스 생성 방법을 정의하지 않습니다 — 노드 타입 메타데이터와
-/// 팩토리는 <c>RG-01</c>의 <c>INodeTypeDescriptor</c>가 별도로 담당합니다.</item>
+/// 팩토리는 <c>RG-01</c>의 <c>INodeTypeDescriptor</c>가 별도로 담당합니다(<see cref="Id"/> 동기화 포함,
+/// RG-01에서 완료).</item>
 /// <item><b>동시성</b>: 노드별 동시 처리 개수 제한은 <see cref="MaxConcurrency"/> 기본 구현 멤버로
 /// 노출합니다(<c>RT-06</c>). 실제 게이트(<c>NodeExecutionGate</c>, <c>NodeSharp.Runtime</c>)는 배포된
 /// <see cref="NodeConfig.MaxConcurrency"/>(사용자가 Editor에서 설정한 값)를 우선 사용하고, 배포 정보를

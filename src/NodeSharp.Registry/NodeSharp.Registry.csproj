@@ -39,6 +39,24 @@
       노드 타입 이름 → IFlowNode 인스턴스 생성을 위임한다. Activator.CreateInstance 기반이라
       노드 구현체는 공개 매개변수 없는 생성자가 필요(LssLibNodeAdapterBase 관례). 기존
       TryRegister/RegisteredTypes는 그대로 유지 — CT-06b 테스트에 영향 없음.
+
+    Step: RG-01 (03번 개발 Step맵.html, Phase 3 — Phase 2 Runtime 완료 이후 첫 Registry Step)
+    - NodeIdBinder.cs 신규 추가 — 반사(reflection)로 IFlowNode 인스턴스의 Id를 NodeConfig.Id와
+      맞춰주는 내부 도우미(internal). init 접근자도 CLR 수준에서는 평범한 setter라 반사로 생성자
+      밖에서 호출 가능하다는 점을 이용. Id 프로퍼티가 없거나 세터가 없으면 조용히 무시.
+    - NodeTypeDescriptorBuilder.cs 신규 추가 — INodeTypeDescriptor(Contracts, RG-01)를 체이닝으로
+      조립하는 제네릭 빌더(where TNode : IFlowNode, new()). 02번 문서 9번 탭 카드3 예시는
+      WithFactory 호출 없이 .Build()만 하는데 Factory를 어떻게 채우는지 정식 선언이 없던 공백이라,
+      WithFactory 미호출 시 반사 기반 기본 팩토리(NodeIdBinder.Bind + Name 대입)를 자동 생성하도록
+      해소.
+    - NodeTypeRegistry.cs 수정 — Descriptors 딕셔너리 + ScanAssembly(Assembly) 메서드 추가(어셈블리의
+      public static INodeTypeDescriptor 필드/프로퍼티를 관례로 수집, 02번 문서 9번 탭 카드3
+      HttpRequestNodeType.Descriptor 예시). CreateInstance는 Descriptors를 먼저 확인해 있으면
+      Factory 경로(Id/Name 완전 동기화)를, 없으면 기존 RT-01a Activator.CreateInstance 경로로
+      대체하되 이제 이 레거시 경로도 NodeIdBinder.Bind로 Id를 함께 동기화한다 — RT-01a부터 10곳
+      이상의 주석이 "RG-01에서 다룰 예정"이라 미뤄뒀던 IFlowNode.Id↔NodeConfig.Id 동기화 완료
+      기준을 두 경로 모두에서 만족(기존 TryRegister API·시그니처는 변경 없이 순수 추가라, 이 API를
+      쓰는 기존 테스트 12개 이상에 영향 없음).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
