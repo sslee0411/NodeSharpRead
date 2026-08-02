@@ -198,6 +198,27 @@
       따로지만 Global은 공유, RouteAsync가 FlowEngine.RouteAsync로 실제 위임되는지, SetStatus가
       NodeStatusEvent를 발행하는지(문자열/NodeStatusLevel 오버로드 각각), FlowEngine.DeployAsync가
       실제로 만드는 NodeContext도 FlowEngine.ContextStore와 같은 저장소를 공유하는지).
+
+    Step: RT-09c (03번 개발 Step맵.html, Phase 2 — Context 플러그인 교체(파일 DI), v1.98에서 RT-09b로부터
+      분리 신설)
+    - FileContextStore.cs 신규 추가 — IContextStore의 파일 기반 구현체(02번 문서 6번 탭 카드1 다이어그램
+      "파일 — lssLib JsonWriteService" 플러그인 슬롯). dev-csharp 스킬 문서에는 "JsonWriteService"라는
+      이름의 타입이 없어(가장 가까운 것은 lssLib.Extensions.TextExtensions의 SaveJsonAsync/LoadJsonAsync)
+      그 확장 메서드 전체를 포팅하는 대신, 이미 NodeSharp.Contracts(Msg.cs, CT-02a)가 참조 중인
+      Newtonsoft.Json으로 직접 구현(사용자 확인: "JSON 파일 저장소(FileContextStore) 구현"). 메모리
+      캐시(ConcurrentDictionary, InMemoryContextStore와 동일 구조)로 빠르게 읽고, Set마다 전체 스냅샷을
+      JSON 파일로 다시 씀("최소 먼저" 원칙 — 변경분만 추가하는 최적화는 범위 밖). 생성자에서 파일이
+      있으면 즉시 로드. Get&lt;T&gt;는 같은 인스턴스 안에서는 원본 CLR 타입 그대로 반환하지만, 파일에서
+      막 불러온 값은 Newtonsoft가 object 타입 필드를 역직렬화할 때 만드는 long/double/string/JObject 등으로
+      남아있을 수 있어 Convert.ChangeType/JToken.ToObject&lt;T&gt;로 재변환을 시도(알려진 제약 — 실제
+      Node-RED localfilesystem Context Storage도 동일한 제약을 가짐, XML 주석에 상세 기록).
+      NodeSharp.Runtime.csproj에 Newtonsoft.Json PackageReference 명시 추가(ProjectReference로 전이
+      참조는 되지만 직접 쓰는 프로젝트에 명시하는 편이 의도가 분명함). test\NodeSharp.Tests\
+      FileContextStoreTests.cs 신규 작성 — 테스트 9개(존재하지 않는 파일로 생성해도 예외 없이 빈 상태로
+      시작, Set 직후 같은 인스턴스에서 원본 타입 그대로 반환, Set 즉시 파일 저장, 새 인스턴스로 재로드 시
+      값 복원(완료 기준 직접 검증), scope/scopeId 조합별 격리, Keys가 재로드 후에도 해당 scope만 열거,
+      없는 키는 예외 없이 기본값, ContextScope로 감싸도 InMemoryContextStore↔FileContextStore DI 교체만
+      으로 코드 변경 없이 동일하게 동작(완료 기준 직접 검증), Set 재호출 시 파일에서도 덮어쓰기).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -206,6 +227,13 @@
     <RootNamespace>NodeSharp.Runtime</RootNamespace>
     <AssemblyName>NodeSharp.Runtime</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- RT-09c: FileContextStore.cs가 Newtonsoft.Json을 직접 사용 — NodeSharp.Contracts(Msg.cs, CT-02a)가
+         이미 참조 중인 것과 같은 버전으로 명시적으로도 추가(ProjectReference로 전이 참조는 되지만, 직접
+         쓰는 프로젝트에 명시하는 편이 의도가 분명함). -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
