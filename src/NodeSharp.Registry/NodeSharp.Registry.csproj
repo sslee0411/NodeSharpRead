@@ -57,6 +57,35 @@
       이상의 주석이 "RG-01에서 다룰 예정"이라 미뤄뒀던 IFlowNode.Id↔NodeConfig.Id 동기화 완료
       기준을 두 경로 모두에서 만족(기존 TryRegister API·시그니처는 변경 없이 순수 추가라, 이 API를
       쓰는 기존 테스트 12개 이상에 영향 없음).
+
+    Step: RG-02a+02b (03번 개발 Step맵.html, Phase 3 — 두 서브 Step을 하나로 합쳐 진행, 사용자 확인)
+    - 설계 검토 중 발견: RG-02a의 완료 기준("nodes 폴더를 스캔해 dll 목록을 찾되 아직 로딩은 안 함")은
+      이미 CT-06a(Phase 1)에서 만든 PluginLoader.DiscoverPluginFiles가 정확히 구현·테스트까지 돼
+      있었다(test\NodeSharp.Tests\PluginLoadingTests.cs, 직전 RG-01 빌드에도 함께 포함되어 확인됨) —
+      사용자에게 보고 후 "RG-02a/RG-02b를 합쳐서 한번에 진행"으로 확인받아, 신규 구현 없이 RG-02b
+      작업(격리 로드 + NodeTypeRegistry 등록 연동) 안에서 함께 정리했다.
+    - PluginLoadResult.cs 신규 추가 — LoadPlugins 한 번 호출의 결과 요약 레코드(FilesFound/
+      LoadedSuccessfully/DescriptorsRegistered/Failures).
+    - NodeTypeRegistry.cs에 LoadPlugins(pluginsDirectory, loader?) 메서드 추가 — DiscoverPluginFiles
+      (RG-02a) → 각 dll을 개별 try/catch로 격리해 LoadPlugin(RG-02b) → 성공한 어셈블리만 ScanAssembly
+      (RG-01)로 등록. dll 1개의 손상이 나머지 로딩을 막지 않는다(PluginLoader.cs XML 주석이 이미
+      예고했던 "실제 등록은 NodeTypeRegistry의 몫" 지점을 이렇게 채움).
+    - 발견한 공백: 02번 문서 10번 탭 카드8 NodeRegistry.LoadPlugins() 의사코드는 dll 1개당
+      PluginManifest 1개를 전제로 SemVer 호환성을 검사하지만, INodeTypeDescriptor(RG-01)는 dll이
+      아니라 노드 타입 1개당 하나이고 PluginManifest를 갖지 않아 그 방식대로 검사할 근거가 없다
+      (dll 하나가 여러 노드 타입을 담을 수 있어 "dll당 매니페스트 1개"와도 안 맞음) — RG-02a+02b의
+      완료 기준(goal 칸) 자체도 버전 검사를 요구하지 않아 이번 범위에서는 제외하고, 실제 플러그인 dll
+      배포 형식이 정해질 팔레트 동적 설치(Phase 8) 시점에 재검토하기로 NodeTypeRegistry.cs XML
+      주석에 명시.
+    - test\NodeSharp.Tests\NodeTypeRegistryLoadPluginsTests.cs 신규 작성 — 테스트 5개(존재하지 않는
+      디렉터리, 완료 기준 직접 검증: 실제 dll 1개로 Registry가 인식, 손상된 dll이 있어도 나머지는
+      로딩되는 실패 격리, 재호출 안전성, 커스텀 PluginLoader 주입). 실제 노드 플러그인 dll이 아직
+      없어(Phase 7 이후) 이 테스트 어셈블리 자신의 dll(NodeTypeDescriptorTests.cs의
+      TestFunctionNodeType.Descriptor 포함)을 더미 플러그인으로 복사해 사용 — PluginLoadContext가
+      deps.json 없이 로드될 때 NodeSharp.* 타입은 이미 실행 중인 호스트 프로세스의 기본
+      AssemblyLoadContext로 자동 위임됨(AssemblyDependencyResolver.ResolveAssemblyToPath가 deps.json
+      부재 시 null을 반환 → PluginLoadContext.Load()가 null 반환 → 기본 컨텍스트 폴백, Microsoft 공식
+      문서로 확인)을 근거로 설계.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

@@ -10,8 +10,16 @@ namespace NodeSharp.Registry;
 /// 역활 및 기능 : 플러그인 dll에서 발견한 노드 타입을 버전 호환성 검사와 함께 관리하는 레지스트리
 ///
 /// <see cref="PluginLoader"/>가 로드한 플러그인 dll에서 발견한 노드 타입을 관리합니다.
-/// 등록 전에 <see cref="SemVer.IsCompatible"/>로 플러그인이 요구하는 Contracts 버전과 현재 Contracts
-/// 버전을 비교해, 불일치하면 크래시 대신 해당 플러그인만 제외하고 계속 진행합니다.
+/// <see cref="TryRegister"/> 경로는 등록 전에 <see cref="SemVer.IsCompatible"/>로 플러그인이 요구하는
+/// Contracts 버전과 현재 Contracts 버전을 비교해, 불일치하면 크래시 대신 해당 플러그인만 제외하고
+/// 계속 진행합니다(02번 문서 10번 탭 카드8 <c>NodeRegistry.LoadPlugins()</c> 의사코드의 SemVer 가드
+/// 그대로). <see cref="ScanAssembly"/>/<see cref="LoadPlugins"/> 경로(RG-01, RG-02a+02b)는 이
+/// 버전 가드를 아직 적용하지 않는데, 이는 발견한 공백입니다 — 카드8 의사코드는 dll 1개당
+/// <c>PluginManifest</c> 하나를 전제로 SemVer를 검사하지만, <c>INodeTypeDescriptor</c>(RG-01)는
+/// 노드 타입(dll이 아니라)당 하나이고 <c>PluginManifest</c>를 갖고 있지 않아 어떤 값으로 검사할지
+/// 정식 정의가 없습니다(dll 하나가 노드 타입을 여러 개 담을 수 있어 "dll당 매니페스트 1개"와도 맞지
+/// 않음) — 실제 노드 플러그인 dll 배포 형식이 정해지는 시점(팔레트 동적 설치, Phase 8)에 재검토할
+/// 예정.
 /// 설계 근거: 02번 문서 10번 탭 카드 8(플러그인 버전 호환성 검사). PluginLoadContext/PluginLoader와
 /// 동일한 사유(v1.66)로 Contracts가 아니라 Registry 소속입니다.
 /// (★ RT-01a 추가) <see cref="INodeRegistry"/>를 구현해 <c>FlowEngine</c>이 <see cref="CreateInstance"/>로
@@ -20,6 +28,10 @@ namespace NodeSharp.Registry;
 /// 어셈블리에서 찾아 <see cref="Descriptors"/>에 수집하고, <see cref="CreateInstance"/>가 오래 미뤄뒀던
 /// "<see cref="IFlowNode.Id"/>를 <see cref="NodeConfig.Id"/>와 동기화" 완료 기준을 이제 두 경로(신규
 /// Descriptor 기반·기존 <see cref="TryRegister"/> Type 기반) 모두에서 만족합니다.
+/// (★ RG-02a+02b 추가) <see cref="LoadPlugins"/>로 <c>nodes</c> 디렉터리 스캔(RG-02a,
+/// <see cref="PluginLoader.DiscoverPluginFiles"/>) → 격리 로드(RG-02b, <see cref="PluginLoader.LoadPlugin"/>)
+/// → <see cref="ScanAssembly"/> 등록까지 한 번에 처리하는 진입점을 추가했습니다. 두 서브 Step의 완료
+/// 기준이 서로 이어지는 하나의 파이프라인이라 별도 반영 없이 한 번에 구현(사용자 확인).
 /// </summary>
 /// <example>
 /// <code>
@@ -42,6 +54,11 @@ namespace NodeSharp.Registry;
 /// int found = registry.ScanAssembly(typeof(HttpRequestNodeType).Assembly);
 /// var httpCfg = new NodeConfig("n2", "http-request", "센서 조회", "f1", new Dictionary&lt;string, object?&gt;());
 /// IFlowNode httpNode = registry.CreateInstance(httpCfg);   // Descriptor.Factory가 Id/Name 동기화
+///
+/// // 3) RG-02a+02b 방식 — nodes 디렉터리 안의 dll을 통째로 스캔→로드→등록
+/// PluginLoadResult result = registry.LoadPlugins("nodes");
+/// // result.FilesFound: 발견한 dll 개수, result.LoadedSuccessfully: 로드 성공 개수,
+/// // result.DescriptorsRegistered: 새로 등록된 노드 타입 개수, result.Failures: 손상된 dll 목록(있다면)
 /// </code>
 /// </example>
 public sealed class NodeTypeRegistry : INodeRegistry
@@ -138,5 +155,40 @@ public sealed class NodeTypeRegistry : INodeRegistry
         NodeIdBinder.Bind(node, cfg.Id);
         node.Name = cfg.Name;
         return node;
+    }
+
+    /// <summary>
+    /// (★ RG-02a+02b) <paramref name="pluginsDirectory"/>를 스캔해 <c>*.dll</c> 목록을 찾고(RG-02a,
+    /// <see cref="PluginLoader.DiscoverPluginFiles"/>), 각 dll을 <see cref="PluginLoadContext"/>로
+    /// 격리 로드한 뒤(RG-02b, <see cref="PluginLoader.LoadPlugin"/>) <see cref="ScanAssembly"/>로
+    /// 이 레지스트리에 등록합니다. dll 1개가 손상됐거나 로드에 실패해도 나머지 dll 로딩을 막지 않도록
+    /// 개별 <c>try/catch</c>로 격리합니다(<c>PluginLoader.cs</c> XML 주석이 이미 예고한 지점 —
+    /// "실제로 로드된 어셈블리에서 IFlowNode 구현 타입을 찾아 등록하는 것은 NodeTypeRegistry의 몫").
+    /// </summary>
+    /// <param name="pluginsDirectory">플러그인 dll이 있는 디렉터리(보통 <c>nodes</c>). 존재하지 않으면 아무 것도 하지 않고 전부 0인 결과를 반환합니다.</param>
+    /// <param name="loader">테스트 등에서 다른 <see cref="PluginLoader"/> 인스턴스를 주입하고 싶을 때 지정합니다. 생략하면 새로 만듭니다.</param>
+    public PluginLoadResult LoadPlugins(string pluginsDirectory, PluginLoader? loader = null)
+    {
+        loader ??= new PluginLoader();
+        var files = loader.DiscoverPluginFiles(pluginsDirectory);
+        var loadedSuccessfully = 0;
+        var descriptorsBefore = _descriptors.Count;
+        var failures = new List<string>();
+
+        foreach (var file in files)
+        {
+            try
+            {
+                var (assembly, _) = loader.LoadPlugin(file);
+                ScanAssembly(assembly);
+                loadedSuccessfully++;
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{Path.GetFileName(file)}: {ex.Message}");
+            }
+        }
+
+        return new PluginLoadResult(files.Count, loadedSuccessfully, _descriptors.Count - descriptorsBefore, failures);
     }
 }
