@@ -1,7 +1,9 @@
 namespace NodeSharp.Util;
 
-// 한글명: 시맨틱 버전 유틸리티
 /// <summary>
+/// Class명 : 시맨틱 버전 유틸리티
+/// 역활 및 기능 : major.minor.patch 시맨틱 버전 문자열을 비교하는 유틸리티
+///
 /// <c>major.minor.patch</c> 형식의 시맨틱 버전 문자열을 비교하는 최소 유틸리티입니다.
 /// <c>NodeTypeRegistry</c>(Registry, <c>CT-06b</c>)가 플러그인이 요구하는 Contracts 버전과 실제 로드된
 /// Contracts 버전을 비교해 로드 가능 여부를 판단할 때 사용합니다.

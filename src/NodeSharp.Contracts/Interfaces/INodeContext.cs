@@ -3,8 +3,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 노드 컨텍스트 계약
 /// <summary>
+/// Class명 : 노드 컨텍스트 계약
+/// 역활 및 기능 : IFlowNode가 실행 중 사용하는 메시지 전달·상태 표시 기능을 노출하는 계약
+///
 /// <see cref="IFlowNode"/>가 실행 중 사용하는 기능(메시지 전달, 상태 표시 등)을 노출하는
 /// 인터페이스입니다. NodeSharp.Runtime의 구체 클래스 <c>NodeContext</c>가 이를 구현하며,
 /// Contracts는 이 인터페이스만 알면 되므로 Runtime을 참조하지 않아도 됩니다.

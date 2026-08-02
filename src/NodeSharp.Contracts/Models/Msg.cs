@@ -4,8 +4,10 @@ using Newtonsoft.Json.Converters;
 
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 메시지
 /// <summary>
+/// Class명 : 메시지
+/// 역활 및 기능 : Node-RED의 msg 객체에 대응하는 동적 필드 확장 가능한 메시지 컨테이너
+///
 /// Node-RED의 <c>msg</c> 객체에 대응하는 NodeSharpRead의 메시지 컨테이너입니다. 노드가
 /// 런타임에 임의의 필드를 자유롭게 추가/삭제할 수 있는 동적 객체이며, 내부적으로
 /// <see cref="ExpandoObject"/>를 데이터 저장소로 사용합니다. 고정 스키마 클래스(예:

@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 와이어(연결선)
 /// <summary>
+/// Class명 : 와이어(연결선)
+/// 역활 및 기능 : 캔버스에서 두 노드를 잇는 연결선 하나를 나타내는 모델
+///
 /// 캔버스에서 두 노드를 잇는 연결선 하나를 나타냅니다. Node-RED <c>flows.json</c>의
 /// <c>wires</c> 배열 항목 하나에 대응합니다.
 /// 설계 근거: 02번 문서 2번 탭 카드 2.

@@ -4,8 +4,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Util.Config.Migration;
 
-// 한글명: 설정 마이그레이션
 /// <summary>
+/// Class명 : 설정 마이그레이션
+/// 역활 및 기능 : 설정 파일이 옛 스키마 버전이면 등록된 규칙으로 최신 버전까지 자동 변환
+///
 /// <c>flows.json</c>/<c>device.json</c> 같은 설정 파일이 옛 스키마 버전으로 저장돼 있을 때, 등록된
 /// <see cref="MigrationRule"/>들을 순서대로 이어 붙여 최신 버전으로 자동 변환합니다(RT-11, 02번 문서
 /// 3번 탭 카드7 "설정 파일 스키마 마이그레이션(lssLib.Config 재사용)" 원본 — <c>lssLib.Config</c>의

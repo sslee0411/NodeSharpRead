@@ -3,8 +3,10 @@ using System.Runtime.Loader;
 
 namespace NodeSharp.Registry;
 
-// 한글명: 플러그인 로드 컨텍스트
 /// <summary>
+/// Class명 : 플러그인 로드 컨텍스트
+/// 역활 및 기능 : 노드 플러그인 dll 하나를 격리된 AssemblyLoadContext로 로드하는 클래스
+///
 /// 노드 플러그인(<c>nodes/*.dll</c>) 하나를 격리된 <see cref="AssemblyLoadContext"/>로 로드합니다.
 /// <c>isCollectible: true</c>로 생성되어, 플러그인을 제거하거나 갱신할 때 프로세스를 재시작하지 않고
 /// <see cref="AssemblyLoadContext.Unload"/>로 메모리에서 내릴 수 있습니다(Node-RED의 런타임 노드

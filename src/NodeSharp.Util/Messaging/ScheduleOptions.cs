@@ -1,7 +1,9 @@
 namespace NodeSharp.Util.Messaging;
 
-// 한글명: 예약 설정
 /// <summary>
+/// Class명 : 예약 설정
+/// 역활 및 기능 : AsyncScheduler.Schedule에 넘기는 세밀한 예약 설정
+///
 /// <see cref="AsyncScheduler.Schedule"/>에 넘기는 세밀한 예약 설정입니다. lssLib.Messaging.AsyncScheduler
 /// 원본을 구조·이름 그대로 포팅(복사)했습니다 — <c>D:\lssLib</c>를 직접 참조하지 않고 같은 동작을 하는
 /// 코드를 NodeSharp.Util로 옮겨왔습니다(포팅 정책, LL-00).

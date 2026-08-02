@@ -1,7 +1,9 @@
 namespace NodeSharp.Util.Messaging;
 
-// 한글명: Cron 표현식
 /// <summary>
+/// Class명 : Cron 표현식
+/// 역활 및 기능 : cron 표현식을 해석해 특정 시각이 조건에 맞는지 확인하는 유틸리티
+///
 /// "초 분 시 일 월 요일" 6칸짜리 cron 표현식(예: <c>"0 0 * * * *"</c> = 매시 정각)을 해석해서, 특정 시각이
 /// 그 표현식에 맞는지(<see cref="IsMatch"/>) 확인하는 아주 작은 유틸리티입니다. lssLib에는 대응 항목이
 /// 없는 신규 도입 타입입니다 — <c>IScheduler.ScheduleCron</c>(Contracts, CT-04b)이 cron 문자열을 받도록

@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 타입 값 출처
 /// <summary>
+/// Class명 : 타입 값 출처
+/// 역활 및 기능 : TypedValue가 담는 값이 어디서 오는지(고정값/msg필드/Context/환경변수/수식)를 나타내는 열거형
+///
 /// <see cref="Models.TypedValue"/>가 담는 값이 어디서 오는지를 나타냅니다. Node-RED의 TypedInput
 /// (파란 라벨 드롭다운)과 동일한 개념으로, Change/Range/Switch 노드처럼 값을 고정 문자열이 아니라
 /// 여러 출처 중에서 선택해 입력해야 하는 경우에 사용합니다.

@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 공유 리소스 관리자
 /// <summary>
+/// Class명 : 공유 리소스 관리자
+/// 역활 및 기능 : 참조 카운트 기반으로 여러 노드가 공유하는 리소스의 시작/종료를 관리
+///
 /// 여러 노드가 하나의 실제 리소스(TCP 서버, DB 커넥션 등)를 공유할 때, 참조 카운트로 그 리소스의
 /// 시작/종료를 한 번만 일어나게 관리합니다(RT-10, 02번 문서 2번 탭 카드2). 같은 <c>id</c>로
 /// <see cref="AcquireAsync{T}"/>를 여러 번 불러도(예: 같은 포트를 쓰는 TCP-In 노드가 캔버스에 3개 있어도)

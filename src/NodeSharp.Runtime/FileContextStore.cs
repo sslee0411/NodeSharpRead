@@ -5,8 +5,10 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 파일 기반 컨텍스트 저장소
 /// <summary>
+/// Class명 : 파일 기반 컨텍스트 저장소
+/// 역활 및 기능 : IContextStore의 파일 기반 구현체(JSON 파일로 저장·로드)
+///
 /// <see cref="IContextStore"/>의 파일 기반 구현체입니다(RT-09c, 02번 문서 6번 탭 카드1 다이어그램의
 /// "파일 — lssLib JsonWriteService" 플러그인 슬롯). 모든 값을 메모리 캐시에 갖고 있으면서(빠른 읽기)
 /// <see cref="Set"/> 호출마다 JSON 파일 하나에 통째로 다시 써서(<c>Newtonsoft.Json</c>, 이미 프로젝트가

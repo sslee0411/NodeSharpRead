@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 플로우 노드 계약
 /// <summary>
+/// Class명 : 플로우 노드 계약
+/// 역활 및 기능 : 캔버스에 배치되는 모든 노드가 구현해야 하는 최소 계약
+///
 /// 캔버스에 배치되는 모든 노드가 구현해야 하는 최소 계약입니다. Node-RED의 노드 런타임 API
 /// (<c>node.on('input', ...)</c> 등)에 대응하며, <c>FlowEngine</c>이 배포·메시지 전달·종료
 /// 전 과정에서 이 인터페이스만으로 노드를 다룹니다.

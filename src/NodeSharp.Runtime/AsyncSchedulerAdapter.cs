@@ -3,8 +3,10 @@ using NodeSharp.Util.Messaging;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 비동기 스케줄러 어댑터
 /// <summary>
+/// Class명 : 비동기 스케줄러 어댑터
+/// 역활 및 기능 : IScheduler 계약을 포팅된 AsyncScheduler로 구현하는 어댑터
+///
 /// <see cref="IScheduler"/>(Contracts 계약)를 <see cref="AsyncScheduler"/>(NodeSharp.Util로 포팅된
 /// lssLib.Messaging.AsyncScheduler)로 구현하는 어댑터입니다. <see cref="EventBusAdapter"/>와 같은 역할 —
 /// Contracts는 구체 타입을 몰라야 하므로 이 어댑터가 그 둘을 이어줍니다.

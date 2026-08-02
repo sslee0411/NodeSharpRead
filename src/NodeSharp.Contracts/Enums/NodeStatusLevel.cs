@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 노드 상태 레벨
 /// <summary>
+/// Class명 : 노드 상태 레벨
+/// 역활 및 기능 : 노드 하단 상태 점의 색상을 타입 세이프하게 표현하는 5단계 팔레트
+///
 /// 노드 하단 상태 점(status dot)의 색상을 타입 세이프하게 표현하는 5단계 팔레트입니다.
 /// Node-RED의 <c>node.status({fill, shape, text})</c> API에서 <c>fill</c>에 자유 문자열
 /// ("red"/"green"/"yellow"/"blue"/"grey")을 넘기던 방식과 호환되도록, 각 멤버 이름이 그

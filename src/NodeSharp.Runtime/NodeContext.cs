@@ -4,8 +4,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 노드 컨텍스트
 /// <summary>
+/// Class명 : 노드 컨텍스트
+/// 역활 및 기능 : INodeContext의 정식 구현체(Local/Flow/Global/Env 스코프 + RouteAsync/SetStatus)
+///
 /// <see cref="INodeContext"/>의 정식 구현체입니다(RT-09b, 02번 문서 2번 탭 카드9 "정식 통합판" 중
 /// 이번 Step 범위 — <c>Local</c>/<c>Flow</c>/<c>Global</c>/<c>Env</c> 4개 <see cref="ContextScope"/>와
 /// <c>RouteAsync</c>/<c>SetStatus</c>만 우선 구현합니다. 카드9 원본의 <c>Shared</c>

@@ -2,8 +2,10 @@ using System.Reflection;
 
 namespace NodeSharp.Registry;
 
-// 한글명: 플러그인 로더
 /// <summary>
+/// Class명 : 플러그인 로더
+/// 역활 및 기능 : nodes 디렉터리를 탐색해 플러그인 dll을 찾고 격리 로드하는 진입점
+///
 /// <c>nodes/*.dll</c> 디렉터리를 탐색해 플러그인 dll 목록을 찾고, 각 dll을 개별
 /// <see cref="PluginLoadContext"/>로 격리 로드하는 진입점입니다. 실제로 로드된 어셈블리에서
 /// <c>IFlowNode</c> 구현 타입을 찾아 등록하는 것은 <c>NodeTypeRegistry</c>(<c>CT-06b</c>)의 몫이며,

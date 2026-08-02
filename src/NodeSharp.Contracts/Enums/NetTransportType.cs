@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 통신 전송 종류
 /// <summary>
+/// Class명 : 통신 전송 종류
+/// 역활 및 기능 : lssLib.Net이 지원하는 9종 raw 통신 전송(Transport) 종류를 나타내는 열거형
+///
 /// lssLib.Net이 지원하는 9종 raw 전송(Transport) 종류입니다. "raw"란 바이트를 주고받는
 /// 하위 계층만 담당한다는 뜻으로, Modbus·MQTT 같은 상위 프로토콜의 규약(주소 체계, 함수
 /// 코드, QoS 등)은 다루지 않습니다 — 그 역할은 <c>IProtocolDriver</c>가 이 Transport 위에서

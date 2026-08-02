@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Interfaces;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 컨텍스트 스코프
 /// <summary>
+/// Class명 : 컨텍스트 스코프
+/// 역활 및 기능 : IContextStore의 특정 scope/scopeId 하나만 바라보는 좁은 창(view) 구조체
+///
 /// <see cref="IContextStore"/>의 특정 <c>scope</c>/<c>scopeId</c> 하나만 바라보는 좁은 창(view)입니다.
 /// 노드 코드가 매번 <c>store.Get&lt;T&gt;("flow", flowId, key)</c>처럼 scope/scopeId를 반복해서 넘기지
 /// 않아도, <c>ctx.Flow.Get&lt;T&gt;(key)</c>처럼 짧게 쓸 수 있게 해줍니다(Node-RED의 <c>flow.get(key)</c>·

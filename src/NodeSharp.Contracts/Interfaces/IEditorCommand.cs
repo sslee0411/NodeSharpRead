@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 에디터 명령 계약
 /// <summary>
+/// Class명 : 에디터 명령 계약
+/// 역활 및 기능 : Editor Undo/Redo 스택에 들어가는 실행 취소 가능한 작업 하나를 나타내는 계약
+///
 /// Editor의 Undo/Redo 스택(<c>CommandHistory</c>)에 들어가는 실행 취소 가능한 작업 하나를
 /// 나타내는 계약입니다. 캔버스 커맨드(노드 추가/삭제/이동)와 구조 트리 커맨드(태그 추가,
 /// 스케일 변경 등)가 이 인터페이스 하나를 공유해, Ctrl+Z가 도메인 구분 없이 동작합니다.

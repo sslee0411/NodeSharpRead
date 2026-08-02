@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 출력 전달 모드
 /// <summary>
+/// Class명 : 출력 전달 모드
+/// 역활 및 기능 : 한 노드의 여러 출력 와이어에 메시지를 순차/병렬 중 어떤 방식으로 전달할지 지정하는 열거형
+///
 /// 한 노드가 여러 출력 와이어를 가질 때(Fan-out) 메시지를 전달하는 순서를 지정합니다.
 /// <see cref="Models.NodeConfig.OutputDispatch"/>의 타입이며, 노드가 하나의 입력을 받아
 /// 여러 다음 노드로 갈라 보낼 때 이 값에 따라 실행 방식이 달라집니다.

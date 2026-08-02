@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: CCTV 카메라 설정
 /// <summary>
+/// Class명 : CCTV 카메라 설정
+/// 역활 및 기능 : CctvViewerNode가 flows.json에 저장하는 RTSP 카메라 연결 설정
+///
 /// <c>CctvViewerNode</c>(Runner, DB-07)가 <c>flows.json</c>에 저장하는 RTSP 카메라 연결 설정입니다.
 /// 이 레코드는 "연결 정보"만 담고 실제 영상 세션은 열지 않습니다 — WPF <c>CctvViewerControl</c>이
 /// 이 값을 읽어 자체 RTSP 세션을 별도로 엽니다(9번 탭 카드17 "연결이 2개로 분리된다" 설계 참고).

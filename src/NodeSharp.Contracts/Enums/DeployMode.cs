@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 배포 모드
 /// <summary>
+/// Class명 : 배포 모드
+/// 역활 및 기능 : FlowEngine.DeployAsync가 재시작할 범위(Full/ModifiedFlows/ModifiedNodes/RestartFlows)를 지정하는 배포 모드
+///
 /// Editor의 [배포] 버튼을 눌렀을 때 <c>FlowEngine.DeployAsync</c>가 "얼마나 넓은 범위를
 /// 재시작할지" 지정하는 모드입니다. Node-RED의 배포 드롭다운(Full/Modified Flows/Modified
 /// Nodes/Restart Flows)에 정확히 대응합니다. 값 순서 자체에 "더 넓다/좁다"는 의미는 없고,

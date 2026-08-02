@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 플로우 파일 헤더
 /// <summary>
+/// Class명 : 플로우 파일 헤더
+/// 역활 및 기능 : flows.json 파일 맨 앞에 저장되는 스키마 버전 헤더
+///
 /// <c>flows.json</c> 파일 맨 앞에 저장되는 작은 머리말입니다(RT-11, 02번 문서 3번 탭 카드7 원본 —
 /// <c>FlowFileHeader(int SchemaVersion, DateTime SavedAt)</c> 그대로). 파일 안의 실제
 /// <see cref="FlowDefinition"/> 목록을 읽기 전에 이 헤더만 먼저 읽어, 이 파일이 몇 번째 스키마

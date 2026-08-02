@@ -3,8 +3,10 @@ using NodeSharp.Util.Messaging;
 
 namespace NodeSharp.Runtime;
 
-// 한글명: 이벤트 버스 어댑터
 /// <summary>
+/// Class명 : 이벤트 버스 어댑터
+/// 역활 및 기능 : IEventBus 계약을 포팅된 EventBus로 위임하는 어댑터
+///
 /// <see cref="IEventBus"/>(Contracts 계약)를 <see cref="EventBus"/>(NodeSharp.Util로 포팅된 lssLib.Messaging
 /// 구현체)로 그대로 위임하는 어댑터입니다. Contracts는 구체 타입을 몰라야 하므로(<see cref="IEventBus"/>
 /// XML 주석 참고 — Contracts→Runtime 순환 참조 방지), Runtime이 이 어댑터로 그 둘을 이어줍니다 —

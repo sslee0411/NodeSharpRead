@@ -2,8 +2,10 @@ using Newtonsoft.Json.Linq;
 
 namespace NodeSharp.Util.Config.Migration;
 
-// 한글명: 마이그레이션 규칙
 /// <summary>
+/// Class명 : 마이그레이션 규칙
+/// 역활 및 기능 : flows.json을 한 스키마 버전에서 다음 버전으로 변환하는 규칙 하나
+///
 /// <c>flows.json</c>을 한 스키마 버전에서 바로 다음 버전으로 딱 한 단계만 변환하는 규칙입니다
 /// (lssLib.Config의 <c>Migration/MigrationRule.cs</c> 대응 — RT-11 summary 참고: 실제 lssLib.Config
 /// 소스를 dev-csharp 스킬 문서·GitHub 저장소 어디서도 확인할 수 없어, 02번 문서 3번 탭 카드7 의사코드

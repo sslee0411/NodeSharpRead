@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Enums;
 
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 타입 값
 /// <summary>
+/// Class명 : 타입 값
+/// 역활 및 기능 : 값의 출처와 실제 값을 함께 담는 모델(Node-RED TypedInput과 동일한 개념)
+///
 /// 값의 "출처"(<see cref="Source"/>)와 "실제 값/경로"(<see cref="Value"/>)를 함께 담는 모델입니다.
 /// <c>PropertyFieldType.TypedValue</c> 필드의 저장 값 타입이며, Change/Range/Switch 노드처럼 값을
 /// 고정 문자열이 아니라 msg 필드·Context·환경변수·수식 중에서 선택해야 하는 경우에 재사용합니다.

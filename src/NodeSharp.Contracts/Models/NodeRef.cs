@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 노드 참조
 /// <summary>
+/// Class명 : 노드 참조
+/// 역활 및 기능 : 특정 Flow의 특정 노드를 가리키는 최소 참조 모델
+///
 /// 특정 Flow의 특정 노드를 가리키는 최소 참조입니다. 태그·시퀀스 등을 "누가 사용하고 있는지"
 /// 역방향으로 조회하는 결과 항목으로 쓰입니다(예: 삭제 가능 여부 판단, 캔버스 하이라이트 이동).
 /// <c>IStructureService.FindNodesByTagRef</c>와 <c>IFlowNodeIndex.FindNodesBySequenceId</c>가

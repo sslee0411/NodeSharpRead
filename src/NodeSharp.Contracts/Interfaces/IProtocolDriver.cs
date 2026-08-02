@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 프로토콜 드라이버 계약
 /// <summary>
+/// Class명 : 프로토콜 드라이버 계약
+/// 역활 및 기능 : raw Transport 위에서 PLC 프로토콜 규약(주소 체계·함수 코드)을 처리하는 드라이버 계약
+///
 /// raw Transport(<c>NetTransportType</c>, 11번 탭 카드1) 위에서 PLC 프로토콜 규약(주소 체계·함수
 /// 코드·오류 응답)을 처리하는 드라이버 계약입니다. <see cref="IFlowNode"/>와는 별개 축입니다 —
 /// 노드는 "Flow 그래프의 실행 단위", 드라이버는 "PLC와 바이트를 주고받는 방법"으로 관심사가 다릅니다.

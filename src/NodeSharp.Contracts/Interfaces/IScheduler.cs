@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 스케줄러 계약
 /// <summary>
+/// Class명 : 스케줄러 계약
+/// 역활 및 기능 : 주기적/예약 실행이 필요한 모든 곳이 공통으로 의존하는 스케줄링 계약
+///
 /// 주기적/예약 실행이 필요한 모든 곳(Inject 노드의 Interval 트리거, DeviceMapPoller 배치 폴링,
 /// RetentionSweeper 등)이 공통으로 의존하는 스케줄링 계약입니다. 구현체는
 /// <c>lssLib.Messaging.AsyncScheduler</c>를 포팅한 <c>AsyncSchedulerAdapter</c>(NodeSharp.Runtime)이며,

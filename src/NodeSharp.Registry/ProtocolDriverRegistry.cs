@@ -3,8 +3,10 @@ using NodeSharp.Util;
 
 namespace NodeSharp.Registry;
 
-// 한글명: 프로토콜 드라이버 레지스트리
 /// <summary>
+/// Class명 : 프로토콜 드라이버 레지스트리
+/// 역활 및 기능 : 런타임에 등록된 IProtocolDriver 구현체를 관리하는 레지스트리
+///
 /// 런타임에 등록된 <c>IProtocolDriver</c> 구현체(문자열 프로토콜 식별자 → 드라이버 <see cref="Type"/>)를
 /// 관리합니다. <see cref="NodeTypeRegistry"/>(CT-06b, <c>IFlowNode</c> 플러그인용)와 정확히 동일한 구조를
 /// 프로토콜 드라이버 축에 적용한 것입니다 — 노드 팔레트 확장과 PLC 프로토콜 확장은 서로 다른 관심사

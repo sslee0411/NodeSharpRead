@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: 알람 레벨
 /// <summary>
+/// Class명 : 알람 레벨
+/// 역활 및 기능 : 계층형 구조 설정의 태그 값 알람 임계값 4단계(HH/H/L/LL)를 나타내는 열거형
+///
 /// 계층형 구조 설정(8번 탭)에서 태그 값에 매길 수 있는 알람 임계값 4단계입니다. 산업 현장의
 /// 일반적인 알람 표기법을 그대로 따릅니다: HH(High-High)·H(High)·L(Low)·LL(Low-Low).
 /// <c>AlarmStateManager</c>가 태그 값이 각 임계값을 넘을 때 이 단계로 알람 상태를 전이시키고

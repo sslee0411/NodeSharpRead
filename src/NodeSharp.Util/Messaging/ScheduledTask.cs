@@ -1,7 +1,9 @@
 namespace NodeSharp.Util.Messaging;
 
-// 한글명: 예약 작업 핸들
 /// <summary>
+/// Class명 : 예약 작업 핸들
+/// 역활 및 기능 : AsyncScheduler.Schedule이 등록한 작업 하나를 나타내는 핸들
+///
 /// <see cref="AsyncScheduler.Schedule"/>이 등록한 작업 하나를 나타내는 핸들입니다. 이 핸들로 작업을
 /// 잠깐 멈추거나(<see cref="Pause"/>) 다시 시작하거나(<see cref="Resume"/>) 완전히 취소(<see cref="Cancel"/>)할
 /// 수 있고, 지금까지 몇 번 실행됐는지(<see cref="RunCount"/>)·마지막으로 어떤 예외가 났는지

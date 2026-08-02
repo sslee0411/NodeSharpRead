@@ -2,8 +2,10 @@ using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 노드 레지스트리 계약
 /// <summary>
+/// Class명 : 노드 레지스트리 계약
+/// 역활 및 기능 : FlowEngine이 노드 타입 문자열로부터 실제 IFlowNode 인스턴스를 만들 때 의존하는 계약
+///
 /// <c>FlowEngine</c>이 <see cref="NodeConfig.Type"/> 문자열로부터 실제 <see cref="IFlowNode"/> 인스턴스를
 /// 만들 때 의존하는 계약입니다. 구현체는 <c>NodeSharp.Registry.NodeTypeRegistry</c>(<c>CT-06b</c>)이며,
 /// <c>PluginLoader</c>(<c>CT-06a</c>)로 로드한 플러그인 dll에서 수집한 타입 목록 중 <see cref="NodeConfig.Type"/>과

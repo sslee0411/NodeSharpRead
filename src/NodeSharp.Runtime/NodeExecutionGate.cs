@@ -1,7 +1,9 @@
 namespace NodeSharp.Runtime;
 
-// 한글명: 노드 실행 게이트
 /// <summary>
+/// Class명 : 노드 실행 게이트
+/// 역활 및 기능 : 노드 하나가 동시에 몇 번까지 실행될 수 있는지 제한하는 게이트 관리자
+///
 /// 노드 하나가 동시에 몇 번까지 실행될 수 있는지를 제한하는 "통행 허가증" 역할의
 /// <see cref="SemaphoreSlim"/>(동시 진입 개수를 세는 대기열 장치)을 관리합니다(05번 탭 카드3 원본
 /// 그대로 별도 파일로 분리). <see cref="FlowEngine"/>은 <c>DispatchOneAsync</c>에서 대상 노드에게

@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: RTSP 전송 모드
 /// <summary>
+/// Class명 : RTSP 전송 모드
+/// 역활 및 기능 : RTSP 세션의 하위 전송 프로토콜(Tcp/Udp)을 지정하는 열거형
+///
 /// RTSP 세션의 하위 전송 프로토콜입니다. <see cref="Models.CctvCameraConfig.Transport"/>에 사용되며,
 /// WPF <c>CctvViewerControl</c>(LibVLCSharp)이 <c>Media.AddOption</c>에 <c>:rtsp-tcp</c>/<c>:rtsp-udp</c>
 /// 옵션을 넘길 때 이 값을 참조합니다.

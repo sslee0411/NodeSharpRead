@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Interfaces;
 
-// 한글명: 컨텍스트 저장소 계약
 /// <summary>
+/// Class명 : 컨텍스트 저장소 계약
+/// 역활 및 기능 : 노드/Flow/전역 3단계 Context 변수를 저장·조회하는 계약
+///
 /// 노드/Flow(탭)/전역 3단계 Context 변수를 저장·조회하는 계약입니다(Node-RED의 <c>context.get/set</c>,
 /// <c>flow.get/set</c>, <c>global.get/set</c>에 대응). 값 하나는 <c>(scope, scopeId, key)</c> 세 가지로
 /// 구분됩니다 — <c>scope</c>는 "node"/"flow"/"global" 같은 단계 이름, <c>scopeId</c>는 그 단계 안에서 어느

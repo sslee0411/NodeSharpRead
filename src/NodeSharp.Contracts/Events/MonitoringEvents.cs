@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Events;
 
-// 한글명: 노드 상태 이벤트
 /// <summary>
+/// Class명 : 노드 상태 이벤트
+/// 역활 및 기능 : 노드가 자신의 상태(색/모양/텍스트)를 알리는 실시간 모니터링 이벤트
+///
 /// Runner가 Editor로 실시간 스트리밍하는 4가지 모니터링 이벤트(노드 상태/와이어 활동/디버그 출력/노드
 /// 에러)를 담는 순수 데이터 레코드 모음입니다. Node-RED의 <c>node.status(...)</c>·캔버스 와이어
 /// 애니메이션·디버그 사이드바·빨간 에러 배지에 각각 대응합니다.
@@ -33,14 +35,26 @@ namespace NodeSharp.Contracts.Events;
 /// </example>
 public sealed record NodeStatusEvent(string NodeId, string Fill, string Shape, string Text, DateTime At);
 
-// 한글명: 와이어 활동 이벤트
-/// <summary>메시지가 어느 와이어(<paramref name="FromNodeId"/>의 <paramref name="OutputPort"/> → <paramref name="ToNodeId"/>)를 타고 흘렀는지 나타냅니다. 캔버스 와이어 애니메이션에 사용됩니다.</summary>
+/// <summary>
+/// Class명 : 와이어 활동 이벤트
+/// 역활 및 기능 : 메시지가 어느 와이어를 타고 흘렀는지 알려 캔버스 와이어 애니메이션에 쓰이는 이벤트
+///
+/// 메시지가 어느 와이어(<paramref name="FromNodeId"/>의 <paramref name="OutputPort"/> → <paramref name="ToNodeId"/>)를 타고 흘렀는지 나타냅니다. 캔버스 와이어 애니메이션에 사용됩니다.
+/// </summary>
 public sealed record FlowActivityEvent(string FromNodeId, int OutputPort, string ToNodeId, string MsgId, DateTime At);
 
-// 한글명: 디버그 메시지 이벤트
-/// <summary>Debug 노드의 출력 1건입니다. <paramref name="MsgJson"/>은 <c>Msg.ToJson()</c> 결과이며, Editor 디버그 사이드바에 그대로 표시됩니다.</summary>
+/// <summary>
+/// Class명 : 디버그 메시지 이벤트
+/// 역활 및 기능 : Debug 노드의 출력 1건을 Editor 디버그 사이드바로 전달하는 이벤트
+///
+/// Debug 노드의 출력 1건입니다. <paramref name="MsgJson"/>은 <c>Msg.ToJson()</c> 결과이며, Editor 디버그 사이드바에 그대로 표시됩니다.
+/// </summary>
 public sealed record DebugMessageEvent(string NodeId, string NodeName, string MsgJson, DateTime At);
 
-// 한글명: 노드 오류 이벤트
-/// <summary>노드 실행 중 발생한 예외 1건입니다. 캔버스 빨간 경고 배지와 하단 로그 패널에 표시됩니다.</summary>
+/// <summary>
+/// Class명 : 노드 오류 이벤트
+/// 역활 및 기능 : 노드 실행 중 발생한 예외 1건을 캔버스 경고 배지·로그 패널로 전달하는 이벤트
+///
+/// 노드 실행 중 발생한 예외 1건입니다. 캔버스 빨간 경고 배지와 하단 로그 패널에 표시됩니다.
+/// </summary>
 public sealed record NodeErrorEvent(string NodeId, string Message, string? StackTrace, DateTime At);

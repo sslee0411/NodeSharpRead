@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Enums;
 
-// 한글명: MQTT 전달 보증 수준
 /// <summary>
+/// Class명 : MQTT 전달 보증 수준
+/// 역활 및 기능 : MQTT PUBLISH의 QoS(전달 보증 수준) 3단계를 나타내는 열거형
+///
 /// MQTT 프로토콜의 QoS(Quality of Service, 전달 보증 수준) 3단계입니다. 값은 MQTT 스펙의
 /// QoS 코드(0/1/2)와 정확히 일치시켜, <c>(byte)</c> 캐스팅 결과를 PUBLISH 패킷의 QoS 필드에
 /// 그대로 실을 수 있게 했습니다. <c>MqttInNode</c>/<c>MqttOutNode</c>가 Topic 와일드카드·

@@ -1,7 +1,9 @@
 namespace NodeSharp.Contracts.Models;
 
-// 한글명: 태그 집계 행
 /// <summary>
+/// Class명 : 태그 집계 행
+/// 역활 및 기능 : 태그 원본 이력을 시간별/일별로 요약한 통계 1행을 나타내는 모델
+///
 /// 태그 원본 이력을 일정 기간(시간별/일별) 단위로 요약한 통계 1행입니다. <see cref="Interfaces.ITagHistorian"/>의
 /// <c>RecordAggregateAsync</c>/<c>QueryAggregateAsync</c>가 사용하며, 원본을 매번 다시 스캔하지 않고
 /// "일일 생산 리포트" 같은 대시보드를 빠르게 그리기 위한 사전 집계 결과입니다.
