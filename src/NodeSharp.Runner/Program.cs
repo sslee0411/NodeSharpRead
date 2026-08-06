@@ -15,11 +15,19 @@
 // using Microsoft.AspNetCore.Hosting; 한 줄 추가로 수정 — 이 CS1061 때문에 NodeSharp.Runner
 // 프로젝트 빌드 전체가 실패해, 이를 참조하는 NodeSharp.Tests에서 NodeSharp.Runner.Health
 // 네임스페이스를 못 찾는 CS0234 연쇄 오류도 함께 났었다(Health 폴더 자체는 문제 없었음).
+// (RN-06a) CrashDumpCollector.Register()를 0번 단계로 추가 — 처리되지 않은 예외가 나면 덤프를
+// 남기고 이벤트 로그에도 기록한다(02번 문서 7번 탭 카드14). 다른 어떤 코드보다 먼저 등록해야
+// 그 이후에 나는 모든 예외를 잡을 수 있어 builder 생성보다도 앞에 둔다.
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using NodeSharp.Runner;
+using NodeSharp.Runner.Diagnostics;
 using NodeSharp.Runner.Health;
+
+// 0) 크래시 덤프 수집기 등록(RN-06a) — 이 프로그램이 뭘 하기도 전에 가장 먼저 실행돼야
+//    이후 어디서 예외가 나도 놓치지 않고 덤프·이벤트 로그를 남길 수 있다.
+CrashDumpCollector.Register();
 
 // 1) "설계도"를 만드는 단계 — 아직 서버는 안 켜졌고, 무엇을 켤지 준비만 하는 단계다.
 //    builder는 "이 프로그램에 뭘 넣을지"를 계속 등록받는 그릇이라고 보면 된다.

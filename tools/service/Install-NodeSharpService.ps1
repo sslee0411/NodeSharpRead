@@ -43,6 +43,47 @@
       grep 기반 중괄호 균형 확인도 계속 9/9로 일치했었다 — 이 검증 도구가 인코딩 문제까지는
       잡아내지 못한다는 것도 이번에 확인). 파일 맨 앞에 UTF-8 BOM(EF BB BF)을 추가해 Windows
       PowerShell 5.1도 UTF-8로 올바르게 읽도록 수정 — 로직·문구는 전혀 바꾸지 않음.
+
+    Step: RN-06b (03번 개발 Step맵.html, Phase 4 — EventLogWriter + 덤프 보호)
+    - 완료 기준 중 "파일 권한이 제한되는지"는 코드가 아니라 배포 시점의 NTFS 폴더 권한 문제라
+      판단해 이 설치 스크립트에 추가했다(RN-03b가 서비스 실행 계정을 이미 -ServiceAccount로
+      알고 있어 같은 스크립트가 자연스러운 위치). EventLogWriter(RN-06b, NodeSharp.Runner)가
+      쓰려면 이벤트 소스가 미리 등록돼 있어야 하므로 그 등록도 함께 추가했다.
+    - New-EventLog로 "NodeSharp.Runner" 이벤트 소스를 Application 로그에 등록(이미 등록돼
+      있으면 건너뜀 — 재실행해도 오류 나지 않게).
+    - $BinaryPath 옆에 crashdumps\ 폴더를 만들고, icacls로 상속을 끊은 뒤 SYSTEM·
+      BUILTIN\Administrators·$ServiceAccount 3개만 읽기/쓰기 권한을 갖도록 제한(크래시 덤프에는
+      9번 탭 ICredentialStore가 복호화해서 들고 있던 자격증명 평문이 남을 수 있어 credentials.json과
+      동급으로 취급, 02번 문서 7번 탭 카드14 근거).
+    - 두 단계 모두 서비스 등록 자체(RN-03a/RN-03b 완료 기준)와는 무관한 부가 기능이라, 실패해도
+      Write-Warning만 남기고 스크립트 전체를 실패 처리(exit 1)하지는 않는다(기존 완료 기준을
+      건드리지 않기 위함).
+
+    Step: RN-07 (03번 개발 Step맵.html, Phase 4 — Windows Service 자동 재기동/Watchdog)
+    - 완료 기준: "프로세스를 강제 종료했을 때 자동으로 재기동되는지 확인". Step 설명이 제시한 두
+      선택지(sc failure 설정 또는 자체 Watchdog) 중, 02번 문서 10번 탭 카드12("서비스 속성에서
+      '실패 시 재시작' 정책 설정 — 프로세스가 예기치 않게 죽어도 OS가 자동으로 다시 띄움")가
+      가리키는 sc.exe failure 방식을 선택 — 별도 C# 코드 없이 OS(SCM)가 직접 감시·재시작하는
+      쪽이 더 단순하고, 자체 폴링 Watchdog(카드11이 언급만 하고 코드는 없음)을 새로 만들면 그
+      Watchdog 자신이 죽는 경우까지 또 대비해야 하는 이중 문제가 생기기 때문. RN-03a/RN-03b와
+      완전히 같은 성격의 Step(PowerShell 스크립트, xUnit 대상 아님, 관리자 권한 필요, 자체 확인
+      로직 + 사용자 최종 수동 확인)이라 별도 AskUserQuestion 없이 동일한 패턴으로 바로 진행.
+    - sc.exe failure로 복구 옵션 설정 — reset= 86400(24시간 동안 추가 실패 없으면 실패 횟수
+      리셋), actions= restart/60000을 3회 반복(1~3번째 실패 모두 60초 후 재시작 — sc.exe는
+      마지막 action을 그 이후 실패에도 반복 적용). 실패하면(sc.exe 자체 오류) RN-07 완료 기준을
+      만족 못 하므로 exit 1로 스크립트를 실패 처리한다(RN-06b의 "부가 기능"과 달리 이건 이 Step의
+      본 목적이라 경고만 남기고 넘어가지 않음).
+    - sc.exe failureflag $ServiceName 1도 함께 설정 — 기본값(0)은 서비스가 "제어된 방식으로"
+      멈춘 경우 복구 액션이 적용되지 않을 수 있는데, .NET 프로세스가 처리되지 않은 예외로 죽는
+      경우까지 복구 액션이 적용되도록 켠다. 일부 Windows 버전/구성에서 이 명령 자체가 없을 수
+      있어 실패해도 Write-Warning만 남기고 계속 진행(sc failure의 기본 재시작 정책은 이미 걸려
+      있으므로 완전히 무력화되지는 않음).
+    - 자체 확인 — sc.exe qfailure로 방금 설정한 복구 옵션에 RESTART 동작이 포함됐는지 재확인.
+      RN-03a/RN-03b의 sc query/qc 자체 확인과 동일한 방식.
+    - 실제 "프로세스를 강제 종료했을 때 재기동되는지"는 Windows Service Control Manager의 실제
+      동작이라 이 개발 환경(Linux 샌드박스)은 물론 PowerShell 스크립트 자체 검증만으로도 확인할
+      수 없다 — 사용자가 Windows에서 서비스를 시작한 뒤 작업 관리자로 프로세스를 강제 종료해
+      약 60초 뒤 다시 떠 있는지 직접 확인해야 한다(RN-03a/RN-03b와 동일하게 xUnit 테스트 없음).
 #>
 
 [CmdletBinding()]
@@ -118,10 +159,80 @@ Write-Host "[3/3] 서비스 실행 계정을 확인합니다: sc qc $ServiceName
 $qcOutput = & sc.exe qc $ServiceName 2>&1
 if (($qcOutput -join "`n") -match [regex]::Escape($ServiceAccount)) {
     Write-Host "성공 — 서비스 실행 계정이 '$ServiceAccount'(으)로 등록되었습니다." -ForegroundColor Green
-    exit 0
 }
 else {
     Write-Error "서비스 실행 계정 확인에 실패했습니다 — sc qc 결과에서 '$ServiceAccount'를 찾을 수 없습니다."
     Write-Host $qcOutput
     exit 1
 }
+
+# 8) (RN-06b) 이벤트 소스 등록 — EventLogWriter(NodeSharp.Runner)가 쓰려면 미리 등록돼 있어야 함.
+#    이미 등록돼 있으면 New-EventLog가 오류를 내므로 먼저 존재 여부를 확인하고 없을 때만 등록한다.
+#    이 부가 기능이 실패해도(예: 권한 부족) 서비스 등록 자체(완료 기준)는 이미 끝났으므로 경고만 남긴다.
+$eventSource = "NodeSharp.Runner"
+Write-Host "[부가] 이벤트 로그 소스를 등록합니다: $eventSource"
+try {
+    if (-not [System.Diagnostics.EventLog]::SourceExists($eventSource)) {
+        New-EventLog -LogName Application -Source $eventSource
+        Write-Host "성공 — 이벤트 소스 '$eventSource'를 Application 로그에 등록했습니다." -ForegroundColor Green
+    }
+    else {
+        Write-Host "이미 등록돼 있어 건너뜁니다 — 이벤트 소스 '$eventSource'."
+    }
+}
+catch {
+    Write-Warning "이벤트 소스 등록에 실패했습니다(서비스 등록 자체는 완료됨): $($_.Exception.Message)"
+}
+
+# 9) (RN-06b) 크래시 덤프 폴더 접근 권한 제한 — 덤프에는 복호화된 자격증명이 남을 수 있어
+#    credentials.json과 동급으로 취급(02번 문서 7번 탭 카드14). $BinaryPath와 같은 폴더에
+#    crashdumps\를 만들고, 상속을 끊은 뒤 SYSTEM·Administrators·서비스 계정만 접근 가능하게 한다.
+try {
+    $dumpDirectory = Join-Path -Path (Split-Path -Path $BinaryPath -Parent) -ChildPath "crashdumps"
+    if (-not (Test-Path -LiteralPath $dumpDirectory)) {
+        New-Item -ItemType Directory -Path $dumpDirectory | Out-Null
+    }
+    Write-Host "[부가] 크래시 덤프 폴더 접근 권한을 제한합니다: $dumpDirectory"
+    & icacls.exe "$dumpDirectory" /inheritance:r | Out-Null
+    & icacls.exe "$dumpDirectory" /grant:r "SYSTEM:(OI)(CI)F" "BUILTIN\Administrators:(OI)(CI)F" "${ServiceAccount}:(OI)(CI)F" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "성공 — '$dumpDirectory' 접근 권한을 SYSTEM/Administrators/$ServiceAccount로 제한했습니다." -ForegroundColor Green
+    }
+    else {
+        Write-Warning "icacls 권한 설정이 실패했습니다(종료 코드 $LASTEXITCODE) — 서비스 등록 자체는 완료됨."
+    }
+}
+catch {
+    Write-Warning "크래시 덤프 폴더 권한 제한 중 오류가 발생했습니다(서비스 등록 자체는 완료됨): $($_.Exception.Message)"
+}
+
+# 10) (RN-07) 실패 시 자동 재시작 정책 설정 — 이 Step의 완료 기준 본체이므로 실패하면 스크립트도 실패 처리한다.
+Write-Host "[RN-07 1/2] 실패 시 자동 재시작 정책을 설정합니다: sc failure $ServiceName"
+& sc.exe failure $ServiceName reset= 86400 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "sc.exe failure 설정에 실패했습니다(종료 코드 $LASTEXITCODE) — RN-07 완료 기준(강제 종료 시 자동 재기동)을 만족하지 못합니다."
+    exit 1
+}
+
+# 11) (RN-07) 처리되지 않은 예외로 죽는 경우까지 복구 액션이 적용되도록 failureflag를 켠다.
+#     일부 Windows 버전/구성에는 이 명령 자체가 없을 수 있어, 실패해도 경고만 남기고 계속 진행한다
+#     (기본 재시작 정책은 위 10)에서 이미 걸려 있어 완전히 무력화되지는 않음).
+Write-Host "[RN-07 2/2] 처리되지 않은 예외에도 복구 액션이 적용되도록 설정합니다: sc failureflag $ServiceName 1"
+& sc.exe failureflag $ServiceName 1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "sc.exe failureflag 설정에 실패했습니다 — 이 Windows 버전/구성에는 없는 명령일 수 있습니다(기본 재시작 정책은 여전히 적용됨)."
+}
+
+# 12) (RN-07) 자체 확인 — sc.exe qfailure로 방금 설정한 복구 옵션에 RESTART 동작이 실제로 반영됐는지 재확인
+Write-Host "[RN-07 확인] 복구 옵션을 확인합니다: sc qfailure $ServiceName"
+$qfailureOutput = & sc.exe qfailure $ServiceName 2>&1
+if (($qfailureOutput -join "`n") -match "RESTART") {
+    Write-Host "성공 — 실패 시 자동 재시작(RESTART) 복구 정책이 등록되었습니다." -ForegroundColor Green
+}
+else {
+    Write-Error "복구 옵션 확인에 실패했습니다 — sc qfailure 결과에서 RESTART 동작을 찾을 수 없습니다."
+    Write-Host $qfailureOutput
+    exit 1
+}
+
+exit 0

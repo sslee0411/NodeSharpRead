@@ -128,6 +128,56 @@
       채워지는지 테스트 1개.
     - test\NodeSharp.Tests\RunnerHealthStateTests.cs에 테스트 1개 추가 — RecordClockDrift 호출
       전에는 Snapshot().ClockDrift가 null, 호출 후에는 그 값을 그대로 반영하는지 확인.
+
+    Step: RN-05b-a (03번 개발 Step맵.html, Phase 4 — DiskSpaceMonitor 여유 공간 판정)
+    - 원래 RN-05b 완료 기준(위험 단계에서 RetentionSweeper 즉시 강제 실행까지 포함)을 검토하다
+      RetentionSweeper가 ED-D10(Phase 13)에 속해 아직 미착수임을 발견 — 사용자 확인을 거쳐
+      RN-05b-a(판정 로직, 지금 구현)/RN-05b-b(RetentionSweeper 연동, ED-D10 완료 후)로 분리
+      (RN-01→RN-01a/RN-01b, RN-04→RN-04a/RN-04b 분리와 동일한 판단).
+    - src\NodeSharp.Runner\Health\DiskSpaceLevel.cs 신규 — Ok/Warning/Critical 3단계 enum(여유
+      공간 비율 20%/10% 경계). src\NodeSharp.Runner\Health\DiskSpaceStatus.cs 신규 —
+      AvailableFreeBytes/FreePercent/Level/CheckedAt 4개 필드 레코드.
+    - src\NodeSharp.Runner\Health\DiskSpaceMonitor.cs 신규 — Check()가 주입된 reader(생략 시
+      기본값인 실제 DriveInfo 읽기)로 (여유 바이트, 여유 비율%)을 얻어 분류(02번 문서 7번 탭
+      카드13 그대로, ClockDriftMonitor의 offsetReader 주입과 동일한 패턴).
+    - src\NodeSharp.Runner\Health\RunnerHealthSnapshot.cs/RunnerHealthState.cs 수정 —
+      DiskSpaceStatus? DiskSpace 필드·RecordDiskSpace 메서드 추가.
+    - src\NodeSharp.Runner\Worker.cs 수정 — 생성자가 DiskSpaceMonitor?도 선택적으로 주입받도록
+      확장(생략 시 ExecuteAsync에서 baseDirectory 기준 실제 DriveInfo 인스턴스 생성), 기존 5분
+      주기 루프에서 DiskSpaceMonitor.Check()도 함께 호출해 기록 — Critical 판정 시 RetentionSweeper
+      강제 실행은 아직 연동하지 않고 기록만 함(RN-05b-b 대기).
+    - test\NodeSharp.Tests\DiskSpaceMonitorTests.cs 신규 — 판정 경계값 이론 테스트 8개 +
+      AvailableFreeBytes/CheckedAt 확인 테스트 1개. RunnerHealthStateTests.cs/RunnerWorkerTests.cs
+      갱신. 사용자가 로컬 dotnet build/test 통과를 확인함(2026-08-06).
+
+    Step: RN-06a (03번 개발 Step맵.html, Phase 4 — CrashDumpCollector)
+    - 완료 기준("프로세스를 강제 크래시시켰을 때 미니덤프 파일이 생성되는지 확인")을 검토하다,
+      실제 덤프 생성은 Win32 Dbghelp.dll!MiniDumpWriteDump P/Invoke에 의존해 Windows 전용이라
+      이 개발 환경(Linux 샌드박스)에서 자동 검증이 불가능함을 발견 — AskUserQuestion으로 확인,
+      "판정/보존 로직만 xUnit, 실제 Win32 호출은 사용자 수동 확인(추천, RN-05a와 동일 패턴)" 선택.
+    - src\NodeSharp.Runner\Diagnostics\CrashDumpCollector.cs 신규 — Register()가
+      AppDomain.CurrentDomain.UnhandledException에 핸들러를 등록, BuildDumpPath(경로 명명)·
+      EnforceRetention(최근 5개만 유지)·HandleCrash(둘을 실제 크래시 시 호출하는 조합, writeMiniDump/
+      reportError를 주입받아 테스트 가능)로 분리(02번 문서 7번 탭 카드14 그대로, 추가 NuGet 패키지
+      없이 Dbghelp.dll P/Invoke로 실제 덤프 작성).
+    - test\NodeSharp.Tests\CrashDumpCollectorTests.cs 신규 — BuildDumpPath 경로 형식, EnforceRetention
+      보존 개수, HandleCrash 호출 순서·인자를 가짜 delegate로 검증(실제 Win32 호출 없음).
+
+    Step: RN-06b (03번 개발 Step맵.html, Phase 4 — EventLogWriter + 덤프 보호)
+    - 완료 기준 3가지 중 ".gitignore 포함"은 이미 v1.23에서 crashdumps//*.dmp가 등록돼 있어 추가
+      작업이 필요 없음을 확인. "이벤트 로그 기록"은 System.Diagnostics.EventLog가 Windows 전용이라
+      RN-06a와 동일하게 자동 검증 불가 — 사용자 수동 확인으로 처리. "파일 권한 제한"은 코드가 아니라
+      배포 시점의 NTFS ACL 문제라 판단해 Install-NodeSharpService.ps1(RN-03a)에 icacls 단계를 추가.
+    - src\NodeSharp.Runner\Diagnostics\EventLogWriter.cs 신규 — WriteError/WriteInfo가
+      EventLog.WriteEntry를 호출(예외는 내부에서 삼켜 상위 크래시 처리 흐름을 막지 않음).
+      NodeSharp.Runner.csproj에 System.Diagnostics.EventLog PackageReference 추가(EventLog
+      클래스가 .NET Core 공유 프레임워크에서 빠져 별도 패키지 필요).
+    - src\NodeSharp.Runner\Program.cs 최상단에 CrashDumpCollector.Register() 호출 추가(다른 어떤
+      코드보다도 먼저 등록해야 그 이후 모든 예외를 잡을 수 있음).
+    - tools\service\Install-NodeSharpService.ps1 수정 — New-EventLog로 이벤트 소스 등록 단계,
+      크래시 덤프 폴더(BinaryPath 옆 crashdumps\)를 만들고 icacls로 $ServiceAccount만 읽기
+      가능하도록 제한하는 단계 추가(둘 다 xUnit 대상 아님, PowerShell 스크립트라 RN-03a와 동일하게
+      사용자가 Windows 관리자 권한으로 직접 실행해 확인).
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -149,6 +199,12 @@
          API(app.MapGet)를 쓰기 위한 ASP.NET Core 공유 프레임워크 참조. Worker Service에 헬스체크
          엔드포인트를 추가하는 표준 방식(Microsoft 공식 가이드)이라 Sdk 전환 없이 이 한 줄만 추가. -->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- RN-06b — System.Diagnostics.EventLog 클래스가 .NET Core 3.0부터 공유 프레임워크에서
+         빠져 별도 NuGet 패키지로 배포된다(Windows 전용, EventLogWriter가 사용). -->
+    <PackageReference Include="System.Diagnostics.EventLog" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
