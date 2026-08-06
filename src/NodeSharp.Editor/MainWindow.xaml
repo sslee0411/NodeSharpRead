@@ -10,6 +10,10 @@
   뒤늦게 발견해, 원래 03번 Step맵의 "전환 버튼" 문구를 카드15에 맞춰 정정하고 이 방식으로 구현
   (전환 버튼 없음, 항상 둘 다 보임). 좌측 네비게이션의 "Flow"/"구조 설정" 2개 항목도 실제로는
   전환 대상이 아니라 항상 함께 보이는 같은 화면이라 "Flow / 구조 설정" 1개 항목으로 합쳤다.
+  (ED-B2b) Sequence Editor·Dashboard는 11번 탭 카드6/9번 탭 설계대로 각각 별도 창으로 뜨는
+  화면이라(이 창 안에 넣지 않음), 지금은 진입점만 만든다 — 헤더 "보기" 메뉴에 하위 항목 2개를
+  추가하고, ED-B2a부터 있던 좌측 네비게이션의 Sequence/Dashboard 항목도 클릭 가능하게 만들어
+  두 진입점 모두 같은 안내 메시지(placeholder)를 띄우도록 연결했다(실제 창은 Phase 10/11).
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -26,7 +30,8 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- (ED-B1) 헤더 — 상단 메뉴. 실제 메뉴 동작(파일 열기 등)은 이후 Step에서 채운다. -->
+        <!-- (ED-B1) 헤더 — 상단 메뉴. (ED-B2b) "보기" 메뉴에 Sequence Editor/Dashboard 진입점 추가
+             — 나머지 메뉴(파일/편집/도움말)는 아직 하위 항목 없이 자리만 잡아둔 상태 그대로. -->
         <Border Grid.Row="0"
                 Background="{DynamicResource ControlBackgroundBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
@@ -34,7 +39,10 @@
             <Menu Background="Transparent" Foreground="{DynamicResource PrimaryTextBrush}">
                 <MenuItem Header="파일" />
                 <MenuItem Header="편집" />
-                <MenuItem Header="보기" />
+                <MenuItem Header="보기">
+                    <MenuItem Header="Sequence Editor" Click="OnSequenceEditorEntryClick" />
+                    <MenuItem Header="Dashboard" Click="OnDashboardEntryClick" />
+                </MenuItem>
                 <MenuItem Header="도움말" />
             </Menu>
         </Border>
@@ -49,16 +57,18 @@
             </Grid.ColumnDefinitions>
 
             <!-- 좌측 네비게이션 — (ED-B2a) "Flow"/"구조 설정"은 카드15에 따라 항상 함께 보이는
-                 같은 화면이라 1개 항목으로 합침. Sequence/Dashboard는 Phase 10/11에서 별도 창
-                 진입점이 될 자리표시자(ED-B2b에서 클릭 동작 추가). -->
+                 같은 화면이라 1개 항목으로 합침. (ED-B2b) Sequence/Dashboard는 헤더 "보기" 메뉴와
+                 동일한 진입점이라 같은 클릭 핸들러로 연결(Cursor=Hand로 클릭 가능함을 시각적으로 표시). -->
             <Border Grid.Column="0"
                     Background="{DynamicResource ControlBackgroundBrush}"
                     BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="0,0,1,0">
                 <StackPanel Margin="8">
                     <TextBlock Text="Flow / 구조 설정" Foreground="{DynamicResource PrimaryTextBrush}" Margin="0,4" FontSize="14" />
-                    <TextBlock Text="Sequence" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,4" FontSize="14" />
-                    <TextBlock Text="Dashboard" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,4" FontSize="14" />
+                    <TextBlock Text="Sequence" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,4" FontSize="14"
+                               Cursor="Hand" MouseLeftButtonUp="OnSequenceEditorEntryClick" />
+                    <TextBlock Text="Dashboard" Foreground="{DynamicResource SecondaryTextBrush}" Margin="0,4" FontSize="14"
+                               Cursor="Hand" MouseLeftButtonUp="OnDashboardEntryClick" />
                 </StackPanel>
             </Border>
 
