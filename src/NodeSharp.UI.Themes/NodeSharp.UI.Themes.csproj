@@ -11,6 +11,16 @@
 
     Step: P0-1a (03번 개발 Step맵.html, Phase 0)
     - 이 시점에는 빈 프로젝트 껍데기만 생성한다(테마 리소스 없음).
+
+    Step: ED-B0 (03번 개발 Step맵.html, Phase 5 — 빈 WPF + NodeSharp.UI.Themes 적용)
+    - lssLib 원본 WPF 테마 자산이 이 개발 환경에는 없어(D:\lssLib 미연결) 새로 설계 — 사용자 확인,
+      "새로 설계해서 만들기(추천)" 선택(NodeSharp.Editor.csproj Ver History에 판단 과정 상세 기록).
+    - Themes\DarkTheme.xaml / Themes\LightTheme.xaml 신규 — 같은 리소스 키(WindowBackgroundBrush
+      등 6개 Color + 6개 SolidColorBrush)를 서로 다른 색상값으로 정의(UseWPF=true라 SDK가
+      *.xaml을 자동으로 Page로 포함, 별도 ItemGroup 불필요).
+    - AppTheme.cs 신규 — Dark/Light 2값 enum. ThemeManager.cs 신규 — ApplyTheme(theme)이
+      Application.Current.Resources.MergedDictionaries에서 기존 테마 딕셔너리를 제거하고 새
+      ResourceDictionary를 추가(중복 등록 방지, 실행 중 재호출해도 깔끔하게 전환).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>

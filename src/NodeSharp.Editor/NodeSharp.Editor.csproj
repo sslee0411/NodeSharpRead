@@ -15,8 +15,24 @@
     - 1번 탭 의존성 그림에 따라 ProjectReference 추가: Editor → Contracts, Editor → Runtime,
       Editor → Registry, Editor → Util, Editor → UI.Themes.
       (Contracts는 Runtime/Registry를 통해서도 전이적으로 들어오지만, Step 설명에 명시된 대로 직접 참조도 추가)
+
+    Step: ED-B0 (03번 개발 Step맵.html, Phase 5 — 빈 WPF + NodeSharp.UI.Themes 적용)
+    - 완료 기준: "앱 기동 시 다크/라이트 테마가 적용된 빈 창이 예외 없이 표시되는지 확인". 이
+      테마에 쓸 lssLib 원본 WPF 테마 자산이 이 개발 환경(D:\lssLib 미연결)에는 없고 dev-csharp
+      스킬에도 실제 테마 XAML 내용은 없음(API 텍스트 참조용뿐)을 발견 — AskUserQuestion으로 확인,
+      "새로 설계해서 만들기(추천)" 선택. 색상값은 나중에 실제 lssLib 테마로 교체 가능하도록
+      NodeSharp.UI.Themes 쪽 리소스 키 이름만 고정해두고 값은 이 프로젝트에서 새로 정함.
+    - P0-1a의 "빈 껍데기 = 기본 라이브러리" 상태를 여기서 종료 — OutputType을 WinExe로 전환,
+      App.xaml/App.xaml.cs/MainWindow.xaml/MainWindow.xaml.cs 4개 신규 추가.
+    - src\NodeSharp.Editor\App.xaml.cs — OnStartup에서 NodeSharp.UI.Themes의 ThemeManager.ApplyTheme
+      (AppTheme.Dark)를 호출해 기본 테마를 적용. src\NodeSharp.Editor\MainWindow.xaml — 배경/글자색을
+      DynamicResource로 테마 브러시에 연결한 빈 창(제목 텍스트 1개만 있음, 실제 레이아웃은 ED-B1).
+    - 완료 기준 확인 자체는 WPF 창이 실제로 화면에 그려지는지를 봐야 해서 이 개발 환경(Linux
+      샌드박스, WPF 미실행)에서는 자동 검증이 불가능 — RN-03a/RN-07(PowerShell, xUnit 대상 아님)과
+      같은 유형이라 이 Step도 xUnit 테스트 없이 사용자가 Windows에서 직접 실행해 확인한다.
   -->
   <PropertyGroup>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>

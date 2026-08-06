@@ -1,0 +1,14 @@
+<!--
+  App.xaml
+  ====================
+  (ED-B0) NodeSharp.Editor(WPF) 앱 진입점. StartupUri로 MainWindow를 띄운다 — 테마 리소스는
+  코드 비하인드(App.xaml.cs)의 OnStartup에서 ThemeManager.ApplyTheme으로 동적으로 추가한다
+  (XAML에서 정적으로 병합하면 나중에 실행 중 테마 전환이 어려워지므로).
+-->
+<Application x:Class="NodeSharp.Editor.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+    </Application.Resources>
+</Application>

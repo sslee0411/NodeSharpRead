@@ -1,0 +1,21 @@
+<!--
+  MainWindow.xaml
+  ====================
+  (ED-B0) 완료 기준("다크/라이트 테마가 적용된 빈 창이 예외 없이 표시되는지")을 만족하는 최소
+  화면 — 배경/글자색을 DynamicResource로 테마 브러시에 연결해둔 빈 창 하나뿐이다. 실제 레이아웃
+  (헤더+메뉴+본문)은 ED-B1에서 채운다.
+-->
+<Window x:Class="NodeSharp.Editor.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="NodeSharp Editor"
+        Height="600" Width="900"
+        Background="{DynamicResource WindowBackgroundBrush}">
+    <Grid>
+        <TextBlock Text="NodeSharp Editor"
+                   FontSize="20"
+                   Foreground="{DynamicResource PrimaryTextBrush}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+    </Grid>
+</Window>
