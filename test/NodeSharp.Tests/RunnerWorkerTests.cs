@@ -14,11 +14,17 @@ namespace NodeSharp.Tests;
 /// 자체는 RN-B0 때와 동일합니다. (RN-05a) Worker가 <see cref="ClockDriftMonitor"/>도 주입받도록
 /// 바뀌어, 두 테스트 모두 가짜 reader를 가진 인스턴스를 함께 준비합니다 — 그래야 테스트가
 /// 실제 w32tm.exe를 호출하지 않고 빠르고 결정적으로 끝납니다(이 개발 환경에는 w32tm 자체가 없음).
+/// (RN-05b-a) Worker가 <see cref="DiskSpaceMonitor"/>도 선택적으로 주입받도록 바뀌어, 두 테스트
+/// 모두 가짜 reader를 가진 인스턴스를 함께 준비합니다 — 그래야 실제 DriveInfo를 읽지 않고 빠르고
+/// 결정적으로 끝납니다.
 /// </summary>
 public class RunnerWorkerTests
 {
     private static ClockDriftMonitor NewFakeClockDriftMonitor() =>
         new(offsetReader: _ => Task.FromResult(0.0));
+
+    private static DiskSpaceMonitor NewFakeDiskSpaceMonitor() =>
+        new(dataRoot: ".", reader: () => (1_000_000L, 100.0));
 
     [Fact]
     public async Task 완료_기준_직접_검증__DI_컨테이너로_구성한_Worker_Host는_예외_없이_기동하고_정상_종료된다()
@@ -28,6 +34,7 @@ public class RunnerWorkerTests
             {
                 services.AddSingleton<RunnerHealthState>();
                 services.AddSingleton(NewFakeClockDriftMonitor());
+                services.AddSingleton(NewFakeDiskSpaceMonitor());
                 services.AddHostedService<Worker>();
             })
             .Build();
@@ -41,7 +48,7 @@ public class RunnerWorkerTests
     [Fact]
     public async Task Worker는_ExecuteAsync에서_예외를_던지지_않는다()
     {
-        var worker = new Worker(new RunnerHealthState(), NewFakeClockDriftMonitor());
+        var worker = new Worker(new RunnerHealthState(), NewFakeClockDriftMonitor(), NewFakeDiskSpaceMonitor());
         using var cts = new CancellationTokenSource();
 
         var task = worker.StartAsync(cts.Token);

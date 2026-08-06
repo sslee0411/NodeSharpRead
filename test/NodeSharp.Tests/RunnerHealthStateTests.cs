@@ -14,6 +14,8 @@ namespace NodeSharp.Tests;
 /// JSON으로 반환되는지 확인". (RN-05a) RecordClockDrift가 Snapshot에 반영되는지 검증하는
 /// 테스트 1개를 추가했습니다 — 실제 w32tm 읽기 자체는 ClockDriftMonitorTests에서 가짜 reader로
 /// 다루므로 여기서는 RunnerHealthState 쪽 배선만 확인합니다.
+/// (RN-05b-a) RecordDiskSpace가 Snapshot에 반영되는지 검증하는 테스트 1개를 추가했습니다 — 실제
+/// DriveInfo 읽기 자체는 DiskSpaceMonitorTests에서 가짜 reader로 다루므로 여기서도 배선만 확인합니다.
 /// </summary>
 public class RunnerHealthStateTests
 {
@@ -110,5 +112,20 @@ public class RunnerHealthStateTests
         Assert.NotNull(snapshot.ClockDrift);
         Assert.Equal(ClockDriftLevel.Warning, snapshot.ClockDrift!.Level);
         Assert.Equal(2.5, snapshot.ClockDrift!.OffsetSeconds);
+    }
+
+    [Fact]
+    public void 완료_기준_직접_검증__RecordDiskSpace_후_Snapshot의_DiskSpace가_채워진다()
+    {
+        var state = new RunnerHealthState();
+        Assert.Null(state.Snapshot().DiskSpace);   // 확인 전에는 null
+
+        var disk = new DiskSpaceStatus(AvailableFreeBytes: 1_000_000, FreePercent: 8.0, Level: DiskSpaceLevel.Critical, CheckedAt: DateTime.UtcNow);
+        state.RecordDiskSpace(disk);
+
+        var snapshot = state.Snapshot();
+        Assert.NotNull(snapshot.DiskSpace);
+        Assert.Equal(DiskSpaceLevel.Critical, snapshot.DiskSpace!.Level);
+        Assert.Equal(8.0, snapshot.DiskSpace!.FreePercent);
     }
 }

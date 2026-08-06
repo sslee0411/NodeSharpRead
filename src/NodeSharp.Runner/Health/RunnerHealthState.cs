@@ -13,6 +13,8 @@ namespace NodeSharp.Runner.Health;
 /// 설계 근거: 02번 문서 7번 탭 카드11 <c>app.MapGet("/health", ...)</c> 의사코드.
 /// (RN-05a) Worker가 5분마다 <see cref="RecordClockDrift"/>를 호출해 <c>ClockDriftMonitor</c>
 /// 확인 결과도 함께 보관합니다.
+/// (RN-05b-a) Worker가 같은 5분 주기로 <see cref="RecordDiskSpace"/>를 호출해 <c>DiskSpaceMonitor</c>
+/// 확인 결과도 함께 보관합니다.
 /// </summary>
 /// <remarks>
 /// ActiveAlarmCount(활성 알람 수)는 이 클래스에 아직 없습니다 — AlarmStateManager(ED-D07a,
@@ -30,6 +32,8 @@ namespace NodeSharp.Runner.Health;
 /// if (engine is not null) healthState.RecordDeploy(engine);
 /// var drift = await clockDriftMonitor.CheckAsync(ct);
 /// healthState.RecordClockDrift(drift);
+/// var disk = diskSpaceMonitor.Check();
+/// healthState.RecordDiskSpace(disk);
 ///
 /// // /health 엔드포인트 — 호출될 때마다 최신 스냅샷 반환
 /// app.MapGet("/health", (RunnerHealthState health) =&gt; health.Snapshot());
@@ -41,6 +45,7 @@ public sealed class RunnerHealthState
     private FlowEngine? _lastDeployedEngine;
     private DateTime? _lastDeployAt;
     private ClockDriftStatus? _lastClockDrift;
+    private DiskSpaceStatus? _lastDiskSpace;
 
     /// <summary>
     /// 배포가 성공할 때마다 호출합니다 — 이후 <see cref="Snapshot"/>이 이 <paramref name="engine"/>
@@ -61,6 +66,15 @@ public sealed class RunnerHealthState
         _lastClockDrift = status;
     }
 
+    /// <summary>
+    /// (RN-05b-a) <c>DiskSpaceMonitor.Check</c>가 새 결과를 낼 때마다 호출합니다 — 이후
+    /// <see cref="Snapshot"/>의 <c>DiskSpace</c> 필드가 이 값을 그대로 반환합니다.
+    /// </summary>
+    public void RecordDiskSpace(DiskSpaceStatus status)
+    {
+        _lastDiskSpace = status;
+    }
+
     /// <summary>/health 엔드포인트가 그대로 JSON 직렬화해 반환할 현재 상태 스냅샷을 새로 계산해 반환합니다.</summary>
     public RunnerHealthSnapshot Snapshot() => new(
         Status: "Healthy",
@@ -68,5 +82,6 @@ public sealed class RunnerHealthState
         DeployedNodeCount: _lastDeployedEngine?.Nodes.Count ?? 0,
         LastDeployAt: _lastDeployAt,
         FailedNodeIds: _lastDeployedEngine?.FailedNodeIds ?? Array.Empty<string>(),
-        ClockDrift: _lastClockDrift);
+        ClockDrift: _lastClockDrift,
+        DiskSpace: _lastDiskSpace);
 }

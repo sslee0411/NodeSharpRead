@@ -6,7 +6,7 @@ namespace NodeSharp.Runner;
 
 /// <summary>
 /// Class명 : 러너 워커
-/// 역활 및 기능 : Generic Host 기동 시 StartupSequencer로 설정 파일을 순서대로 읽고 flows.json이 있으면 FlowDeployer로 배포한 뒤, 5분마다 클럭 드리프트를 확인해 RunnerHealthState에 기록하는 백그라운드 서비스
+/// 역활 및 기능 : Generic Host 기동 시 StartupSequencer로 설정 파일을 순서대로 읽고 flows.json이 있으면 FlowDeployer로 배포한 뒤, 5분마다 클럭 드리프트·디스크 여유 공간을 확인해 RunnerHealthState에 기록하는 백그라운드 서비스
 ///
 /// (RN-B0) NodeSharp.Runner의 백그라운드 서비스 진입점으로 처음 만들어졌을 때는 아무 일도 하지
 /// 않는 빈 뼈대였습니다. (RN-01a) <see cref="StartupSequencer"/>로 device.json→sequences.json→
@@ -16,6 +16,8 @@ namespace NodeSharp.Runner;
 /// (RN-04a) 배포에 성공하면 그 결과를 <see cref="RunnerHealthState"/>에 기록해 /health
 /// 엔드포인트가 최신 값을 돌려줄 수 있게 했습니다. (RN-05a) 배포 시도가 끝난 뒤 5분 주기로
 /// <see cref="ClockDriftMonitor"/>를 호출해 결과를 계속 기록하는 반복 루프가 추가됐습니다.
+/// (RN-05b-a) 같은 5분 주기 루프에서 <see cref="DiskSpaceMonitor"/>도 함께 호출해 디스크 여유
+/// 공간을 기록합니다(Critical 시 RetentionSweeper 강제 실행 연동은 RN-05b-b에서 이어집니다).
 /// </summary>
 /// <example>
 /// <code>
@@ -32,6 +34,7 @@ public sealed class Worker : BackgroundService
 
     private readonly RunnerHealthState _healthState;
     private readonly ClockDriftMonitor _clockDriftMonitor;
+    private readonly DiskSpaceMonitor? _diskSpaceMonitor;
 
     /// <summary>
     /// (RN-04a) DI로 <see cref="RunnerHealthState"/>를 주입받습니다 — 배포에 성공했을 때
@@ -39,11 +42,16 @@ public sealed class Worker : BackgroundService
     /// (RN-05a) <paramref name="clockDriftMonitor"/>는 생략하면 실제 w32tm을 읽는 기본
     /// 인스턴스를 씁니다 — 테스트에서는 가짜 reader를 가진 인스턴스를 주입해 실제 OS 호출
     /// 없이 빠르게 검증합니다.
+    /// (RN-05b-a) <paramref name="diskSpaceMonitor"/>도 같은 이유로 선택적으로 주입받습니다 —
+    /// 생략하면 <see cref="ExecuteAsync"/>에서 실행 파일 폴더(<c>baseDirectory</c>) 기준으로 실제
+    /// <c>DriveInfo</c>를 읽는 기본 인스턴스를 만듭니다(생성자 시점에는 baseDirectory를 아직 몰라
+    /// ClockDriftMonitor처럼 생성자에서 바로 기본값을 만들 수 없음).
     /// </summary>
-    public Worker(RunnerHealthState healthState, ClockDriftMonitor? clockDriftMonitor = null)
+    public Worker(RunnerHealthState healthState, ClockDriftMonitor? clockDriftMonitor = null, DiskSpaceMonitor? diskSpaceMonitor = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
+        _diskSpaceMonitor = diskSpaceMonitor;
     }
 
     /// <summary>
@@ -57,6 +65,10 @@ public sealed class Worker : BackgroundService
     /// 호출해 결과를 기록합니다 — 한 번의 확인이 예외를 던져도(예: w32tm 파싱 실패) 잡아서
     /// 다음 주기에 다시 시도할 뿐 전체 루프는 멈추지 않습니다(StartupSequencer의 "단계별 격리"
     /// 원칙과 동일한 정신).
+    /// (RN-05b-a) 같은 루프에서 <see cref="DiskSpaceMonitor.Check"/>도 호출해 결과를 기록합니다
+    /// (같은 방식으로 예외를 격리). ★ Critical 판정 시 RetentionSweeper를 즉시 강제 실행하는
+    /// 연동은 아직 없습니다 — RetentionSweeper(ED-D10, Phase 13)가 아직 만들어지지 않아 RN-05b-b로
+    /// 분리해 이후 착수합니다(지금은 판정 결과를 기록만 함).
     /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -70,6 +82,8 @@ public sealed class Worker : BackgroundService
             _healthState.RecordDeploy(engine);
         }
 
+        var diskSpaceMonitor = _diskSpaceMonitor ?? new DiskSpaceMonitor(baseDirectory);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -81,6 +95,17 @@ public sealed class Worker : BackgroundService
             {
                 // RN-05a: 한 번의 확인 실패(예: w32tm 파싱 실패)가 전체 루프를 멈추지 않도록 격리.
                 // 다음 주기에 다시 시도한다.
+            }
+
+            try
+            {
+                // RN-05b-a: 디스크 여유 공간 확인 — Critical이어도 아직은 기록만 함(RN-05b-b 대기).
+                var disk = diskSpaceMonitor.Check();
+                _healthState.RecordDiskSpace(disk);
+            }
+            catch (Exception) when (!stoppingToken.IsCancellationRequested)
+            {
+                // RN-05b-a: 한 번의 확인 실패가 전체 루프를 멈추지 않도록 격리. 다음 주기에 다시 시도한다.
             }
 
             try
