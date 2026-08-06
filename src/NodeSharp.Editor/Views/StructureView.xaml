@@ -1,0 +1,17 @@
+<!--
+  StructureView.xaml
+  ====================
+  (ED-B2a) 본문 우측에 항상 보이는 구조 설정 뷰 자리표시자(02번 문서 8번 탭 카드15 "항상 분할
+  도킹" 확정 설계) — 장비→PLC→디바이스맵→태그→스케일→알람 6단계 트리 등 실제 구조 설정 내용은
+  Phase 9(구조 설정, Device Tree/PLC)에서 채워진다. 지금은 빈 화면.
+-->
+<UserControl x:Class="NodeSharp.Editor.Views.StructureView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{DynamicResource ControlBackgroundBrush}">
+        <TextBlock Text="구조 설정 — Phase 9(Device Tree, PLC)까지 빈 화면"
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+    </Grid>
+</UserControl>

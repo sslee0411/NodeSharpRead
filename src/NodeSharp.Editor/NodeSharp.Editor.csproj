@@ -30,6 +30,45 @@
     - 완료 기준 확인 자체는 WPF 창이 실제로 화면에 그려지는지를 봐야 해서 이 개발 환경(Linux
       샌드박스, WPF 미실행)에서는 자동 검증이 불가능 — RN-03a/RN-07(PowerShell, xUnit 대상 아님)과
       같은 유형이라 이 Step도 xUnit 테스트 없이 사용자가 Windows에서 직접 실행해 확인한다.
+    - 사용자가 Windows에서 빌드·실행해 다크 테마가 적용된 빈 창이 예외 없이 표시되는 것을 확인함(2026-08-06).
+
+    Step: ED-B1 (03번 개발 Step맵.html, Phase 5 — 메인 레이아웃 헤더+메뉴+본문)
+    - 완료 기준: "헤더/메뉴/본문 3영역이 렌더링되고 창 크기 조절 시 레이아웃이 깨지지 않는지 확인".
+      12번 탭 카드2(통합 작업 화면 목업)의 최종 모습은 캔버스·구조설정 실 내용까지 채워진 상태라
+      이 Step 범위가 아니고, 지금은 3영역이 리사이즈에도 안 깨지고 자리만 잡는 것까지가 목표
+      (실제 내용은 ED-B2a부터) — 03번 Step맵 desc가 이미 이 범위를 "뼈대(캔버스·구조설정 실제
+      내용은 아직 없음)"로 명시해둬서 별도 AskUserQuestion 없이 그대로 따름.
+    - src\NodeSharp.Editor\MainWindow.xaml 수정 — Grid를 Row 2개(Auto=헤더, *=본문행)로 나누고,
+      본문행을 다시 Column 2개(180±MinWidth120/MaxWidth320=좌측 네비게이션, *=본문 영역)로 나눔.
+      헤더는 Menu(파일/편집/보기/도움말 MenuItem, 동작 없음), 좌측 네비게이션은 Flow/구조
+      설정/Sequence/Dashboard 자리표시자 TextBlock 4개(클릭 동작은 ED-B2a 이후), 본문 영역은
+      안내 텍스트 1개. 리사이즈 안전성은 Window의 MinHeight/MinWidth + 네비게이션 컬럼의
+      MinWidth/MaxWidth로 확보(Grid Auto/* 조합이라 창을 줄여도 헤더는 항상 제 높이를 유지하고
+      본문행이 남은 공간을 나눠 가짐).
+    - 완료 기준 확인은 ED-B0과 동일하게 WPF 창이 실제로 그려지는지를 봐야 해서 이 개발
+      환경에서는 자동 검증 불가 — xUnit 테스트 없이 사용자가 Windows에서 직접 실행(창 크기를
+      늘렸다 줄여봄)해 확인한다.
+    - 사용자가 Windows에서 실행해 헤더/메뉴/본문 3영역 렌더링과 리사이즈 안전성을 확인함(2026-08-06).
+
+    Step: ED-B2a (03번 개발 Step맵.html, Phase 5 — Flow/구조설정 통합 뷰 전환 골격)
+    - 전체 Step 재점검 중 03번 Step맵의 원래 desc/goal("전환 버튼으로 Flow/구조설정 두 뷰를
+      전환")이 02번 문서 8번 탭 카드15("두 뷰가 화면 전환 없이 하나의 창 안에서 GridSplitter로
+      항상 함께 보임 — 분할 도킹")와 충돌함을 발견 — AskUserQuestion으로 확인, "카드15 분할
+      도킹으로 구현(추천)" 선택. 03번 Step맵의 desc/goal 셀도 카드15에 맞게 함께 정정(RT-04a 때
+      "Step맵 문구와 실제 계약 불일치" 정정과 같은 유형이지만, 이번엔 UI 아키텍처(전환형 vs
+      항상 표시형)에 영향을 주는 판단이라 먼저 확인받음).
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml(.cs)/StructureView.xaml(.cs) 4개 신규 —
+      둘 다 지금은 안내 텍스트만 있는 빈 UserControl(FlowCanvasView는 Phase 6, StructureView는
+      Phase 9에서 실제 내용이 채워짐).
+    - src\NodeSharp.Editor\MainWindow.xaml 수정 — 본문 영역(ED-B1의 안내 텍스트 자리)을 Column
+      3개(*·5·320±Min200/Max600)로 나눠 FlowCanvasView(좌)·GridSplitter·StructureView(우)를
+      배치 — 전환 버튼 없이 항상 둘 다 렌더링되고 GridSplitter로 폭만 조절. 좌측 네비게이션의
+      "Flow"/"구조 설정" 2개 항목도 실제로는 전환 대상이 아니라 항상 함께 보이는 같은 화면이라
+      "Flow / 구조 설정" 1개 항목으로 합침(Sequence/Dashboard는 그대로 별도 항목 유지 — Phase
+      10/11에서 별도 창으로 뜰 예정, ED-B2b 범위).
+    - 완료 기준 확인은 ED-B0/ED-B1과 동일하게 WPF 창이 실제로 그려지는지를 봐야 해서 자동 검증
+      불가 — xUnit 테스트 없이 사용자가 Windows에서 직접 실행(GridSplitter로 폭 조절 포함)해
+      확인한다.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
