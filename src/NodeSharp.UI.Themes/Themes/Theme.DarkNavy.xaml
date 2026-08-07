@@ -1,0 +1,200 @@
+<!-- ══════════════════════════════════════════════════════════
+     NodeSharp.UI.Themes · Themes/Theme.DarkNavy.xaml
+     역할: Dark Navy 기본 테마 — 색상/브러시/폰트/치수 전체 정의
+     출처: D:\lssLib\IIoT\IIoT.Solution\UI\Themes\IIoT.UI.Themes\Themes\Theme.DarkNavy.xaml
+           (ED-B4, 사용자 요청으로 "복사 참조" 포팅 — 색상값은 원본과 100% 동일, 네임스페이스만
+           프로젝트에 맞춰 조정하지 않음: ResourceDictionary는 원래 네임스페이스가 없어 그대로 사용)
+     ══════════════════════════════════════════════════════════ -->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- ══════════════════════════════════════════════
+         §1 ─ 배경 색상 계층
+         bg(가장 어두움) → surface → card → border
+    ══════════════════════════════════════════════ -->
+    <Color x:Key="BgColor">#0B0D14</Color>
+    <Color x:Key="SurfaceColor">#111520</Color>
+    <Color x:Key="CardColor">#161B2E</Color>
+    <Color x:Key="BorderColor">#1E2540</Color>
+    <Color x:Key="Border2Color">#2A3155</Color>
+
+    <SolidColorBrush x:Key="BgBrush"      Color="{StaticResource BgColor}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
+    <SolidColorBrush x:Key="CardBrush"    Color="{StaticResource CardColor}"/>
+    <SolidColorBrush x:Key="BorderBrush"  Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="Border2Brush" Color="{StaticResource Border2Color}"/>
+
+    <!-- ══════════════════════════════════════════════
+         §2 ─ 포인트(액센트) 색상
+    ══════════════════════════════════════════════ -->
+    <Color x:Key="AccColor">#4F7CFF</Color>
+    <Color x:Key="Acc2Color">#7C5CFF</Color>
+
+    <SolidColorBrush x:Key="AccBrush"  Color="{StaticResource AccColor}"/>
+    <SolidColorBrush x:Key="Acc2Brush" Color="{StaticResource Acc2Color}"/>
+
+    <!-- 액센트 반투명 (호버, 뱃지 배경 등) -->
+    <SolidColorBrush x:Key="AccFaintBrush"  Color="#154F7CFF" Opacity="0.10"/>
+    <SolidColorBrush x:Key="Acc2FaintBrush" Color="#157C5CFF" Opacity="0.10"/>
+
+    <!-- ══════════════════════════════════════════════
+         §3 ─ 상태 색상
+    ══════════════════════════════════════════════ -->
+    <Color x:Key="GreenColor">#22D3A0</Color>
+    <Color x:Key="YellowColor">#F5C842</Color>
+    <Color x:Key="RedColor">#FF4F6B</Color>
+    <Color x:Key="OrangeColor">#FF8C42</Color>
+    <Color x:Key="BlueColor">#60A5FA</Color>   <!-- L 알람 전용 -->
+    <Color x:Key="PurpleColor">#A78BFA</Color> <!-- LL 알람 전용 -->
+
+    <SolidColorBrush x:Key="GreenBrush"  Color="{StaticResource GreenColor}"/>
+    <SolidColorBrush x:Key="YellowBrush" Color="{StaticResource YellowColor}"/>
+    <SolidColorBrush x:Key="RedBrush"    Color="{StaticResource RedColor}"/>
+    <SolidColorBrush x:Key="OrangeBrush" Color="{StaticResource OrangeColor}"/>
+    <SolidColorBrush x:Key="BlueBrush"   Color="{StaticResource BlueColor}"/>
+    <SolidColorBrush x:Key="PurpleBrush" Color="{StaticResource PurpleColor}"/>
+
+    <!-- 상태 반투명 (뱃지 배경) -->
+    <SolidColorBrush x:Key="GreenFaintBrush"  Color="#1A22D3A0"/>
+    <SolidColorBrush x:Key="YellowFaintBrush" Color="#1AF5C842"/>
+    <SolidColorBrush x:Key="RedFaintBrush"    Color="#1AFF4F6B"/>
+    <SolidColorBrush x:Key="OrangeFaintBrush" Color="#1AFF8C42"/>
+
+    <!-- ══════════════════════════════════════════════
+         §4 ─ 텍스트 색상 3계층
+    ══════════════════════════════════════════════ -->
+    <Color x:Key="TextColor">#E2E8F0</Color>
+    <Color x:Key="Text2Color">#94A3B8</Color>
+    <Color x:Key="Text3Color">#4A5568</Color>
+
+    <SolidColorBrush x:Key="TextBrush"  Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="Text2Brush" Color="{StaticResource Text2Color}"/>
+    <SolidColorBrush x:Key="Text3Brush" Color="{StaticResource Text3Color}"/>
+
+    <!-- ══════════════════════════════════════════════
+         §5 ─ 그라디언트 브러시
+    ══════════════════════════════════════════════ -->
+    <!-- 스케일 변환 화살표 라인 -->
+    <LinearGradientBrush x:Key="ScaleArrowBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="{StaticResource Acc2Color}" Offset="0"/>
+        <GradientStop Color="{StaticResource AccColor}"  Offset="0.5"/>
+        <GradientStop Color="{StaticResource GreenColor}" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- 수집 파이프라인 흐름 -->
+    <LinearGradientBrush x:Key="PipelineBrush" StartPoint="0,0.5" EndPoint="1,0.5">
+        <GradientStop Color="{StaticResource AccColor}"   Offset="0"/>
+        <GradientStop Color="{StaticResource YellowColor}" Offset="0.6"/>
+        <GradientStop Color="{StaticResource GreenColor}" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- 툴바 배경 -->
+    <LinearGradientBrush x:Key="TopBarBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#111520" Offset="0"/>
+        <GradientStop Color="#0D1020" Offset="1"/>
+    </LinearGradientBrush>
+
+    <!-- ══════════════════════════════════════════════
+         §6 ─ 격자 배경 브러시 (점 그리드)
+    ══════════════════════════════════════════════ -->
+    <DrawingBrush x:Key="GridDotBrush" TileMode="Tile"
+                  Viewport="0,0,22,22" ViewportUnits="Absolute">
+        <DrawingBrush.Drawing>
+            <GeometryDrawing Brush="#1E2540">
+                <GeometryDrawing.Geometry>
+                    <EllipseGeometry Center="1,1" RadiusX="0.8" RadiusY="0.8"/>
+                </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
+    <!-- 플로우 에디터 캔버스 격자 -->
+    <DrawingBrush x:Key="FlowCanvasGridBrush" TileMode="Tile"
+                  Viewport="0,0,24,24" ViewportUnits="Absolute">
+        <DrawingBrush.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="#1E254044">
+                    <GeometryDrawing.Geometry>
+                        <LineGeometry StartPoint="0,24" EndPoint="24,24"/>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+                <GeometryDrawing Brush="#1E254044">
+                    <GeometryDrawing.Geometry>
+                        <LineGeometry StartPoint="24,0" EndPoint="24,24"/>
+                    </GeometryDrawing.Geometry>
+                </GeometryDrawing>
+            </DrawingGroup>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
+    <!-- ══════════════════════════════════════════════
+         §7 ─ 폰트
+    ══════════════════════════════════════════════ -->
+    <!--
+        ★ FIX 4: pack:// URI 방식은 폰트 파일을 프로젝트에 직접 포함해야 한다.
+        폰트 파일 미내장 시 XamlParseException 런타임 오류 발생.
+        → 시스템 설치 폰트 우선 + 폴백 체인 방식으로 변경.
+           JetBrains Mono가 설치되어 있으면 자동 적용, 없으면 Consolas 사용.
+    -->
+    <FontFamily x:Key="MonoFont">JetBrains Mono, Consolas, Courier New</FontFamily>
+    <!-- 폰트를 프로젝트에 내장하려면:
+         1. Fonts/ 폴더에 .ttf 파일 추가, Build Action = Resource
+         2. 위 값을 pack://application:,,,/NodeSharp.UI.Themes;component/Fonts/#JetBrains Mono 로 변경 -->
+
+    <!-- UI 텍스트 (시스템 폰트 우선) -->
+    <FontFamily x:Key="UiFont">Segoe UI, Malgun Gothic, sans-serif</FontFamily>
+
+    <!-- ══════════════════════════════════════════════
+         §8 ─ 공통 치수 / 수치 리소스
+    ══════════════════════════════════════════════ -->
+    <CornerRadius x:Key="Radius">6</CornerRadius>
+    <CornerRadius x:Key="RadiusSm">3</CornerRadius>
+    <CornerRadius x:Key="RadiusLg">10</CornerRadius>
+
+    <Thickness x:Key="PanelPadding">12,8</Thickness>
+    <Thickness x:Key="CardPadding">14</Thickness>
+    <Thickness x:Key="FieldMargin">0,0,0,9</Thickness>
+
+    <sys:Double x:Key="LeftPanelWidth">220</sys:Double>
+    <sys:Double x:Key="RightPanelWidth">268</sys:Double>
+    <sys:Double x:Key="TopBarHeight">42</sys:Double>
+    <sys:Double x:Key="SubTabHeight">38</sys:Double>
+    <sys:Double x:Key="PanelHeaderHeight">32</sys:Double>
+
+    <!-- 폰트 크기 -->
+    <sys:Double x:Key="FontSm">10</sys:Double>
+    <sys:Double x:Key="FontBase">12</sys:Double>
+    <sys:Double x:Key="FontMd">13</sys:Double>
+    <sys:Double x:Key="FontLg">15</sys:Double>
+    <sys:Double x:Key="FontXl">18</sys:Double>
+    <sys:Double x:Key="FontData">22</sys:Double>  <!-- 수치 표시 전용 -->
+
+
+    <!--
+        ★ ComboBox SelectionBoxItem 하이라이트 색상 (테마 고유)
+           WPF 가 ComboBox 포커스/열림 시 자동 적용하는 SystemColors.HighlightBrush 를
+           이 테마 고유 색상으로 재정의한다.
+           HighlightBrush     : AccFaintBrush 계열 — 배경색
+           HighlightTextBrush : 이 테마의 주 텍스트색 — 글자가 보이도록 유지
+    -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"
+                     Color="#1A4F7CFF"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"
+                     Color="#E2E8F0"/>
+
+    <!-- ══════════════════════════════════════════════
+         §9 ─ NodeSharpRead 레거시 키 별칭 (ED-B4)
+              ED-B0 당시 정의된 6개 자리표시자 키를 그대로 쓰는 기존 FindResource 호출부
+              (MainWindow/PaletteView/FlowCanvasView/NodePropertyDialog)가 수정 없이 계속
+              동작하도록, 위에서 이미 정의한 lssLib 키를 그대로 가리키는 별칭을 추가한다.
+              BorderBrush는 lssLib에도 동일한 이름의 키가 있어 별도 별칭이 필요 없다.
+    ══════════════════════════════════════════════ -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush"  Color="{StaticResource BgColor}"/>
+    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource CardColor}"/>
+    <SolidColorBrush x:Key="PrimaryTextBrush"       Color="{StaticResource TextColor}"/>
+    <SolidColorBrush x:Key="SecondaryTextBrush"     Color="{StaticResource Text2Color}"/>
+    <SolidColorBrush x:Key="AccentBrush"            Color="{StaticResource AccColor}"/>
+
+</ResourceDictionary>

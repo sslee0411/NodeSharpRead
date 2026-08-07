@@ -1,0 +1,354 @@
+<!-- ══════════════════════════════════════════════════════════
+     NodeSharp.UI.Themes · Controls/ThemePickerButton.xaml
+     역할: 테마 선택 팝업 버튼 UserControl
+           툴바/헤더에 배치하는 컴팩트한 드롭다운 형태.
+
+     동작 흐름:
+       버튼 클릭 → IsOpen=True → Popup 표시
+       항목 클릭 → SelectThemeCommand → ThemeManager.Apply + IsOpen=False
+       외부 클릭 → StaysOpen=False → WPF 자동 닫힘 → IsOpen=False
+
+     출처: D:\lssLib\IIoT\IIoT.Solution\UI\Themes\IIoT.UI.Themes\Controls\ThemePickerButton.xaml
+           (ED-B4, "복사 참조" 포팅 — x:Class/xmlns 네임스페이스만 NodeSharp.UI.Themes.Controls로
+           바꿈, 나머지 마크업은 원본과 100% 동일)
+     ══════════════════════════════════════════════════════════ -->
+<UserControl x:Class="NodeSharp.UI.Themes.Controls.ThemePickerButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:NodeSharp.UI.Themes.Controls"
+             xmlns:local="clr-namespace:NodeSharp.UI.Themes.Controls">
+
+    <UserControl.Resources>
+
+        <!-- 컨버터 (ThemeConverters.cs 에 정의) -->
+        <conv:HexToColorConverter       x:Key="HexToColor"/>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- ════════════════════════════════════════
+             팝업 내 행 버튼 기본 스타일
+        ════════════════════════════════════════ -->
+        <Style x:Key="PickerRowBtn" TargetType="Button">
+            <Setter Property="Background"                 Value="Transparent"/>
+            <Setter Property="BorderThickness"            Value="0"/>
+            <Setter Property="Padding"                    Value="0"/>
+            <Setter Property="Cursor"                     Value="Hand"/>
+            <Setter Property="FocusVisualStyle"           Value="{x:Null}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="rowRoot"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Stretch"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="rowRoot" Property="Background"
+                                        Value="{DynamicResource AccFaintBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="rowRoot" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ════════════════════════════════════════
+             팝업 닫기(✕) 버튼 스타일
+        ════════════════════════════════════════ -->
+        <Style x:Key="PopupCloseBtn" TargetType="Button">
+            <Setter Property="Width"           Value="22"/>
+            <Setter Property="Height"          Value="22"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Foreground"      Value="{DynamicResource Text3Brush}"/>
+            <Setter Property="FontSize"        Value="9"/>
+            <Setter Property="FontWeight"      Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="closeBg"
+                                Background="Transparent"
+                                CornerRadius="{DynamicResource RadiusSm}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="closeBg" Property="Background"
+                                        Value="{DynamicResource RedFaintBrush}"/>
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource RedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </UserControl.Resources>
+
+    <!-- 루트 Grid: TriggerBtn 과 Popup 이 같은 앵커 위치 공유 -->
+    <Grid>
+
+        <!-- ① 트리거 버튼 ─────────────────────────────────────
+             현재 테마 액센트 도트 + 이름 + ▼/▲ 화살표
+        ─────────────────────────────────────────────────────── -->
+        <Button x:Name="TriggerBtn"
+                Command="{Binding TogglePopupCommand}"
+                Cursor="Hand"
+                FocusVisualStyle="{x:Null}">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="trigBorder"
+                            Background="{DynamicResource CardBrush}"
+                            BorderBrush="{DynamicResource Border2Brush}"
+                            BorderThickness="1"
+                            CornerRadius="{DynamicResource RadiusSm}"
+                            Padding="10,5">
+                        <StackPanel Orientation="Horizontal"
+                                    VerticalAlignment="Center">
+
+                            <!-- 액센트 컬러 도트 (현재 테마) -->
+                            <Ellipse Width="8" Height="8"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,7,0">
+                                <Ellipse.Fill>
+                                    <SolidColorBrush Color="{Binding CurrentAccentHex,
+                                        Converter={StaticResource HexToColor}}"/>
+                                </Ellipse.Fill>
+                            </Ellipse>
+
+                            <!-- 현재 테마 이름 -->
+                            <TextBlock Text="{Binding CurrentDisplayName}"
+                                       FontSize="{DynamicResource FontBase}"
+                                       FontFamily="{DynamicResource UiFont}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"/>
+
+                            <!-- ▼ / ▲ 상태 화살표 -->
+                            <TextBlock Text="{Binding ArrowGlyph}"
+                                       FontSize="8"
+                                       FontFamily="{DynamicResource UiFont}"
+                                       Foreground="{DynamicResource Text3Brush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="trigBorder" Property="BorderBrush"
+                                    Value="{DynamicResource AccBrush}"/>
+                            <Setter TargetName="trigBorder" Property="Background"
+                                    Value="{DynamicResource Border2Brush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="trigBorder" Property="Opacity" Value="0.85"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+        <!-- ② 팝업 (테마 선택 드롭다운) ──────────────────────
+             StaysOpen=False  : 포커스 이탈 시 자동 닫힘
+             AllowsTransparency=True : DropShadow 렌더링 필수
+        ─────────────────────────────────────────────────────── -->
+        <Popup x:Name="ThemePopup"
+               IsOpen="{Binding IsOpen, Mode=TwoWay}"
+               PlacementTarget="{Binding ElementName=TriggerBtn}"
+               Placement="Bottom"
+               VerticalOffset="4"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               PopupAnimation="Fade"
+               Focusable="False">
+
+            <!-- 팝업 외곽 Border — DropShadow + 테두리 -->
+            <Border Background="{DynamicResource CardBrush}"
+                    BorderBrush="{DynamicResource AccBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{DynamicResource Radius}"
+                    MinWidth="316"
+                    MaxHeight="460">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20"
+                                      ShadowDepth="5"
+                                      Direction="270"
+                                      Color="#000000"
+                                      Opacity="0.38"/>
+                </Border.Effect>
+
+                <DockPanel>
+
+                    <!-- ── 팝업 헤더 ── -->
+                    <Border DockPanel.Dock="Top"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="0,0,0,1"
+                            Padding="12,7,8,7">
+                        <DockPanel VerticalAlignment="Center">
+                            <TextBlock Text="테마 선택"
+                                       FontSize="{DynamicResource FontMd}"
+                                       FontWeight="Bold"
+                                       FontFamily="{DynamicResource UiFont}"
+                                       Foreground="{DynamicResource AccBrush}"
+                                       VerticalAlignment="Center"/>
+                            <!-- 닫기 버튼 (우측) -->
+                            <Button DockPanel.Dock="Right"
+                                    Content="✕"
+                                    Style="{StaticResource PopupCloseBtn}"
+                                    Command="{Binding ClosePopupCommand}"/>
+                            <!-- 현재 선택 테마명 (가운데) -->
+                            <TextBlock Text="{Binding CurrentDisplayName}"
+                                       FontSize="{DynamicResource FontSm}"
+                                       FontFamily="{DynamicResource UiFont}"
+                                       Foreground="{DynamicResource Text2Brush}"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- ── 팝업 하단 힌트 ── -->
+                    <Border DockPanel.Dock="Bottom"
+                            Background="{DynamicResource SurfaceBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="0,1,0,0"
+                            Padding="12,5">
+                        <TextBlock Text="Ctrl+T: 다음 테마  |  Ctrl+Shift+T: 이전 테마"
+                                   FontSize="9"
+                                   FontFamily="{DynamicResource UiFont}"
+                                   Foreground="{DynamicResource Text3Brush}"
+                                   HorizontalAlignment="Center"/>
+                    </Border>
+
+                    <!-- ── 테마 항목 목록 (스크롤 가능) ── -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="0,4">
+                        <ItemsControl ItemsSource="{Binding Themes}"
+                                      Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:ThemePickerItemViewModel}">
+                                    <!--
+                                        DataContext = ThemePickerItemViewModel (항목)
+                                        SelectThemeCommand 는 ThemePickerViewModel (부모) 에 있으므로
+                                        RelativeSource=AncestorType=ItemsControl 로 DataContext 참조
+                                    -->
+                                    <Button Command="{Binding DataContext.SelectThemeCommand,
+                                                     RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}">
+                                        <Button.Style>
+                                            <Style TargetType="Button"
+                                                   BasedOn="{StaticResource PickerRowBtn}">
+                                                <Style.Triggers>
+                                                    <!-- 선택된 항목: 배경 AccFaintBrush 고정 -->
+                                                    <DataTrigger Binding="{Binding IsSelected}"
+                                                                 Value="True">
+                                                        <Setter Property="Background"
+                                                                Value="{DynamicResource AccFaintBrush}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+
+                                        <!-- 행 내부 그리드 ──────────────────────── -->
+                                        <Grid Margin="12,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="30"/>   <!-- 액센트 원 -->
+                                                <ColumnDefinition Width="*"/>    <!-- 이름/설명 -->
+                                                <ColumnDefinition Width="Auto"/> <!-- 배지+체크 -->
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- 컬럼 0: 액센트 컬러 원 -->
+                                            <Ellipse Grid.Column="0"
+                                                     Width="22" Height="22"
+                                                     HorizontalAlignment="Left"
+                                                     VerticalAlignment="Center">
+                                                <Ellipse.Fill>
+                                                    <SolidColorBrush Color="{Binding AccentHex,
+                                                        Converter={StaticResource HexToColor}}"/>
+                                                </Ellipse.Fill>
+                                            </Ellipse>
+
+                                            <!-- 컬럼 1: 이름 + 설명 -->
+                                            <StackPanel Grid.Column="1"
+                                                        VerticalAlignment="Center"
+                                                        Margin="0,0,8,0">
+                                                <TextBlock Text="{Binding DisplayName}"
+                                                           FontSize="{DynamicResource FontBase}"
+                                                           FontWeight="SemiBold"
+                                                           FontFamily="{DynamicResource UiFont}"
+                                                           Foreground="{DynamicResource TextBrush}"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding Description}"
+                                                           FontSize="{DynamicResource FontSm}"
+                                                           FontFamily="{DynamicResource UiFont}"
+                                                           Foreground="{DynamicResource Text3Brush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Margin="0,1,0,0"/>
+                                            </StackPanel>
+
+                                            <!-- 컬럼 2: 모드 배지 + 선택 체크 -->
+                                            <StackPanel Grid.Column="2"
+                                                        Orientation="Horizontal"
+                                                        VerticalAlignment="Center">
+
+                                                <!-- Dark / Light 배지 -->
+                                                <Border CornerRadius="3"
+                                                        Padding="5,2"
+                                                        Margin="0,0,6,0"
+                                                        Background="{DynamicResource SurfaceBrush}">
+                                                    <TextBlock Text="{Binding ModeLabel}"
+                                                               FontSize="9"
+                                                               FontWeight="Bold"
+                                                               FontFamily="{DynamicResource UiFont}">
+                                                        <TextBlock.Foreground>
+                                                            <SolidColorBrush Color="{Binding AccentHex,
+                                                                Converter={StaticResource HexToColor}}"/>
+                                                        </TextBlock.Foreground>
+                                                    </TextBlock>
+                                                </Border>
+
+                                                <!-- 선택됨: AccentHex 색상 체크마크 원
+                                                     IsSelected=True 일 때만 Visible -->
+                                                <Border Width="18" Height="18"
+                                                        CornerRadius="9"
+                                                        Visibility="{Binding IsSelected,
+                                                            Converter={StaticResource BoolToVis}}">
+                                                    <Border.Background>
+                                                        <SolidColorBrush Color="{Binding AccentHex,
+                                                            Converter={StaticResource HexToColor}}"/>
+                                                    </Border.Background>
+                                                    <TextBlock Text="✓"
+                                                               FontSize="10"
+                                                               FontWeight="Bold"
+                                                               Foreground="White"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+
+                                                <!--
+                                                    미선택 시 빈 공간 (너비 18px 유지 → 배지 우정렬 고정)
+                                                    IsNotSelected=True(=IsSelected=False) 일 때 Visible
+                                                -->
+                                                <Border Width="18" Height="18"
+                                                        Visibility="{Binding IsNotSelected,
+                                                            Converter={StaticResource BoolToVis}}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                </DockPanel>
+            </Border>
+        </Popup>
+
+    </Grid>
+</UserControl>

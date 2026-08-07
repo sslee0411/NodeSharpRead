@@ -1,0 +1,781 @@
+<!-- ══════════════════════════════════════════════════════════
+     NodeSharp.UI.Themes · Styles/Styles.Layout.xaml
+     역할: 패널·카드·배지·서브탭·상태표시 레이아웃 스타일
+     출처: D:\lssLib\IIoT\IIoT.Solution\UI\Themes\IIoT.UI.Themes\Styles\Styles.Layout.xaml
+           (ED-B4, "복사 참조" 포팅 — 원본과 100% 동일)
+     ══════════════════════════════════════════════════════════ -->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ════════════════════════════════════════════
+         §1 ─ 패널 헤더 TextBlock
+    ════════════════════════════════════════════ -->
+    <Style x:Key="PanelHeader" TargetType="TextBlock">
+        <Setter Property="Foreground"   Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="Background"   Value="{DynamicResource CardBrush}"/>
+        <Setter Property="FontSize"     Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"   Value="Bold"/>
+        <Setter Property="FontFamily"   Value="{DynamicResource UiFont}"/>
+        <Setter Property="Padding"      Value="14,9"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §2 ─ 카드 Border
+    ════════════════════════════════════════════ -->
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource CardBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource Border2Brush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="{DynamicResource Radius}"/>
+        <Setter Property="Padding"         Value="{DynamicResource CardPadding}"/>
+    </Style>
+
+    <!-- 왼쪽 강조선 카드 (알람 HH) -->
+    <Style x:Key="CardHH" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="BorderThickness" Value="4,1,1,1"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource RedBrush}"/>
+    </Style>
+
+    <!-- 왼쪽 강조선 카드 (알람 H) -->
+    <Style x:Key="CardH" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="BorderThickness" Value="4,1,1,1"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource OrangeBrush}"/>
+    </Style>
+
+    <!-- 왼쪽 강조선 카드 (경고/예측) -->
+    <Style x:Key="CardWarning" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="BorderThickness" Value="4,1,1,1"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource YellowBrush}"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §3 ─ 카드 제목 TextBlock
+    ════════════════════════════════════════════ -->
+    <Style x:Key="CardTitle" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource AccBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource UiFont}"/>
+        <Setter Property="Margin"      Value="0,0,0,12"/>
+    </Style>
+
+    <!-- 속성 섹션 제목 -->
+    <Style x:Key="PropSectionTitle" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource AccBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource UiFont}"/>
+        <Setter Property="Margin"      Value="0,0,0,8"/>
+    </Style>
+
+    <!-- 필드 레이블 -->
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource UiFont}"/>
+        <Setter Property="Margin"      Value="0,0,0,3"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §4 ─ 서브탭 스타일 (TabItem 기반)
+    ════════════════════════════════════════════ -->
+    <Style x:Key="SubTabItem" TargetType="TabItem">
+        <Setter Property="Background"        Value="Transparent"/>
+        <Setter Property="Foreground"        Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="BorderThickness"   Value="0,0,0,2"/>
+        <Setter Property="BorderBrush"       Value="Transparent"/>
+        <Setter Property="Padding"           Value="18,9"/>
+        <Setter Property="FontSize"          Value="{DynamicResource FontMd}"/>
+        <Setter Property="FontWeight"        Value="SemiBold"/>
+        <Setter Property="FontFamily"        Value="{DynamicResource UiFont}"/>
+        <Setter Property="Cursor"            Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource TextBrush}"/>
+                            <Setter TargetName="root" Property="BorderBrush"
+                                    Value="{DynamicResource AccBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource Text2Brush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §5 ─ 배지 Border 스타일
+    ════════════════════════════════════════════ -->
+    <!-- 정상 (Green) -->
+    <Style x:Key="BadgeGreen" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource GreenFaintBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource GreenBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="10"/>
+        <Setter Property="Padding"         Value="7,2"/>
+    </Style>
+    <Style x:Key="BadgeGreenText" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource GreenBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+    </Style>
+
+    <!-- 경고 (Yellow) -->
+    <Style x:Key="BadgeYellow" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource YellowFaintBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource YellowBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="10"/>
+        <Setter Property="Padding"         Value="7,2"/>
+    </Style>
+    <Style x:Key="BadgeYellowText" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource YellowBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+    </Style>
+
+    <!-- 위험 (Red) -->
+    <Style x:Key="BadgeRed" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource RedFaintBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource RedBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="10"/>
+        <Setter Property="Padding"         Value="7,2"/>
+    </Style>
+    <Style x:Key="BadgeRedText" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource RedBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+    </Style>
+
+    <!-- 정보 (Accent) -->
+    <Style x:Key="BadgeAccent" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource AccFaintBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource AccBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="10"/>
+        <Setter Property="Padding"         Value="7,2"/>
+    </Style>
+    <Style x:Key="BadgeAccentText" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource AccBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §6 ─ 상태 점(Dot) Ellipse 스타일
+    ════════════════════════════════════════════ -->
+    <Style x:Key="DotGreen" TargetType="Ellipse">
+        <Setter Property="Width"  Value="6"/>
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Fill"   Value="{DynamicResource GreenBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="DotYellow" TargetType="Ellipse">
+        <Setter Property="Width"  Value="6"/>
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Fill"   Value="{DynamicResource YellowBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="DotRed" TargetType="Ellipse">
+        <Setter Property="Width"  Value="6"/>
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Fill"   Value="{DynamicResource RedBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §7 ─ 통계 카드 (Stat Card)
+    ════════════════════════════════════════════ -->
+    <Style x:Key="StatCard" TargetType="Border" BasedOn="{StaticResource Card}">
+        <Setter Property="Padding" Value="12"/>
+    </Style>
+    <Style x:Key="StatLabel" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="FontSize"    Value="9"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource UiFont}"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="StatValue" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize"    Value="{DynamicResource FontData}"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource MonoFont}"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+        <Setter Property="Margin"      Value="0,4,0,2"/>
+    </Style>
+    <Style x:Key="StatSub" TargetType="TextBlock">
+        <Setter Property="Foreground"  Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="FontSize"    Value="9"/>
+        <Setter Property="FontFamily"  Value="{DynamicResource UiFont}"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §8 ─ 스케일 미리보기 박스
+    ════════════════════════════════════════════ -->
+    <Style x:Key="ScalePreviewBox" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource BgBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius"    Value="{DynamicResource RadiusSm}"/>
+        <Setter Property="Padding"         Value="10,8"/>
+        <Setter Property="Margin"          Value="0,7,0,0"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §9 ─ 알람 셀 (HH/H/L/LL 편집 박스)
+    ════════════════════════════════════════════ -->
+    <Style x:Key="AlarmCell" TargetType="Border">
+        <Setter Property="Background"      Value="{DynamicResource BgBrush}"/>
+        <Setter Property="CornerRadius"    Value="{DynamicResource RadiusSm}"/>
+        <Setter Property="Padding"         Value="6"/>
+    </Style>
+    <Style x:Key="AlarmCellLabel" TargetType="TextBlock">
+        <Setter Property="FontSize"    Value="9"/>
+        <Setter Property="FontWeight"  Value="Bold"/>
+        <Setter Property="HorizontalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="AlarmCellInput" TargetType="TextBox">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="FontSize"        Value="14"/>
+        <Setter Property="FontWeight"      Value="Bold"/>
+        <Setter Property="FontFamily"      Value="{DynamicResource MonoFont}"/>
+        <Setter Property="HorizontalAlignment"        Value="Stretch"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §10 ─ 구분선 Border
+    ════════════════════════════════════════════ -->
+    <Style x:Key="Divider" TargetType="Border">
+        <Setter Property="Height"     Value="1"/>
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="Margin"     Value="0,10"/>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §11 ─ ProgressBar (IIoT 전용 3종)
+              Standard : 일반 진행률 (수평)
+              Slim     : 얇은 라인형 (파이프라인 등)
+              Pulse    : 상태 불명 인디케이터 (Indeterminate)
+    ════════════════════════════════════════════ -->
+
+    <!-- 수평 ProgressBar 공통 Template -->
+    <ControlTemplate x:Key="HorzProgressTemplate" TargetType="ProgressBar">
+        <Grid>
+            <!-- 배경 트랙 -->
+            <Border x:Name="PART_Track"
+                    Background="{DynamicResource Border2Brush}"
+                    CornerRadius="{DynamicResource RadiusSm}"/>
+
+            <!-- 진행 채움 -->
+            <Border x:Name="PART_Indicator"
+                    HorizontalAlignment="Left"
+                    Background="{DynamicResource ScaleArrowBrush}"
+                    CornerRadius="{DynamicResource RadiusSm}"/>
+
+            <!-- Indeterminate 펄스 바 -->
+            <Border x:Name="PART_GlowRect"
+                    HorizontalAlignment="Left"
+                    Width="0"
+                    Background="{DynamicResource AccBrush}"
+                    CornerRadius="{DynamicResource RadiusSm}"
+                    Opacity="0.7"
+                    Visibility="Collapsed"/>
+
+            <!-- 텍스트 퍼센트 (Standard 전용) -->
+            <TextBlock x:Name="pctText"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextBrush}"
+                       FontSize="{DynamicResource FontSm}"
+                       FontFamily="{DynamicResource MonoFont}"
+                       FontWeight="Bold"/>
+        </Grid>
+        <ControlTemplate.Triggers>
+            <Trigger Property="IsIndeterminate" Value="True">
+                <Setter TargetName="PART_Indicator"  Property="Visibility" Value="Collapsed"/>
+                <Setter TargetName="PART_GlowRect"   Property="Visibility" Value="Visible"/>
+                <Setter TargetName="pctText"         Property="Visibility" Value="Collapsed"/>
+                <Trigger.EnterActions>
+                    <BeginStoryboard>
+                        <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                            <DoubleAnimation
+                                Storyboard.TargetName="PART_GlowRect"
+                                Storyboard.TargetProperty="Width"
+                                From="0" To="120"
+                                Duration="0:0:0.9"
+                                EasingFunction="{x:Null}"/>
+                            <DoubleAnimation
+                                Storyboard.TargetName="PART_GlowRect"
+                                Storyboard.TargetProperty="(Canvas.Left)"
+                                From="0" To="9999"
+                                Duration="0:0:1.4"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </Trigger.EnterActions>
+            </Trigger>
+        </ControlTemplate.Triggers>
+    </ControlTemplate>
+
+    <!-- §11-1 Standard ProgressBar (높이 20px, 퍼센트 텍스트 표시) -->
+    <Style x:Key="ProgressStandard" TargetType="ProgressBar">
+        <Setter Property="Height"         Value="20"/>
+        <Setter Property="Minimum"        Value="0"/>
+        <Setter Property="Maximum"        Value="100"/>
+        <Setter Property="Foreground"     Value="{DynamicResource AccBrush}"/>
+        <Setter Property="Background"     Value="{DynamicResource Border2Brush}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid>
+                        <Border x:Name="PART_Track"
+                                Background="{DynamicResource Border2Brush}"
+                                CornerRadius="{DynamicResource RadiusSm}"/>
+                        <Border x:Name="PART_Indicator"
+                                HorizontalAlignment="Left"
+                                CornerRadius="{DynamicResource RadiusSm}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                    <GradientStop Color="{DynamicResource Acc2Color}" Offset="0"/>
+                                    <GradientStop Color="{DynamicResource AccColor}"  Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <!-- Indeterminate 펄스 -->
+                        <Border x:Name="PART_GlowRect"
+                                HorizontalAlignment="Left" Width="60"
+                                Background="{DynamicResource AccBrush}"
+                                CornerRadius="{DynamicResource RadiusSm}"
+                                Opacity="0.8" Visibility="Collapsed"/>
+                        <!-- 퍼센트 텍스트 -->
+                        <TextBlock x:Name="pctText"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextBrush}"
+                                   FontSize="{DynamicResource FontSm}"
+                                   FontFamily="{DynamicResource MonoFont}"
+                                   FontWeight="Bold"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PART_GlowRect"  Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="pctText"        Property="Visibility" Value="Collapsed"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="PART_GlowRect"
+                                            Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                            From="-60" To="9999"
+                                            Duration="0:0:1.8"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §11-2 Slim ProgressBar (높이 6px — 파이프라인 TPS 표시용) -->
+    <Style x:Key="ProgressSlim" TargetType="ProgressBar">
+        <Setter Property="Height"         Value="6"/>
+        <Setter Property="Minimum"        Value="0"/>
+        <Setter Property="Maximum"        Value="100"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid>
+                        <!-- 배경 트랙 -->
+                        <Border x:Name="PART_Track"
+                                Background="{DynamicResource BorderBrush}"
+                                CornerRadius="3"/>
+                        <!-- 진행 채움 (그라디언트) -->
+                        <Border x:Name="PART_Indicator"
+                                HorizontalAlignment="Left"
+                                CornerRadius="3">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                    <GradientStop Color="{DynamicResource Acc2Color}" Offset="0"/>
+                                    <GradientStop Color="{DynamicResource AccColor}"  Offset="0.5"/>
+                                    <GradientStop Color="{DynamicResource GreenColor}" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <!-- Indeterminate -->
+                        <Border x:Name="PART_GlowRect"
+                                HorizontalAlignment="Left" Width="40"
+                                Background="{DynamicResource AccBrush}"
+                                CornerRadius="3"
+                                Opacity="0.9" Visibility="Collapsed">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="glowTransform"/>
+                            </Border.RenderTransform>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PART_GlowRect"  Property="Visibility" Value="Visible"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard RepeatBehavior="Forever">
+                                        <DoubleAnimation
+                                            Storyboard.TargetName="glowTransform"
+                                            Storyboard.TargetProperty="X"
+                                            From="-40" To="9999"
+                                            Duration="0:0:1.2"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §11-3 Alarm ProgressBar (상태별 색상 — HH/H/L 임계값 표시용) -->
+    <Style x:Key="ProgressAlarm" TargetType="ProgressBar"
+           BasedOn="{StaticResource ProgressSlim}">
+        <Setter Property="Height" Value="8"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Grid>
+                        <Border x:Name="PART_Track"
+                                Background="{DynamicResource BorderBrush}"
+                                CornerRadius="4"/>
+                        <!-- 정상 구간 (GreenBrush) -->
+                        <Border x:Name="PART_Indicator"
+                                HorizontalAlignment="Left"
+                                CornerRadius="4"
+                                Background="{DynamicResource GreenBrush}"/>
+                        <!-- 경고 오버레이 (YellowBrush — 80% 이상) -->
+                        <Border x:Name="warnOverlay"
+                                HorizontalAlignment="Left"
+                                CornerRadius="4"
+                                Background="{DynamicResource YellowBrush}"
+                                Opacity="0" Visibility="Collapsed"/>
+                        <!-- 위험 오버레이 (RedBrush — 95% 이상) -->
+                        <Border x:Name="dangerOverlay"
+                                HorizontalAlignment="Left"
+                                CornerRadius="4"
+                                Background="{DynamicResource RedBrush}"
+                                Opacity="0" Visibility="Collapsed"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+
+    <!-- ════════════════════════════════════════════
+         §12 ─ DataGrid (헤더 컬럼 형식 컨트롤)
+              IIoTGrid       : 기본 테이블 (헤더+행+셀 전체)
+              IIoTGridHeader : 컬럼 헤더 스타일
+              IIoTGridRow    : 행 스타일 (호버/선택)
+              IIoTGridCell   : 셀 스타일
+    ════════════════════════════════════════════ -->
+
+    <!-- §12-1 ─ 컬럼 헤더 -->
+    <Style x:Key="IIoTGridHeader" TargetType="DataGridColumnHeader">
+        <Setter Property="Background"        Value="{DynamicResource CardBrush}"/>
+        <Setter Property="Foreground"        Value="{DynamicResource Text3Brush}"/>
+        <Setter Property="FontSize"          Value="{DynamicResource FontSm}"/>
+        <Setter Property="FontWeight"        Value="Bold"/>
+        <Setter Property="FontFamily"        Value="{DynamicResource UiFont}"/>
+        <Setter Property="Padding"           Value="12,8"/>
+        <Setter Property="BorderBrush"       Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="BorderThickness"   Value="0,0,1,1"/>
+        <Setter Property="HorizontalContentAlignment" Value="Left"/>
+        <Setter Property="Cursor"            Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridColumnHeader">
+                    <Grid>
+                        <Border x:Name="headerRoot"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter Grid.Column="0"
+                                    VerticalAlignment="Center"
+                                    TextBlock.Foreground="{TemplateBinding Foreground}"
+                                    TextBlock.FontSize="{TemplateBinding FontSize}"
+                                    TextBlock.FontWeight="{TemplateBinding FontWeight}"
+                                    TextBlock.FontFamily="{TemplateBinding FontFamily}"/>
+                                <!-- 정렬 화살표 -->
+                                <Path x:Name="sortArrow"
+                                      Grid.Column="1"
+                                      Visibility="Collapsed"
+                                      Fill="{DynamicResource AccBrush}"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      Width="8" Height="5" Stretch="Fill"
+                                      Margin="4,0,0,0"
+                                      Data="M 0 5 L 4 0 L 8 5 Z"/>
+                            </Grid>
+                        </Border>
+                        <!-- 컬럼 리사이즈 그립 -->
+                        <Thumb x:Name="PART_RightHeaderGripper"
+                               HorizontalAlignment="Right" Width="4"
+                               Cursor="SizeWE" Opacity="0"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="headerRoot" Property="Background"
+                                    Value="{DynamicResource Border2Brush}"/>
+                            <Setter Property="Foreground"
+                                    Value="{DynamicResource AccBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="headerRoot" Property="Background"
+                                    Value="{DynamicResource AccFaintBrush}"/>
+                        </Trigger>
+                        <Trigger Property="SortDirection" Value="Ascending">
+                            <Setter TargetName="sortArrow" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="sortArrow" Property="Data"
+                                    Value="M 0 5 L 4 0 L 8 5 Z"/>
+                        </Trigger>
+                        <Trigger Property="SortDirection" Value="Descending">
+                            <Setter TargetName="sortArrow" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="sortArrow" Property="Data"
+                                    Value="M 0 0 L 4 5 L 8 0 Z"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §12-2 ─ 행(Row) -->
+    <Style x:Key="IIoTGridRow" TargetType="DataGridRow">
+        <Setter Property="Background"        Value="{DynamicResource BgBrush}"/>
+        <Setter Property="Foreground"        Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize"          Value="{DynamicResource FontBase}"/>
+        <Setter Property="FontFamily"        Value="{DynamicResource UiFont}"/>
+        <Setter Property="BorderThickness"   Value="0"/>
+        <Setter Property="FocusVisualStyle"  Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridRow">
+                    <Border x:Name="rowRoot"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="0,0,0,1">
+                        <SelectiveScrollingGrid>
+                            <DataGridCellsPresenter
+                                x:Name="PART_CellsPresenter"
+                                ItemsPanel="{TemplateBinding ItemsPanel}"/>
+                        </SelectiveScrollingGrid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <!-- 홀수 행 배경 (얼룩말 패턴) -->
+                        <Trigger Property="AlternationIndex" Value="1">
+                            <Setter TargetName="rowRoot" Property="Background"
+                                    Value="{DynamicResource SurfaceBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="rowRoot" Property="Background"
+                                    Value="{DynamicResource AccFaintBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="rowRoot" Property="Background"
+                                    Value="{DynamicResource AccBrush}"/>
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected"  Value="True"/>
+                                <Condition Property="IsMouseOver" Value="True"/>
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="rowRoot" Property="Background"
+                                    Value="{DynamicResource AccBrush}"/>
+                        </MultiTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §12-3 ─ 셀(Cell) -->
+    <Style x:Key="IIoTGridCell" TargetType="DataGridCell">
+        <Setter Property="Background"      Value="Transparent"/>
+        <Setter Property="Foreground"      Value="{DynamicResource TextBrush}"/>
+        <Setter Property="BorderBrush"     Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+        <Setter Property="Padding"         Value="12,7"/>
+        <Setter Property="FontSize"        Value="{DynamicResource FontBase}"/>
+        <Setter Property="FontFamily"      Value="{DynamicResource UiFont}"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGridCell">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter
+                            VerticalAlignment="Center"
+                            TextBlock.Foreground="{TemplateBinding Foreground}"
+                            TextBlock.FontSize="{TemplateBinding FontSize}"
+                            TextBlock.FontFamily="{TemplateBinding FontFamily}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Foreground" Value="White"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §12-4 ─ DataGrid 본체 (IIoTGrid) -->
+    <Style x:Key="IIoTGrid" TargetType="DataGrid">
+        <Setter Property="Background"               Value="{DynamicResource BgBrush}"/>
+        <Setter Property="Foreground"               Value="{DynamicResource TextBrush}"/>
+        <Setter Property="BorderBrush"              Value="{DynamicResource Border2Brush}"/>
+        <Setter Property="BorderThickness"          Value="1"/>
+        <Setter Property="GridLinesVisibility"      Value="None"/>
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="VerticalGridLinesBrush"   Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="AlternationCount"         Value="2"/>
+        <Setter Property="RowBackground"            Value="{DynamicResource BgBrush}"/>
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceBrush}"/>
+        <Setter Property="ColumnHeaderStyle"        Value="{StaticResource IIoTGridHeader}"/>
+        <Setter Property="RowStyle"                 Value="{StaticResource IIoTGridRow}"/>
+        <Setter Property="CellStyle"                Value="{StaticResource IIoTGridCell}"/>
+        <Setter Property="FontSize"                 Value="{DynamicResource FontBase}"/>
+        <Setter Property="FontFamily"               Value="{DynamicResource UiFont}"/>
+        <Setter Property="RowHeight"                Value="36"/>
+        <Setter Property="ColumnHeaderHeight"       Value="34"/>
+        <Setter Property="AutoGenerateColumns"      Value="False"/>
+        <Setter Property="CanUserAddRows"           Value="False"/>
+        <Setter Property="CanUserDeleteRows"        Value="False"/>
+        <Setter Property="SelectionMode"            Value="Single"/>
+        <Setter Property="SelectionUnit"            Value="FullRow"/>
+        <Setter Property="IsReadOnly"               Value="True"/>
+        <Setter Property="FocusVisualStyle"         Value="{x:Null}"/>
+        <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+        <!-- 행 번호 헤더 숨김 -->
+        <Setter Property="HeadersVisibility"        Value="Column"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="DataGrid">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{DynamicResource Radius}"
+                            ClipToBounds="True">
+                        <ScrollViewer x:Name="DG_ScrollViewer" Focusable="False">
+                            <ScrollViewer.Template>
+                                <ControlTemplate TargetType="ScrollViewer">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <!-- 컬럼 헤더 -->
+                                        <DataGridColumnHeadersPresenter
+                                            Grid.Row="0" Grid.Column="0"
+                                            x:Name="PART_ColumnHeadersPresenter"/>
+                                        <!-- 헤더 구분선 -->
+                                        <Border Grid.Row="0" Grid.Column="0"
+                                                BorderBrush="{DynamicResource AccBrush}"
+                                                BorderThickness="0,0,0,2"
+                                                Margin="0,0,0,0"/>
+                                        <!-- 행 데이터 -->
+                                        <ScrollContentPresenter
+                                            Grid.Row="1" Grid.Column="0"
+                                            x:Name="PART_ScrollContentPresenter"/>
+                                        <!-- 수직 스크롤바 -->
+                                        <ScrollBar Grid.Row="1" Grid.Column="1"
+                                                   x:Name="PART_VerticalScrollBar"
+                                                   Orientation="Vertical"
+                                                   Value="{TemplateBinding VerticalOffset}"
+                                                   Maximum="{TemplateBinding ScrollableHeight}"
+                                                   ViewportSize="{TemplateBinding ViewportHeight}"
+                                                   Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                                        <!-- 수평 스크롤바 -->
+                                        <ScrollBar Grid.Row="2" Grid.Column="0"
+                                                   x:Name="PART_HorizontalScrollBar"
+                                                   Orientation="Horizontal"
+                                                   Value="{TemplateBinding HorizontalOffset}"
+                                                   Maximum="{TemplateBinding ScrollableWidth}"
+                                                   ViewportSize="{TemplateBinding ViewportWidth}"
+                                                   Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}"/>
+                                    </Grid>
+                                </ControlTemplate>
+                            </ScrollViewer.Template>
+                            <ItemsPresenter/>
+                        </ScrollViewer>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- §12-5 ─ Mono 폰트 셀 텍스트 (수치/주소 전용)
+              사용: DataGridTextColumn.ElementStyle="{DynamicResource IIoTGridCellMono}"
+              ElementStyle 은 TextBlock 타겟이어야 함 (DataGridCell 아님) -->
+    <Style x:Key="IIoTGridCellMono" TargetType="TextBlock">
+        <Setter Property="FontFamily"        Value="{DynamicResource MonoFont}"/>
+        <Setter Property="Foreground"        Value="{DynamicResource GreenBrush}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+
+    <!-- §12-6 ─ 상태 셀 (배지 형식) 전용 텍스트 스타일 -->
+    <Style x:Key="GridStatusGood" TargetType="TextBlock">
+        <Setter Property="Foreground"   Value="{DynamicResource GreenBrush}"/>
+        <Setter Property="FontWeight"   Value="Bold"/>
+        <Setter Property="FontFamily"   Value="{DynamicResource MonoFont}"/>
+        <Setter Property="FontSize"     Value="{DynamicResource FontSm}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style x:Key="GridStatusWarn" TargetType="TextBlock"
+           BasedOn="{StaticResource GridStatusGood}">
+        <Setter Property="Foreground" Value="{DynamicResource YellowBrush}"/>
+    </Style>
+    <Style x:Key="GridStatusBad" TargetType="TextBlock"
+           BasedOn="{StaticResource GridStatusGood}">
+        <Setter Property="Foreground" Value="{DynamicResource RedBrush}"/>
+    </Style>
+
+</ResourceDictionary>

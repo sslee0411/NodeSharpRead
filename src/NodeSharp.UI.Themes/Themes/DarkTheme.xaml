@@ -1,28 +1,16 @@
 <!--
-  DarkTheme.xaml
+  DarkTheme.xaml (ED-B0 자리표시자 — ED-B4에서 폐기)
   ====================
-  (ED-B0) 다크 테마 색상·브러시 정의. lssLib 원본 테마 자산이 이 개발 환경에는 없어(D:\lssLib
-  미연결) 이 프로젝트에 맞춰 새로 설계함 — 사용자 확인, "새로 설계해서 만들기(추천)" 선택.
-  나중에 실제 lssLib 테마로 교체하려면 이 파일의 Color/Brush 값만 바꾸면 된다(키 이름은
-  LightTheme.xaml과 반드시 동일하게 유지 — DynamicResource가 그 키로 찾기 때문).
+  (ED-B0) 당시 lssLib 원본 자산 미연결로 새로 설계했던 다크 테마 자리표시자. (ED-B4) 사용자 요청으로
+  D:\lssLib\IIoT\IIoT.Solution\UI\Themes를 실제로 연결해 포팅하면서, 이 파일은 Themes/Theme.DarkNavy.xaml
+  (+ Themes/Theme.SteelLight.xaml 등 7테마)로 완전히 대체되었다.
+
+  이 개발 환경(Linux 샌드박스)에서는 D:\ 드라이브 마운트의 파일 삭제(rm)가 허용되지 않아(Operation
+  not permitted) 이 파일 자체를 지우지 못하고, 대신 내용을 비워 더 이상 아무 리소스도 정의하지 않는
+  빈 ResourceDictionary로 남겨둔다. UseWPF=true라 SDK가 이 폴더의 모든 .xaml을 자동으로 Page로
+  포함시키므로 파일이 남아있어도 컴파일에는 문제가 없다 — 다만 ThemeManager.Apply()가 더 이상 이
+  파일을 참조하지 않으므로 실제로는 로드되지 않는다. 사용자가 Windows에서 편할 때 직접 삭제해도 무방.
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-
-    <!-- 색상(Color) — 브러시의 원본 값, 다른 곳에서 Color만 필요할 때 재사용 -->
-    <Color x:Key="WindowBackgroundColor">#FF1E1E1E</Color>
-    <Color x:Key="ControlBackgroundColor">#FF2D2D30</Color>
-    <Color x:Key="BorderColor">#FF3F3F46</Color>
-    <Color x:Key="PrimaryTextColor">#FFE0E0E0</Color>
-    <Color x:Key="SecondaryTextColor">#FFA0A0A0</Color>
-    <Color x:Key="AccentColor">#FF0078D4</Color>
-
-    <!-- 브러시(Brush) — 실제 화면 요소(Background/Foreground 등)에 DynamicResource로 바인딩되는 값 -->
-    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="{StaticResource WindowBackgroundColor}" />
-    <SolidColorBrush x:Key="ControlBackgroundBrush" Color="{StaticResource ControlBackgroundColor}" />
-    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
-    <SolidColorBrush x:Key="PrimaryTextBrush" Color="{StaticResource PrimaryTextColor}" />
-    <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource SecondaryTextColor}" />
-    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
-
 </ResourceDictionary>
