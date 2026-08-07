@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Registry;
 
 namespace NodeSharp.Editor.Views;
 
@@ -26,6 +27,10 @@ namespace NodeSharp.Editor.Views;
 /// 기반의 자체 메커니즘을 씁니다. 지금은 <c>NodeTypeRegistry</c>에 등록된 실제 노드 타입이 없어
 /// (Phase 7 이전) 모든 카드를 입력 1개·출력 1개로 고정합니다 — 노드 타입별 실제 포트 개수
 /// (<c>INodeTypeDescriptor.DefaultInputs</c>/<c>DefaultOutputs</c>) 반영은 Phase 7 이후로 미룹니다.
+/// (EC-03) 카드를 더블클릭하면 <see cref="NodePropertyDialog"/>가 뜹니다(<see cref="OpenPropertyDialog"/>) —
+/// 이 뷰가 직접 만든 <c>NodeTypeRegistry</c>(팔레트와 별개 인스턴스, EC-01a와 동일한 패턴)에서
+/// 해당 타입의 PropertySchema를 찾아 넘기고, "완료"로 닫히면 <see cref="_nodeConfigs"/>와 카드에
+/// 표시된 이름을 갱신합니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -37,7 +42,11 @@ public partial class FlowCanvasView : UserControl
     private const double NodeCardHeight = 40;
     private const double PortRadius = 5;
 
-    private readonly List<NodeConfig> _placedNodes = new();
+    // EC-03 PropertySchema 조회 전용 — 팔레트(PaletteView)와는 별개 인스턴스(EC-01a와 동일 패턴).
+    private readonly NodeTypeRegistry _registry = new(contractsVersion: "1.0.0");
+
+    private readonly Dictionary<string, NodeConfig> _nodeConfigs = new();
+    private readonly Dictionary<string, TextBlock> _nodeLabels = new();
     private readonly List<Wire> _wires = new();
     private readonly Dictionary<string, PlacedNodeVisual> _nodeVisuals = new();
     private int _nextNodeSeq = 1;
@@ -80,7 +89,7 @@ public partial class FlowCanvasView : UserControl
             FlowId: DefaultFlowId,
             Properties: new Dictionary<string, object?>());
 
-        _placedNodes.Add(config);
+        _nodeConfigs[config.Id] = config;
         RenderNode(config, position);
         Palette.MarkTypeUsed(typeName);
         EmptyCanvasHint.Visibility = Visibility.Collapsed;
@@ -98,6 +107,16 @@ public partial class FlowCanvasView : UserControl
         var left = Math.Max(0, dropPosition.X - NodeCardWidth / 2);
         var top = Math.Max(0, dropPosition.Y - NodeCardHeight / 2);
 
+        var label = new TextBlock
+        {
+            Text = config.Name,
+            Foreground = (Brush)FindResource("PrimaryTextBrush"),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(4)
+        };
+
         var card = new Border
         {
             Width = NodeCardWidth,
@@ -106,20 +125,16 @@ public partial class FlowCanvasView : UserControl
             BorderBrush = (Brush)FindResource("BorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
-            Child = new TextBlock
-            {
-                Text = config.Name,
-                Foreground = (Brush)FindResource("PrimaryTextBrush"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                Margin = new Thickness(4)
-            }
+            Cursor = Cursors.Arrow,
+            Tag = config.Id,
+            Child = label
         };
+        card.MouseLeftButtonDown += OnCardMouseLeftButtonDown;
 
         Canvas.SetLeft(card, left);
         Canvas.SetTop(card, top);
         NodeCanvas.Children.Add(card);
+        _nodeLabels[config.Id] = label;
 
         // EC-02 범위: 지금은 모든 노드를 입력 1개·출력 1개로 고정한다(클래스 주석 참고 — Phase 7
         // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정).
@@ -269,5 +284,53 @@ public partial class FlowCanvasView : UserControl
         // 새 와이어 선이 나중에 그려진 노드 카드 위를 덮지 않도록 맨 뒤(카드보다 아래)로 보낸다.
         Panel.SetZIndex(line, -1);
         NodeCanvas.Children.Insert(0, line);
+    }
+
+    /// <summary>
+    /// (EC-03) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로
+    /// <see cref="OpenPropertyDialog"/>를 엽니다. 한 번 클릭은 무시합니다(포트 드래그와 헷갈리지
+    /// 않도록 카드 자체에는 단일 클릭 동작을 두지 않음).
+    /// </summary>
+    private void OnCardMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || sender is not FrameworkElement { Tag: string nodeId })
+        {
+            return;
+        }
+
+        OpenPropertyDialog(nodeId);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// (EC-03) <paramref name="nodeId"/>의 현재 <see cref="NodeConfig"/>와, <see cref="_registry"/>에
+    /// 등록된 해당 타입의 PropertySchema(없으면 빈 목록 — Phase 7 이전엔 항상 이 경우)로
+    /// <see cref="NodePropertyDialog"/>를 모달로 띄웁니다. "완료"로 닫히면 <see cref="_nodeConfigs"/>와
+    /// 카드에 표시된 이름(<see cref="_nodeLabels"/>)을 갱신합니다.
+    /// </summary>
+    private void OpenPropertyDialog(string nodeId)
+    {
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config))
+        {
+            return;
+        }
+
+        var schema = _registry.Descriptors.TryGetValue(config.Type, out var descriptor)
+            ? descriptor.PropertySchema
+            : Array.Empty<PropertyField>();
+
+        var dialog = new NodePropertyDialog(config, schema)
+        {
+            Owner = Window.GetWindow(this)
+        };
+
+        if (dialog.ShowDialog() == true && dialog.UpdatedConfig is { } updated)
+        {
+            _nodeConfigs[nodeId] = updated;
+            if (_nodeLabels.TryGetValue(nodeId, out var label))
+            {
+                label.Text = updated.Name;
+            }
+        }
     }
 }
