@@ -17,12 +17,17 @@ namespace NodeSharp.Editor.Views;
 /// 비어 있는 것이 정상이며(03번 Step맵 EC-01a desc), 실제 필터링·최근 사용 동작의 전체 확인은
 /// Phase 7에서 노드 타입이 채워진 뒤 NR-09(캔버스 UX 마감, 이미 03번 Step맵에 이 목적으로 존재)에서
 /// 다시 확인합니다.
+/// (EC-01b) 카드를 누른 채 일정 거리 이상 움직이면(<see cref="OnCardPreviewMouseMove"/>) WPF 표준
+/// 드래그 앤 드롭을 시작해 <see cref="FlowCanvasView"/>의 캔버스가 받을 수 있게 합니다.
+/// <see cref="MarkTypeUsed"/>를 공개 메서드로 열어, 캔버스에 실제로 노드가 배치됐을 때도(클릭이
+/// 아니라 드래그로 놓았을 때도) "최근 사용"에 반영되게 했습니다.
 /// </summary>
 public partial class PaletteView : UserControl
 {
     private readonly NodeTypeRegistry _registry = new(contractsVersion: "1.0.0");
     private readonly PaletteRecentUsageTracker _recentUsage = new();
     private readonly List<PaletteNodeCardViewModel> _allCards = new();
+    private Point _dragStartPoint;
 
     /// <summary>XAML 컨트롤을 초기화하고, 현재 등록된 노드 타입으로 팔레트를 채웁니다(지금은 보통 0개).</summary>
     public PaletteView()
@@ -86,14 +91,54 @@ public partial class PaletteView : UserControl
 
     /// <summary>
     /// 카드(팔레트 항목)를 클릭하면 그 카드의 TypeName(Border.Tag)을 "사용함"으로 기록하고, 화면을
-    /// 즉시 다시 그려 "최근 사용" 섹션에 반영합니다.
+    /// 즉시 다시 그려 "최근 사용" 섹션에 반영합니다. 실제 드래그가 발생한 클릭은 보통 이 이벤트까지
+    /// 도달하지 않지만(WPF DragDrop이 마우스를 가져감), 도달하더라도 <see cref="MarkTypeUsed"/>가
+    /// 중복 호출을 그대로 허용하므로(이미 맨 앞이면 다시 맨 앞) 문제없습니다.
     /// </summary>
     private void OnCardClicked(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement { Tag: string typeName })
         {
-            _recentUsage.MarkUsed(typeName);
-            ApplyFilter(SearchBox.Text);
+            MarkTypeUsed(typeName);
         }
+    }
+
+    /// <summary>드래그 시작 좌표를 기억합니다(다음 <see cref="OnCardPreviewMouseMove"/>의 임계값 판정용).</summary>
+    private void OnCardPreviewMouseDown(object sender, MouseButtonEventArgs e) => _dragStartPoint = e.GetPosition(null);
+
+    /// <summary>
+    /// (EC-01b) 왼쪽 버튼을 누른 채 <see cref="SystemParameters.MinimumHorizontalDragDistance"/>/
+    /// <see cref="SystemParameters.MinimumVerticalDragDistance"/>를 넘게 움직이면 이 카드의
+    /// TypeName(Border.Tag)을 문자열 데이터로 담아 <see cref="DragDrop.DoDragDrop"/>을 시작합니다.
+    /// 임계값을 넘지 않으면 아무 것도 하지 않고, 이후 <see cref="OnCardClicked"/>가 평범한 클릭으로
+    /// 처리합니다.
+    /// </summary>
+    private void OnCardPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || sender is not FrameworkElement { Tag: string typeName } element)
+        {
+            return;
+        }
+
+        var current = e.GetPosition(null);
+        if (Math.Abs(current.X - _dragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(current.Y - _dragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        DragDrop.DoDragDrop(element, typeName, DragDropEffects.Copy);
+    }
+
+    /// <summary>
+    /// (EC-01b) <see cref="FlowCanvasView"/>가 캔버스에 실제로 노드를 배치한 뒤 호출합니다.
+    /// <see cref="PaletteRecentUsageTracker.MarkUsed"/>로 기록하고 화면을 다시 그려 "최근 사용"
+    /// 섹션에 반영합니다(검색어가 비어 있을 때만 보이는 섹션이라, 검색 중이면 이번 갱신은 눈에 보이지
+    /// 않다가 검색어를 지우면 나타납니다).
+    /// </summary>
+    public void MarkTypeUsed(string typeName)
+    {
+        _recentUsage.MarkUsed(typeName);
+        ApplyFilter(SearchBox.Text);
     }
 }

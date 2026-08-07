@@ -6,7 +6,10 @@
   채워진다. 지금은 이 UserControl이 MainWindow 본문에 항상 떠 있는지만 확인하는 빈 화면이었다.
   (EC-01a) 좌측에 PaletteView(노드 팔레트 — 검색+최근 사용, 12번 탭 카드2 mock-palette 위치와
   동일)를 추가했다. 우측은 아직 실제 캔버스 렌더링(EC-01b) 전이라 안내 텍스트만 있는 자리표시자로
-  유지.
+  유지했다.
+  (EC-01b) 우측 자리표시자를 실제 드롭 가능한 Canvas(NodeCanvas)로 교체 — 팔레트 카드를 드래그해
+  놓으면(WPF DragDrop, 코드비하인드 OnCanvasDrop) NodeConfig가 생성되고 화면에 노드 카드가
+  렌더링된다(와이어 연결은 EC-02). 노드가 하나도 없을 때만 안내 텍스트(EmptyCanvasHint)를 보여준다.
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.FlowCanvasView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -19,15 +22,27 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <views:PaletteView Grid.Column="0" />
+        <views:PaletteView x:Name="Palette" Grid.Column="0" />
 
         <Border Grid.Column="1"
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="1,0,0,0">
-            <TextBlock Text="Flow 캔버스 — 노드 배치·와이어 연결은 EC-01b 이후에 채워질 예정"
-                       Foreground="{DynamicResource SecondaryTextBrush}"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center" />
+            <Grid>
+                <TextBlock x:Name="EmptyCanvasHint"
+                           Text="팔레트에서 노드 카드를 이 영역으로 드래그하면 배치됩니다(EC-01b) — 와이어 연결은 EC-02 이후"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           MaxWidth="300"
+                           TextAlignment="Center" />
+
+                <!-- Background를 명시해야 빈 영역에서도 Drop 히트테스트가 걸린다(WPF 표준 제약) -->
+                <Canvas x:Name="NodeCanvas"
+                        Background="Transparent"
+                        AllowDrop="True"
+                        Drop="OnCanvasDrop" />
+            </Grid>
         </Border>
     </Grid>
 </UserControl>

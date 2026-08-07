@@ -123,6 +123,31 @@
       팔레트가 비어 있어 "검색해도 결과 0개 그대로", "클릭할 카드가 없음" 상태로만 확인 가능하고,
       실제 필터링·최근 사용 동작의 시각적 확인은 Phase 7에서 노드 타입이 채워진 뒤 가능해진다(위
       판단 근거 참고).
+    - 사용자가 Windows에서 실행해 팔레트 UI(검색창+최근 사용+전체 목록) 렌더링을 확인함(2026-08-06).
+
+    Step: EC-01b (03번 개발 Step맵.html, Phase 6 — 캔버스 기본 렌더링 + 드래그 배치)
+    - 완료 기준: "팔레트 카드를 캔버스로 드래그하면 NodeConfig가 생성되고 노드가 렌더링되는지 확인
+      (연결선 제외)". WPF 표준 드래그 앤 드롭(DragDrop.DoDragDrop/AllowDrop+Drop 이벤트)만으로
+      충분해 별도 라이브러리 불필요(9번 탭 카드10의 클립보드 판단과 동일한 "WPF 표준 API로 충분"
+      원칙). EC-05(다중 Flow 탭)가 아직 없어 모든 노드를 고정 FlowId("f1")에 배치하는 임시 처리,
+      EC-04(flows.json 저장/로드)가 아직 없어 배치된 NodeConfig 목록은 메모리에만 유지 — 둘 다
+      이후 해당 Step에서 정식으로 대체될 임시 결정이라 AskUserQuestion 없이 진행(값 하나 고정하는
+      낮은 리스크 판단).
+    - src\NodeSharp.Editor\Views\PaletteView.xaml(.cs) 수정 — 카드에 PreviewMouseLeftButtonDown/
+      PreviewMouseMove 추가, 마우스를 누른 채 SystemParameters.Minimum{Horizontal,Vertical}DragDistance
+      이상 움직이면 DragDrop.DoDragDrop으로 TypeName을 문자열 데이터로 담아 드래그 시작(임계값 이내면
+      기존 MouseLeftButtonUp이 단순 클릭으로 처리, 회귀 없음). MarkTypeUsed(string)를 공개 메서드로
+      추출해 클릭 경로와 드롭 성공 경로가 같은 "최근 사용 기록" 로직을 공유하도록 정리.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml(.cs) 수정 — 우측 자리표시자를 AllowDrop="True"
+      Canvas(NodeCanvas)로 교체(Background를 Transparent로 명시해야 빈 영역도 Drop 히트테스트가
+      걸리는 WPF 제약 반영). OnCanvasDrop에서 문자열 데이터(TypeName)를 꺼내 NodeConfig를 생성(Id는
+      "n1","n2"... 순번 발급, FlowId는 위 임시 상수)하고 RenderNode로 Border+TextBlock 카드를 드롭
+      좌표에 배치, Palette.MarkTypeUsed(typeName)로 최근 사용도 함께 갱신, 노드가 하나라도 생기면
+      EmptyCanvasHint를 숨김. 포트·와이어 표현은 EC-02 범위라 이번엔 손대지 않음.
+    - 완료 기준 확인은 ED-B0~EC-01a와 동일하게 WPF 창이 실제로 그려지고 드래그 앤 드롭이 동작하는지
+      봐야 해서 자동 검증 불가 — xUnit 없이 사용자가 Windows에서 팔레트가 비어 있더라도(Phase 7
+      이전) 코드 구조상 문제가 없는지, 그리고 Phase 7 이후 실제 카드가 생기면 드래그로 캔버스에
+      놓아 카드가 렌더링되고 "최근 사용"에 반영되는지 직접 확인해야 한다.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
