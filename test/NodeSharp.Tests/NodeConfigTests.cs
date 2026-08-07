@@ -29,6 +29,29 @@ public class NodeConfigTests
         Assert.Equal(1, config.MaxConcurrency);
         Assert.Null(config.CredentialRefId);
         Assert.False(config.Disabled);
+
+        // (EC-04) X/Y도 생략하면 0이어야 한다(캔버스 좌표 미지정 상태의 기본값).
+        Assert.Equal(0, config.X);
+        Assert.Equal(0, config.Y);
+    }
+
+    [Fact]
+    public void EC04_XY좌표가_SystemTextJson_왕복에서_보존된다()
+    {
+        // (EC-04) flows.json 저장/로드 시 캔버스 배치가 그대로 복원되려면 X/Y가 직렬화 왕복을
+        // 거쳐도 값 손실이 없어야 한다.
+        var original = new NodeConfig(
+            Id: "n1", Type: "function", Name: "온도 변환", FlowId: "f1",
+            Properties: new Dictionary<string, object?>(),
+            X: 123.5,
+            Y: 456.25);
+
+        var json = JsonSerializer.Serialize(original);
+        var restored = JsonSerializer.Deserialize<NodeConfig>(json);
+
+        Assert.NotNull(restored);
+        Assert.Equal(original.X, restored!.X);
+        Assert.Equal(original.Y, restored.Y);
     }
 
     [Fact]

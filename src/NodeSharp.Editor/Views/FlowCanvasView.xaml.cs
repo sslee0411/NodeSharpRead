@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Core.Config;
 using NodeSharp.Registry;
 
 namespace NodeSharp.Editor.Views;
@@ -31,6 +32,15 @@ namespace NodeSharp.Editor.Views;
 /// 이 뷰가 직접 만든 <c>NodeTypeRegistry</c>(팔레트와 별개 인스턴스, EC-01a와 동일한 패턴)에서
 /// 해당 타입의 PropertySchema를 찾아 넘기고, "완료"로 닫히면 <see cref="_nodeConfigs"/>와 카드에
 /// 표시된 이름을 갱신합니다.
+/// (EC-04) <see cref="_flowStore"/>(<see cref="FlowStore"/>)로 flows.json 저장/로드를 붙였습니다.
+/// 이 뷰가 로드될 때(<see cref="OnLoaded"/>) 저장된 <c>FlowDefinition</c>이 있으면 노드·와이어를
+/// 그대로 복원하고, <see cref="SaveFlowAsync"/>를 호출하면(<c>MainWindow</c>의 "저장" 메뉴/Ctrl+S)
+/// 지금 캔버스 상태를 <c>flows.json</c>에 원자적으로 저장합니다. Runner 쪽 <c>StartupSequencer</c>
+/// (RN-01a, 이미 완료)가 flows.json을 리스트가 아닌 단일 <c>FlowDefinition</c>으로 읽도록 이미
+/// 구현되어 있어, 이 뷰도 그 스키마에 그대로 맞췄습니다(EC-05 다중 Flow 탭 전까지는 노드 전체가
+/// <see cref="DefaultFlowId"/> 하나에 속함). 노드 카드의 캔버스 좌표는 <see cref="NodeConfig.X"/>/
+/// <see cref="NodeConfig.Y"/>에 직접 저장하도록 바뀌어(EC-04 신규 필드), <see cref="RenderNode"/>가
+/// 더 이상 별도의 드롭 좌표 매개변수를 받지 않고 <c>config.X</c>/<c>config.Y</c>를 그대로 읽습니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -45,6 +55,10 @@ public partial class FlowCanvasView : UserControl
     // EC-03 PropertySchema 조회 전용 — 팔레트(PaletteView)와는 별개 인스턴스(EC-01a와 동일 패턴).
     private readonly NodeTypeRegistry _registry = new(contractsVersion: "1.0.0");
 
+    // EC-04 flows.json 저장/로드 전용 창구(순수 System.IO 래퍼, 클래스 자체 주석 참고).
+    private readonly FlowStore _flowStore = new();
+    private bool _flowLoaded;
+
     private readonly Dictionary<string, NodeConfig> _nodeConfigs = new();
     private readonly Dictionary<string, TextBlock> _nodeLabels = new();
     private readonly List<Wire> _wires = new();
@@ -56,10 +70,94 @@ public partial class FlowCanvasView : UserControl
     private Line? _dragPreviewLine;
     private PortHandle? _hoveredInputPort;
 
+    /// <summary>
+    /// (EC-04) flows.json을 읽고 쓸 데이터 폴더 경로. Runner의 <c>Worker.cs</c>가 쓰는 것과 같은
+    /// <see cref="AppContext.BaseDirectory"/>(실행 파일이 있는 폴더)를 기본값으로 둡니다 — Editor와
+    /// Runner가 실제로 같은 폴더를 공유하도록 배치하는 방법(설정 파일 경로 지정 등)은 이후 Phase 8
+    /// (LK-01~04) 범위의 더 깊은 배포 구성 문제라 이 Step에서는 다루지 않습니다.
+    /// </summary>
+    public string DataDirectory { get; set; } = AppContext.BaseDirectory;
+
     /// <summary>XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴).</summary>
     public FlowCanvasView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    /// <summary>
+    /// (EC-04) 이 뷰가 화면에 처음 나타날 때(WPF <see cref="FrameworkElement.Loaded"/>) 저장된
+    /// flows.json이 있으면 <see cref="LoadFlowAsync"/>로 복원합니다. <see cref="_flowLoaded"/>로
+    /// 한 번만 시도하도록 막습니다(Loaded는 컨트롤이 시각 트리에서 빠졌다 다시 붙으면 다시 발생할
+    /// 수 있는 이벤트라, 이미 복원했다면 다시 실행할 필요가 없음).
+    /// </summary>
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_flowLoaded)
+        {
+            return;
+        }
+
+        _flowLoaded = true;
+        await LoadFlowAsync();
+    }
+
+    /// <summary>
+    /// (EC-04) <see cref="DataDirectory"/>\flows.json을 읽어 저장된 <c>FlowDefinition</c>이 있으면
+    /// 노드부터 전부 <see cref="RenderNode"/>로 그린 뒤(포트 좌표 계산이 노드 존재를 전제하므로 항상
+    /// 노드가 먼저), 와이어를 <see cref="DrawWireLine"/>로 이어 그립니다. 마지막으로 불러온 노드
+    /// Id("n1", "n2"...)들 중 가장 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>를 다시 계산해,
+    /// 이후 새로 드롭하는 노드의 Id가 불러온 노드와 겹치지 않도록 합니다.
+    /// </summary>
+    private async Task LoadFlowAsync()
+    {
+        var flow = await _flowStore.LoadAsync(DataDirectory);
+        if (flow is null || flow.Nodes.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var node in flow.Nodes)
+        {
+            _nodeConfigs[node.Id] = node;
+            RenderNode(node);
+        }
+
+        foreach (var wire in flow.Wires)
+        {
+            _wires.Add(wire);
+            var source = new PortHandle(wire.SourceNodeId, wire.SourcePort, IsOutput: true);
+            var target = new PortHandle(wire.TargetNodeId, wire.TargetPort, IsOutput: false);
+            DrawWireLine(source, target);
+        }
+
+        var maxSeq = 0;
+        foreach (var node in flow.Nodes)
+        {
+            if (node.Id.StartsWith("n", StringComparison.Ordinal) &&
+                int.TryParse(node.Id.AsSpan(1), out var seq) && seq > maxSeq)
+            {
+                maxSeq = seq;
+            }
+        }
+
+        if (maxSeq > 0)
+        {
+            _nextNodeSeq = maxSeq + 1;
+        }
+
+        EmptyCanvasHint.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// (EC-04) 지금 캔버스에 있는 노드·와이어를 하나의 <c>FlowDefinition</c>으로 모아
+    /// <see cref="DataDirectory"/>\flows.json에 원자적으로 저장합니다(<see cref="FlowStore.SaveAsync"/>).
+    /// <c>MainWindow</c>의 "파일 → 저장" 메뉴/Ctrl+S가 이 메서드를 호출합니다.
+    /// </summary>
+    public async Task SaveFlowAsync()
+    {
+        var flow = new FlowDefinition(DefaultFlowId, "Flow 1", _nodeConfigs.Values.ToList(), _wires.ToList());
+        await _flowStore.SaveAsync(flow, DataDirectory);
     }
 
     /// <summary>
@@ -87,25 +185,29 @@ public partial class FlowCanvasView : UserControl
             Type: typeName,
             Name: typeName,
             FlowId: DefaultFlowId,
-            Properties: new Dictionary<string, object?>());
+            Properties: new Dictionary<string, object?>(),
+            X: position.X,
+            Y: position.Y);
 
         _nodeConfigs[config.Id] = config;
-        RenderNode(config, position);
+        RenderNode(config);
         Palette.MarkTypeUsed(typeName);
         EmptyCanvasHint.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
-    /// <paramref name="config"/>를 나타내는 작은 카드(Border+TextBlock)를 <paramref name="dropPosition"/>
-    /// 중심으로 <c>NodeCanvas</c>에 추가하고(EC-01b), 좌우에 입력/출력 포트 Ellipse를 붙입니다
-    /// (EC-02, <see cref="AddPortEllipse"/>). 카드 크기가 고정이라(<see cref="NodeCardWidth"/>/
-    /// <see cref="NodeCardHeight"/>) WPF 레이아웃 측정을 기다리지 않고도 포트 좌표를 바로 계산할
-    /// 수 있습니다.
+    /// <paramref name="config"/>를 나타내는 작은 카드(Border+TextBlock)를 <see cref="NodeConfig.X"/>/
+    /// <see cref="NodeConfig.Y"/> 중심으로 <c>NodeCanvas</c>에 추가하고(EC-01b), 좌우에 입력/출력
+    /// 포트 Ellipse를 붙입니다(EC-02, <see cref="AddPortEllipse"/>). 카드 크기가 고정이라
+    /// (<see cref="NodeCardWidth"/>/<see cref="NodeCardHeight"/>) WPF 레이아웃 측정을 기다리지
+    /// 않고도 포트 좌표를 바로 계산할 수 있습니다. (EC-04) 이전에는 드롭 좌표를 별도 매개변수로
+    /// 받았지만, 이제는 <paramref name="config"/> 자체에 X/Y가 저장되어 있어(flows.json 로드 시에도
+    /// 같은 메서드로 카드를 다시 그릴 수 있도록) 매개변수를 하나로 줄였습니다.
     /// </summary>
-    private void RenderNode(NodeConfig config, Point dropPosition)
+    private void RenderNode(NodeConfig config)
     {
-        var left = Math.Max(0, dropPosition.X - NodeCardWidth / 2);
-        var top = Math.Max(0, dropPosition.Y - NodeCardHeight / 2);
+        var left = Math.Max(0, config.X - NodeCardWidth / 2);
+        var top = Math.Max(0, config.Y - NodeCardHeight / 2);
 
         var label = new TextBlock
         {

@@ -144,6 +144,13 @@
       (NodeTypeDescriptorBuilder&lt;TNode&gt;, NodeSharp.Registry 소속)가 기본값으로 해소한다.
       src\Interfaces\INodeRegistry.cs·IFlowNode.cs의 관련 &lt;remarks&gt;도 "RG-01에서 완료"로 갱신
       (본문 계약 시그니처 자체는 변경 없음).
+
+    Step: EC-04 (03번 개발 Step맵.html, Phase 6 — flows.json 저장/로드, NodeConfig X/Y 필드 추가)
+    - src\Models\NodeConfig.cs 수정 — Editor 쪽 캔버스 저장/로드(NodeSharp.Editor.csproj EC-04 참고)를
+      구현하려니 노드 배치 좌표를 저장할 필드가 없다는 공백을 발견(02번 문서 원래 "정식 선언"에도
+      없음). 기존 파라미터 뒤에 X/Y(double, 기본값 0)를 선택 매개변수로 추가 — 이미 이름 있는 인수로
+      NodeConfig를 생성하던 기존 호출부(EC-01b~EC-03, 테스트 전체, 총 20개 파일 grep으로 확인)는 코드
+      변경 없이 그대로 컴파일되는 낮은 리스크 판단이라 AskUserQuestion 없이 진행.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

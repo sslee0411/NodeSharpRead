@@ -15,6 +15,9 @@ namespace NodeSharp.Editor;
 /// 그렸습니다 — 최소화/최대화-복원/닫기 버튼 3개의 클릭 핸들러(<see cref="OnMinimizeClick"/>/
 /// <see cref="OnMaximizeRestoreClick"/>/<see cref="OnCloseClick"/>)와, 최대화 시 작업표시줄을
 /// 가리는 WindowChrome 특유의 문제를 방지하는 <see cref="OnWindowStateChanged"/>가 추가됐습니다.
+/// (EC-04) "파일 → 저장" 메뉴와 Ctrl+S(Window.InputBindings/CommandBindings, ApplicationCommands.Save)
+/// 가 공유하는 <see cref="OnSaveFlowClick"/>가 추가됐습니다 — 캔버스(<c>FlowCanvas</c>, x:Name)의
+/// <c>SaveFlowAsync()</c>를 호출해 flows.json에 저장합니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -65,6 +68,28 @@ public partial class MainWindow : Window
 
     /// <summary>(ED-B3) 커스텀 타이틀바의 닫기 버튼 — 창을 닫습니다(표준 <see cref="Window.Close"/>).</summary>
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// (EC-04) "파일 → 저장" 메뉴 Click과 Ctrl+S(CommandBinding.Executed, <see cref="ExecutedRoutedEventArgs"/>도
+    /// <see cref="RoutedEventArgs"/> 파생이라 같은 델리게이트 반공변성 기법으로 한 메서드가 두 이벤트를
+    /// 모두 처리)이 공유하는 저장 핸들러입니다. <c>FlowCanvas.SaveFlowAsync()</c>를 호출해 지금
+    /// 캔버스 상태를 flows.json에 원자적으로 저장하고, 성공/실패를 안내 메시지로 알립니다.
+    /// </summary>
+    private async void OnSaveFlowClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await FlowCanvas.SaveFlowAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"flows.json 저장 중 오류가 발생했습니다.\n{ex.Message}",
+                "저장 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
 
     /// <summary>
     /// (ED-B3) 창 상태가 바뀔 때마다 최대화/복원 버튼 아이콘을 맞는 모양으로 바꾸고, 최대화 상태일

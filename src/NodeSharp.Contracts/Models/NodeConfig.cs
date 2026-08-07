@@ -24,6 +24,11 @@ namespace NodeSharp.Contracts.Models;
 /// 참조를 비교하므로, 내용이 같아도 인스턴스가 다르면 다르다고 판정됩니다. 두 <see cref="NodeConfig"/>가
 /// "내용상 같은지" 비교해야 하는 코드(예: 배포 시 변경 여부 판단, 향후 <c>RT-03</c>)는 record의
 /// 기본 <c>==</c>에 의존하지 말고 필드 단위로 비교해야 합니다.</item>
+/// <item><b>(EC-04) X/Y 좌표 추가</b>: 02번 문서의 원래 "정식 선언"에는 캔버스 배치 좌표 필드가
+/// 없었습니다(발견한 공백 — flows.json 저장/로드를 실제로 구현하려니 노드 위치를 어딘가에 저장해야
+/// 하는데 그 자리가 없었음). 기존 파라미터 뒤에 <see cref="X"/>/<see cref="Y"/>를 기본값 0인 선택
+/// 매개변수로 추가해, 이미 이름 있는 인수로 <see cref="NodeConfig"/>를 생성하던 기존 호출부(EC-01b~
+/// EC-03, 테스트 전체)는 코드 변경 없이 그대로 컴파일됩니다.</item>
 /// </list>
 /// </remarks>
 /// <param name="Id">이 노드의 고유 식별자(플로우 내에서 유일). 캔버스에서 노드를 배치할 때 발급되며 이후 변경되지 않습니다.</param>
@@ -35,6 +40,8 @@ namespace NodeSharp.Contracts.Models;
 /// <param name="MaxConcurrency">이 노드가 동시에 처리할 수 있는 최대 메시지 수. 기본값 1(동시 처리 없음, 순차 처리).</param>
 /// <param name="CredentialRefId">이 노드가 사용하는 자격증명 항목의 참조 키. 자격증명이 필요 없는 노드는 <c>null</c>.</param>
 /// <param name="Disabled">이 노드가 비활성화되어 있는지. <c>true</c>면 배포 시 이 노드는 생성되지 않습니다.</param>
+/// <param name="X">(EC-04) 캔버스에서 이 노드 카드의 중심 X좌표(픽셀). flows.json 저장/로드 시 배치를 그대로 복원하기 위한 값 — 배포 로직에는 영향을 주지 않는 순수 표시용 정보입니다.</param>
+/// <param name="Y">(EC-04) 캔버스에서 이 노드 카드의 중심 Y좌표(픽셀). <see cref="X"/>와 동일한 용도입니다.</param>
 /// <example>
 /// <code>
 /// // 1) Function 노드 — 순차 처리(기본값), 자격증명 없음
@@ -73,4 +80,6 @@ public sealed record NodeConfig(
     DispatchMode OutputDispatch = DispatchMode.Sequential,
     int MaxConcurrency = 1,
     string? CredentialRefId = null,
-    bool Disabled = false);
+    bool Disabled = false,
+    double X = 0,
+    double Y = 0);

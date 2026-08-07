@@ -245,6 +245,52 @@
       shell:WindowChrome.IsHitTestVisibleInChrome="True" 필요.
     - 완료 기준 확인은 WPF 창이 실제로 그려지고 테마 팝업 클릭으로 전환되는지 봐야 해서 자동 검증
       불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다.
+
+    Step: EC-04 (03번 개발 Step맵.html, Phase 6 — flows.json 저장/로드)
+    - 완료 기준: "저장 후 flows.json이 생성/갱신되고, 재시작 시 캔버스가 복원되는지 확인"(원래 문구는
+      "RN-01/LK-01이 변경을 감지하는지"도 포함하지만, LK-01은 Phase 8 미착수라 이 Step에서는 "Editor가
+      직접 저장하고 다시 읽어 복원하는지"까지만 검증 — RN-05b식 "지금 가능한 부분 먼저" 패턴). 착수
+      전 확인한 두 가지: (1) 02번 문서 "공통 규칙 ④" — 설정 파일은 .tmp에 전부 쓴 뒤 원본과
+      바꿔치기(File.Replace)하는 원자적 저장 + .signal 파일로 변경을 알림. (2) Runner 쪽
+      StartupSequencer(RN-01a, 이미 완료)가 flows.json을 리스트가 아니라 단일 FlowDefinition으로
+      역직렬화하도록 이미 구현돼 있어, Editor 쪽도 반드시 그 스키마에 맞춰야 함(EC-05 다중 Flow 탭
+      전까지는 노드 전체가 DefaultFlowId 하나에 속하는 임시 처리, EC-01b부터 있던 기존 결정 그대로
+      유지). 노드 배치 좌표 저장을 위해 NodeConfig에 X/Y 필드를 추가한 판단 근거는
+      NodeSharp.Contracts.csproj EC-04 블록 참고.
+    - src\NodeSharp.Editor\Core\Config\JsonWriteService.cs 신규 — WriteAtomicAsync&lt;T&gt;(.tmp 작성 →
+      File.Replace로 .bak 백업하며 원자적 스왑, 최초 저장 시엔 File.Move)/WriteSignalAsync(.signal에
+      UTC 시각 기록)/ReadAsync&lt;T&gt; 3개 정적 메서드. flows.json 전용이 아니라 device.json 등 다른
+      설정 파일도 재사용할 수 있도록 제네릭으로 설계(02번 문서 설계도의
+      NodeSharp.Editor\Core\Config\JsonWriteService 위치 그대로).
+    - src\NodeSharp.Editor\Core\Config\FlowStore.cs 신규 — JsonWriteService를 감싸 SaveAsync(FlowDefinition,
+      dataDirectory)/LoadAsync(dataDirectory)만 노출하는 flows.json 전용 얇은 래퍼.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 수정 — RenderNode가 더 이상 별도의 드롭 좌표
+      매개변수를 받지 않고 NodeConfig.X/.Y를 직접 읽도록 변경(OnCanvasDrop도 드롭 좌표를 NodeConfig
+      생성 시 X/Y로 바로 채움). FlowStore 인스턴스 + DataDirectory 프로퍼티(기본값
+      AppContext.BaseDirectory — Runner의 Worker.cs와 같은 관례, 두 프로세스가 실제로 같은 폴더를
+      공유하도록 배치하는 방법은 Phase 8 LK-01~04의 더 깊은 배포 구성 범위라 이 Step에서는 다루지
+      않음) 추가. 공개 SaveFlowAsync() — 지금 캔버스의 _nodeConfigs/_wires를 FlowDefinition으로 모아
+      저장. Loaded 이벤트(OnLoaded → LoadFlowAsync)로 저장된 flows.json이 있으면 노드부터 전부
+      RenderNode로 그린 뒤 와이어를 DrawWireLine으로 이어 그리고, 불러온 노드 Id들 중 가장 큰 순번
+      다음 값으로 _nextNodeSeq를 다시 계산해 새로 드롭하는 노드와 Id가 겹치지 않게 함.
+    - src\NodeSharp.Editor\MainWindow.xaml(.cs) 수정 — FlowCanvasView에 x:Name="FlowCanvas" 추가,
+      "파일" 메뉴에 "저장" 하위 항목(Click=OnSaveFlowClick)과 Window.InputBindings의 Ctrl+S
+      (ApplicationCommands.Save, CommandBindings.Executed=OnSaveFlowClick — ExecutedRoutedEventArgs도
+      RoutedEventArgs 파생이라 ED-B2b에서 쓴 것과 같은 델리게이트 반공변성 기법으로 메뉴 Click과
+      Ctrl+S가 한 메서드를 공유) 추가. OnSaveFlowClick은 FlowCanvas.SaveFlowAsync()를 호출하고 실패
+      시 MessageBox로 오류를 알림.
+    - test\NodeSharp.Tests\NodeConfigTests.cs 수정 — X/Y 기본값이 0인지, System.Text.Json 왕복에서
+      X/Y가 보존되는지 확인하는 테스트 2건 추가(Contracts 모델 변경분이라 이 프로젝트와 달리 이
+      샌드박스에서도 빌드·테스트 가능 — xmldoc/중괄호 균형 정적 검증은 이 세션에서 통과 확인, 이번
+      세션은 샌드박스에 .NET SDK 자체가 설치돼 있지 않아 dotnet build/test 실행은 사용자가 Windows에서
+      직접 확인해야 함).
+    - JsonWriteService.cs/FlowStore.cs는 순수 System.IO/System.Text.Json 로직이지만
+      NodeSharp.Editor(net8.0-windows, UseWPF=true) 소속이라 PaletteRecentUsageTracker.cs와 동일하게
+      이 샌드박스에서 단위 테스트 대상이 될 수 없음 — 실제 저장/로드 왕복 확인은 사용자가 Windows에서
+      직접 저장 후 재시작해 캔버스가 복원되는지 확인해야 한다.
+    - 완료 기준 확인은 WPF 창이 실제로 그려지고 저장/재시작 복원이 동작하는지 봐야 해서 자동 검증
+      불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다(LK-01의 "Runner가 변경을 감지하는지"
+      부분은 Phase 8에서 별도 확인).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

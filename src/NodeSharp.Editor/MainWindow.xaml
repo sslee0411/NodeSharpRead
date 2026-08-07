@@ -25,6 +25,9 @@
   뒤, 타이틀바에 NodeSharp.UI.Themes.Controls.ThemePickerButton을 배치해 실제로 테마를 전환해볼 수
   있게 했다(닫기 버튼과 마찬가지로 IsHitTestVisibleInChrome="True" 필요 — 클릭 가능한 컨트롤은
   전부 WindowChrome의 "항상 드래그 가능" 기본 동작에서 예외 처리해야 한다).
+  (EC-04) FlowCanvasView에 x:Name="FlowCanvas"를 붙여 코드비하인드에서 SaveFlowAsync()를 호출할 수
+  있게 하고, "파일" 메뉴에 "저장" 항목(Click=OnSaveFlowClick)과 Ctrl+S 단축키(Window.InputBindings)를
+  추가했다 — 둘 다 같은 저장 로직을 호출한다.
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -38,6 +41,13 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         StateChanged="OnWindowStateChanged">
+    <!-- (EC-04) Ctrl+S로도 저장을 트리거 — 메뉴 클릭과 동일한 OnSaveFlowClick을 호출한다. -->
+    <Window.InputBindings>
+        <KeyBinding Key="S" Modifiers="Control" Command="{x:Static ApplicationCommands.Save}" />
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static ApplicationCommands.Save}" Executed="OnSaveFlowClick" />
+    </Window.CommandBindings>
     <shell:WindowChrome.WindowChrome>
         <!-- CaptionHeight를 아래 타이틀바 Row 높이(32)와 맞춰야 드래그 이동·더블클릭 최대화가
              타이틀바 영역과 정확히 일치한다. ResizeBorderThickness는 WindowStyle="None"에서도
@@ -148,7 +158,9 @@
                 BorderBrush="{DynamicResource BorderBrush}"
                 BorderThickness="0,0,0,1">
             <Menu Background="Transparent" Foreground="{DynamicResource PrimaryTextBrush}">
-                <MenuItem Header="파일" />
+                <MenuItem Header="파일">
+                    <MenuItem Header="저장" InputGestureText="Ctrl+S" Click="OnSaveFlowClick" />
+                </MenuItem>
                 <MenuItem Header="편집" />
                 <MenuItem Header="보기">
                     <MenuItem Header="Sequence Editor" Click="OnSequenceEditorEntryClick" />
@@ -192,7 +204,7 @@
                     <ColumnDefinition Width="320" MinWidth="200" MaxWidth="600" />
                 </Grid.ColumnDefinitions>
 
-                <views:FlowCanvasView Grid.Column="0" />
+                <views:FlowCanvasView x:Name="FlowCanvas" Grid.Column="0" />
 
                 <GridSplitter Grid.Column="1"
                                Width="5"
