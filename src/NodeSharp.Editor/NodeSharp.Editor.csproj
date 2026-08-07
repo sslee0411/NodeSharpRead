@@ -92,6 +92,37 @@
     - 완료 기준 확인은 ED-B0~ED-B2a와 동일하게 WPF 창이 실제로 그려지고 클릭이 실제로 동작하는지
       봐야 해서 자동 검증 불가 — xUnit 테스트 없이 사용자가 Windows에서 직접 실행(메뉴·네비게이션
       양쪽 클릭 포함)해 확인한다.
+    - 사용자가 Windows에서 실행해 메뉴·네비게이션 양쪽 진입점 클릭 동작을 확인함(2026-08-06) —
+      Phase 5(ED-B0/ED-B1/ED-B2a/ED-B2b) 전체 완료.
+
+    Step: EC-01a (03번 개발 Step맵.html, Phase 6 — 팔레트: 노드 카드 + 검색)
+    - 완료 기준: "검색바에 타입명 일부를 입력하면 해당 카드만 필터링되고, 노드 사용 후 '최근 사용'
+      섹션에 노출되는지 확인". 02번 문서 9번 탭 카드10(팔레트 검색바: TypeName/표시 이름/카테고리로
+      필터링, 최근 사용 5개는 검색창 비어있을 때 상단 고정)과 12번 탭 카드2 목업(mock-palette 위치 —
+      캔버스 왼쪽, 구조 설정 트리와는 반대편)을 따랐다. INodeTypeDescriptor(Contracts)에는 "표시
+      이름" 필드가 실제로 없어(TypeName만 존재) TypeName을 그대로 표시·검색 대상으로 씀 — 카드10
+      문구와의 사소한 차이라 별도 AskUserQuestion 없이 진행. 이 시점(Phase 6 시작)엔 NodeTypeRegistry에
+      등록된 노드 타입이 없어(Inject/Switch/Function/Debug는 Phase 7) 팔레트가 비어 있는 것이 03번
+      Step맵 desc가 이미 명시한 정상 상태 — 검색·최근 사용 로직 자체는 지금 완전하게 구현하고, 실제
+      노드 데이터로 하는 전체 동작 확인은 이미 Step맵에 존재하는 NR-09(캔버스 UX 마감, "새로 추가된
+      노드 전체에 대해 EC-01a가 정상 동작하는지 확인")에서 재확인하기로 함(RN-05b식 "지금 가능한
+      부분 먼저" 패턴과 동일 정신, 이미 계획된 Step이라 새로 나누지 않음).
+    - src\NodeSharp.Editor\PaletteRecentUsageTracker.cs 신규 — 클릭한 타입 이름을 최대 5개 MRU
+      순서로 기억하는 순수 로직(WPF 비의존, 다만 프로젝트 자체가 net8.0-windows라 이 샌드박스에서
+      xUnit 대상은 될 수 없음). src\NodeSharp.Editor\Views\PaletteNodeCardViewModel.cs 신규 —
+      TypeName/Category/IconGlyph 3개 값만 담는 카드 표시 모델. src\NodeSharp.Editor\Views\PaletteView.xaml(.cs)
+      신규 — NodeTypeRegistry(자체 생성, Worker.cs RN-04a와 동일한 "new NodeTypeRegistry(contractsVersion:
+      \"1.0.0\")" 패턴)의 Descriptors를 카드로 나열, 검색창 TextChanged로 TypeName/Category 필터링,
+      카드 클릭 시 PaletteRecentUsageTracker.MarkUsed 호출 후 "최근 사용" 섹션 갱신, 카드가 하나도
+      없으면 안내 문구(EmptyHint) 표시.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml(.cs) 수정 — 본문을 Column 2개(220±Min160/Max360
+      팔레트, *=캔버스 자리표시자)로 나눠 좌측에 PaletteView 배치(12번 탭 카드2 mock-palette와 동일
+      위치). 우측 캔버스 자리표시자는 그대로 유지(실제 렌더링은 EC-01b).
+    - 완료 기준 확인은 ED-B0~ED-B2b와 동일하게 WPF 창이 실제로 그려지고 검색·클릭이 동작하는지 봐야
+      해서 자동 검증 불가 — xUnit 테스트 없이 사용자가 Windows에서 직접 실행해 확인한다. 지금은
+      팔레트가 비어 있어 "검색해도 결과 0개 그대로", "클릭할 카드가 없음" 상태로만 확인 가능하고,
+      실제 필터링·최근 사용 동작의 시각적 확인은 Phase 7에서 노드 타입이 채워진 뒤 가능해진다(위
+      판단 근거 참고).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
