@@ -10,6 +10,10 @@
   (EC-01b) 우측 자리표시자를 실제 드롭 가능한 Canvas(NodeCanvas)로 교체 — 팔레트 카드를 드래그해
   놓으면(WPF DragDrop, 코드비하인드 OnCanvasDrop) NodeConfig가 생성되고 화면에 노드 카드가
   렌더링된다(와이어 연결은 EC-02). 노드가 하나도 없을 때만 안내 텍스트(EmptyCanvasHint)를 보여준다.
+  (EC-02) 각 노드 카드 좌우에 입력/출력 포트(Ellipse)를 추가하고, 출력 포트를 누른 채 입력 포트
+  위에서 놓으면 Wire가 생성되는 드래그 상호작용을 NodeCanvas의 MouseMove/MouseLeftButtonUp으로
+  구현한다(WPF DragDrop이 아니라 Mouse.Capture 기반의 별도 메커니즘 — 팔레트 드래그와 충돌하지
+  않는다).
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.FlowCanvasView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -29,7 +33,7 @@
                 BorderThickness="1,0,0,0">
             <Grid>
                 <TextBlock x:Name="EmptyCanvasHint"
-                           Text="팔레트에서 노드 카드를 이 영역으로 드래그하면 배치됩니다(EC-01b) — 와이어 연결은 EC-02 이후"
+                           Text="팔레트에서 노드 카드를 이 영역으로 드래그하면 배치됩니다 — 배치된 카드의 출력 포트(오른쪽 점)를 눌러 입력 포트(왼쪽 점)까지 드래그하면 연결됩니다"
                            Foreground="{DynamicResource SecondaryTextBrush}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
@@ -37,11 +41,15 @@
                            MaxWidth="300"
                            TextAlignment="Center" />
 
-                <!-- Background를 명시해야 빈 영역에서도 Drop 히트테스트가 걸린다(WPF 표준 제약) -->
+                <!-- Background를 명시해야 빈 영역에서도 Drop/Mouse 히트테스트가 걸린다(WPF 표준 제약).
+                     MouseMove/MouseLeftButtonUp은 EC-02 와이어 드래그(Mouse.Capture 기반) 전용이며
+                     Drop(팔레트 배치, DragDrop 기반)과는 서로 다른 이벤트 파이프라인이라 충돌하지 않는다. -->
                 <Canvas x:Name="NodeCanvas"
                         Background="Transparent"
                         AllowDrop="True"
-                        Drop="OnCanvasDrop" />
+                        Drop="OnCanvasDrop"
+                        MouseMove="OnCanvasMouseMove"
+                        MouseLeftButtonUp="OnCanvasMouseUp" />
             </Grid>
         </Border>
     </Grid>

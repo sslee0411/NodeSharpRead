@@ -11,6 +11,10 @@ namespace NodeSharp.Editor;
 /// 채워집니다.
 /// (ED-B2b) Sequence Editor·Dashboard 진입점(헤더 "보기" 메뉴 + 좌측 네비게이션)을 클릭하면
 /// 안내 메시지를 띄우는 두 핸들러가 추가됐습니다 — 실제 창은 Phase 10/11에서 만들어집니다.
+/// (ED-B3) OS 기본 제목표시줄을 없애고(WindowStyle="None"+WindowChrome) 커스텀 타이틀바를 직접
+/// 그렸습니다 — 최소화/최대화-복원/닫기 버튼 3개의 클릭 핸들러(<see cref="OnMinimizeClick"/>/
+/// <see cref="OnMaximizeRestoreClick"/>/<see cref="OnCloseClick"/>)와, 최대화 시 작업표시줄을
+/// 가리는 WindowChrome 특유의 문제를 방지하는 <see cref="OnWindowStateChanged"/>가 추가됐습니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -50,5 +54,37 @@ public partial class MainWindow : Window
             "Dashboard",
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    /// <summary>(ED-B3) 커스텀 타이틀바의 최소화 버튼 — 창을 최소화합니다.</summary>
+    private void OnMinimizeClick(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    /// <summary>(ED-B3) 커스텀 타이틀바의 최대화/복원 버튼 — 현재 상태의 반대로 전환합니다.</summary>
+    private void OnMaximizeRestoreClick(object sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+
+    /// <summary>(ED-B3) 커스텀 타이틀바의 닫기 버튼 — 창을 닫습니다(표준 <see cref="Window.Close"/>).</summary>
+    private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// (ED-B3) 창 상태가 바뀔 때마다 최대화/복원 버튼 아이콘을 맞는 모양으로 바꾸고, 최대화 상태일
+    /// 때는 <see cref="SystemParameters.WorkArea"/>(작업표시줄을 제외한 화면 영역) 크기로 최대
+    /// 크기를 제한합니다 — <c>WindowStyle="None"</c>+<c>WindowChrome</c> 조합에서 최대화하면 창이
+    /// 작업표시줄까지 덮어버리는 잘 알려진 WPF 문제를 인터롭 없이 간단히 방지하는 방법입니다.
+    /// </summary>
+    private void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        MaximizeRestoreButton.Content = WindowState == WindowState.Maximized ? "❐" : "☐";
+
+        if (WindowState == WindowState.Maximized)
+        {
+            MaxHeight = SystemParameters.WorkArea.Height;
+            MaxWidth = SystemParameters.WorkArea.Width;
+        }
+        else
+        {
+            MaxHeight = double.PositiveInfinity;
+            MaxWidth = double.PositiveInfinity;
+        }
     }
 }
