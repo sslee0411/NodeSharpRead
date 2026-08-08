@@ -291,6 +291,45 @@
     - 완료 기준 확인은 WPF 창이 실제로 그려지고 저장/재시작 복원이 동작하는지 봐야 해서 자동 검증
       불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다(LK-01의 "Runner가 변경을 감지하는지"
       부분은 Phase 8에서 별도 확인).
+
+    Step: EC-05 (03번 개발 Step맵.html, Phase 6 — 다중 Flow 탭 스트립, ★ 사용자 요청)
+    - 완료 기준: "탭 3개 이상을 추가/전환/삭제해도 각 FlowDefinition의 노드·와이어 상태가 서로
+      섞이지 않는지 확인". 착수 전 flows.json 스키마 충돌을 발견해 AskUserQuestion으로 확인(상세는
+      NodeSharp.Runner.csproj EC-05 확장 블록 참고) — "① 리스트 스키마로 전환" 선택에 따라 flows.json은
+      이제 FlowDefinition 목록(탭 개수만큼)이고, Runner 쪽 StartupSequencer/FlowDeployer도 함께
+      수정했다.
+    - src\NodeSharp.Editor\Views\FlowTabInfo.cs 신규 — 탭 스트립 렌더링 전용 가벼운 record(Id/Name만).
+      실제 저장 데이터(FlowDefinition의 Nodes/Wires)는 이 뷰가 이미 갖고 있는 _nodeConfigs/_wires
+      딕셔너리에 함께 보관하고(NodeConfig.FlowId로 탭 구분), 저장 시점에만 탭별로 필터링해 실제
+      FlowDefinition을 만든다 — Contracts에 새 모델을 추가하지 않고 Editor 전용 뷰 헬퍼로 최소화.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml 수정 — 상단에 Auto 높이 Row로 FlowTabStrip
+      (가로 StackPanel, ScrollViewer로 감싸 탭이 많아지면 가로 스크롤)을 추가, 기존 팔레트+캔버스
+      2단 영역은 그 아래 Row로 밀림(12번 탭 카드2 mock-toolbar "1호기 라인/2호기 라인/공통 알림/＋"와
+      동일 위치 — 팔레트+캔버스 전체 폭 위).
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 대폭 수정 — 노드 Id는 탭이 달라도 항상
+      전역적으로 유일해야 하므로(Wire가 탭 구분 없이 Id로만 노드를 참조, Runner FlowDeployer가 여러
+      탭을 하나로 병합하므로) _nodeConfigs/_wires를 모든 탭 공통의 전역 딕셔너리로 유지하고
+      NodeConfig.FlowId로 소속 탭만 구분하는 방식을 택함(탭마다 별도 딕셔너리를 두는 대안보다 단순).
+      SwitchToFlow(flowId) — NodeCanvas의 시각 요소(카드·포트·와이어선)를 전부 지우고 그 탭 소속
+      데이터만 RenderNode/DrawWireLine으로 다시 그림(WPF 요소 show/hide 전환보다 단순, 탭 전환이
+      잦은 조작이 아니라 성능 부담 낮다고 판단). AddFlowTab() — "f{n}"/"Flow {n}" 자동 명명 후 곧바로
+      전환. RemoveFlowTab(flowId) — 삭제 확인 MessageBox, 마지막 탭 1개는 삭제 거부, 삭제된 탭의
+      노드·와이어를 함께 정리, 활성 탭이 삭제되면 남은 첫 탭으로 전환. RenderFlowTabStrip() — 탭
+      버튼(이름+✕ 삭제 아이콘, RenderNode와 동일한 즉석 Border+TextBlock 생성 패턴) + 끝에 "＋" 버튼을
+      그림, 활성 탭은 AccentBrush로 강조. OnCanvasDrop이 새 노드의 FlowId를 고정값이 아니라
+      _activeFlowId로 설정하도록 변경. SaveFlowAsync()가 탭별로 필터링한 List&lt;FlowDefinition&gt;을
+      만들어 FlowStore.SaveAsync(리스트 버전)을 호출하도록 변경. LoadFlowAsync()가 List&lt;FlowDefinition&gt;을
+      읽어 기본 탭("f1")을 불러온 탭들로 완전히 교체하고, 노드 Id·탭 Id 각각의 다음 발급 순번을
+      재계산한 뒤 첫 탭으로 SwitchToFlow.
+    - src\NodeSharp.Editor\Core\Config\FlowStore.cs 수정 — SaveAsync/LoadAsync가 단일 FlowDefinition이
+      아니라 IReadOnlyList&lt;FlowDefinition&gt;/List&lt;FlowDefinition&gt;을 주고받도록 변경(JsonWriteService
+      자체는 이미 제네릭이라 무변경).
+    - MainWindow.xaml(.cs)은 변경 없음 — FlowCanvasView의 공개 API(x:Name="FlowCanvas",
+      SaveFlowAsync())가 그대로라 "파일→저장"/Ctrl+S 연동(EC-04)은 손대지 않아도 계속 동작한다.
+    - 완료 기준 확인은 WPF 창이 실제로 그려지고 탭 추가/전환/삭제·저장/재로드가 동작하는지 봐야 해서
+      자동 검증 불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다(탭 3개 이상 추가 → 각
+      탭에 서로 다른 노드 배치 → 전환하며 노드가 섞이지 않는지 → 저장 후 재시작해 탭 구성이 그대로
+      복원되는지 → 탭 삭제 시 확인창과 함께 정상 삭제되는지).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

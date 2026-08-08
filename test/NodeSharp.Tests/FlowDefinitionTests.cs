@@ -86,4 +86,30 @@ public class FlowDefinitionTests
         Assert.Single(restored.Wires);
         Assert.Equal(original.Wires[0], restored.Wires[0]); // Wire는 스칼라 필드뿐이라 record 동등성이 그대로 성립
     }
+
+    [Fact]
+    public void EC05_확인_기준__List_FlowDefinition_왕복_시_탭_순서와_내용이_모두_보존된다()
+    {
+        // (v2.51 신설, ★ 사용자 요청) EC-05부터 flows.json의 최상위 형태가 단일 FlowDefinition이
+        // 아니라 목록이다(StartupSequencer/FlowDeployer가 이 형태로 읽음) — List<FlowDefinition> 자체의
+        // System.Text.Json 왕복이 탭 순서·개수·내용을 그대로 보존하는지 직접 확인한다.
+        var tab1 = new FlowDefinition("f1", "1호기 라인", new List<NodeConfig>
+        {
+            new("n1", "inject", "시작", "f1", new Dictionary<string, object?>()),
+        }, new List<Wire>());
+        var tab2 = new FlowDefinition("f2", "2호기 라인(점검 중)", new List<NodeConfig>(), new List<Wire>(), Disabled: true);
+        var original = new List<FlowDefinition> { tab1, tab2 };
+
+        var json = JsonSerializer.Serialize(original);
+        var restored = JsonSerializer.Deserialize<List<FlowDefinition>>(json);
+
+        Assert.NotNull(restored);
+        Assert.Equal(2, restored!.Count);
+        Assert.Equal("f1", restored[0].Id);
+        Assert.Equal("1호기 라인", restored[0].Name);
+        Assert.False(restored[0].Disabled);
+        Assert.Single(restored[0].Nodes);
+        Assert.Equal("f2", restored[1].Id);
+        Assert.True(restored[1].Disabled);
+    }
 }

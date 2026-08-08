@@ -14,43 +14,66 @@
   위에서 놓으면 Wire가 생성되는 드래그 상호작용을 NodeCanvas의 MouseMove/MouseLeftButtonUp으로
   구현한다(WPF DragDrop이 아니라 Mouse.Capture 기반의 별도 메커니즘 — 팔레트 드래그와 충돌하지
   않는다).
+  (EC-05, ★ 사용자 요청) 상단에 Flow 탭 스트립(FlowTabStrip)을 추가했다 — 12번 탭 카드2 mock-toolbar
+  "1호기 라인/2호기 라인/공통 알림/＋"와 동일한 위치(팔레트+캔버스 2단 영역 전체 위, 전체 폭). 탭
+  버튼들은 코드비하인드(FlowCanvasView.xaml.cs)가 동적으로 그린다(RenderNode와 동일한 Border+
+  TextBlock 즉석 생성 패턴, 별도 데이터 템플릿 없음).
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.FlowCanvasView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="clr-namespace:NodeSharp.Editor.Views">
     <Grid Background="{DynamicResource WindowBackgroundBrush}">
-        <Grid.ColumnDefinitions>
-            <!-- 12번 탭 카드2 mock-palette 폭(약 200px대)에 맞춰 범위 지정 -->
-            <ColumnDefinition Width="220" MinWidth="160" MaxWidth="360" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <!-- (EC-05) Flow 탭 스트립 — 내용물 높이만큼만 차지 -->
+            <RowDefinition Height="Auto" />
+            <!-- 팔레트+캔버스 2단 영역 — 남은 공간 전부 -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <views:PaletteView x:Name="Palette" Grid.Column="0" />
-
-        <Border Grid.Column="1"
+        <!-- (EC-05) Flow 탭 스트립 — 팔레트+캔버스 2단 영역 전체 위, 가로 스크롤 가능(탭이 많아지면). -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource ControlBackgroundBrush}"
                 BorderBrush="{DynamicResource BorderBrush}"
-                BorderThickness="1,0,0,0">
-            <Grid>
-                <TextBlock x:Name="EmptyCanvasHint"
-                           Text="팔레트에서 노드 카드를 이 영역으로 드래그하면 배치됩니다 — 배치된 카드의 출력 포트(오른쪽 점)를 눌러 입력 포트(왼쪽 점)까지 드래그하면 연결됩니다"
-                           Foreground="{DynamicResource SecondaryTextBrush}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           TextWrapping="Wrap"
-                           MaxWidth="300"
-                           TextAlignment="Center" />
-
-                <!-- Background를 명시해야 빈 영역에서도 Drop/Mouse 히트테스트가 걸린다(WPF 표준 제약).
-                     MouseMove/MouseLeftButtonUp은 EC-02 와이어 드래그(Mouse.Capture 기반) 전용이며
-                     Drop(팔레트 배치, DragDrop 기반)과는 서로 다른 이벤트 파이프라인이라 충돌하지 않는다. -->
-                <Canvas x:Name="NodeCanvas"
-                        Background="Transparent"
-                        AllowDrop="True"
-                        Drop="OnCanvasDrop"
-                        MouseMove="OnCanvasMouseMove"
-                        MouseLeftButtonUp="OnCanvasMouseUp" />
-            </Grid>
+                BorderThickness="0,0,0,1">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="FlowTabStrip" Orientation="Horizontal" Margin="6,4" />
+            </ScrollViewer>
         </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <!-- 12번 탭 카드2 mock-palette 폭(약 200px대)에 맞춰 범위 지정 -->
+                <ColumnDefinition Width="220" MinWidth="160" MaxWidth="360" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <views:PaletteView x:Name="Palette" Grid.Column="0" />
+
+            <Border Grid.Column="1"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1,0,0,0">
+                <Grid>
+                    <TextBlock x:Name="EmptyCanvasHint"
+                               Text="팔레트에서 노드 카드를 이 영역으로 드래그하면 배치됩니다 — 배치된 카드의 출력 포트(오른쪽 점)를 눌러 입력 포트(왼쪽 점)까지 드래그하면 연결됩니다"
+                               Foreground="{DynamicResource SecondaryTextBrush}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               TextWrapping="Wrap"
+                               MaxWidth="300"
+                               TextAlignment="Center" />
+
+                    <!-- Background를 명시해야 빈 영역에서도 Drop/Mouse 히트테스트가 걸린다(WPF 표준 제약).
+                         MouseMove/MouseLeftButtonUp은 EC-02 와이어 드래그(Mouse.Capture 기반) 전용이며
+                         Drop(팔레트 배치, DragDrop 기반)과는 서로 다른 이벤트 파이프라인이라 충돌하지 않는다. -->
+                    <Canvas x:Name="NodeCanvas"
+                            Background="Transparent"
+                            AllowDrop="True"
+                            Drop="OnCanvasDrop"
+                            MouseMove="OnCanvasMouseMove"
+                            MouseLeftButtonUp="OnCanvasMouseUp" />
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

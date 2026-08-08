@@ -20,8 +20,6 @@ namespace NodeSharp.Editor.Views;
 /// 배치는 다음 Step(EC-01b)에서 우측 자리표시자를 대체합니다.
 /// (EC-01b) 우측을 실제 <c>Canvas</c>(<c>NodeCanvas</c>)로 바꾸고, 팔레트에서 시작된 WPF 표준
 /// 드래그 앤 드롭을 받아(<see cref="OnCanvasDrop"/>) <see cref="NodeConfig"/>를 생성·화면에 렌더링합니다.
-/// 아직 <c>EC-05</c>(다중 Flow 탭)가 없어 <see cref="DefaultFlowId"/>로 단일 Flow만 가정하고,
-/// 아직 <c>EC-04</c>(flows.json 저장/로드)가 없어 <see cref="_placedNodes"/>는 메모리에만 쌓입니다.
 /// (EC-02) 각 카드에 입력/출력 포트(<see cref="Ellipse"/>)를 추가하고, 출력 포트를 누른 채
 /// 입력 포트 위에서 놓으면 <see cref="Wire"/>가 생성되는 드래그 상호작용을 구현했습니다 — WPF
 /// 표준 드래그 앤 드롭(팔레트 배치용)과는 별개로 <see cref="Mouse.Capture(System.Windows.IInputElement)"/>
@@ -33,20 +31,24 @@ namespace NodeSharp.Editor.Views;
 /// 해당 타입의 PropertySchema를 찾아 넘기고, "완료"로 닫히면 <see cref="_nodeConfigs"/>와 카드에
 /// 표시된 이름을 갱신합니다.
 /// (EC-04) <see cref="_flowStore"/>(<see cref="FlowStore"/>)로 flows.json 저장/로드를 붙였습니다.
-/// 이 뷰가 로드될 때(<see cref="OnLoaded"/>) 저장된 <c>FlowDefinition</c>이 있으면 노드·와이어를
-/// 그대로 복원하고, <see cref="SaveFlowAsync"/>를 호출하면(<c>MainWindow</c>의 "저장" 메뉴/Ctrl+S)
-/// 지금 캔버스 상태를 <c>flows.json</c>에 원자적으로 저장합니다. Runner 쪽 <c>StartupSequencer</c>
-/// (RN-01a, 이미 완료)가 flows.json을 리스트가 아닌 단일 <c>FlowDefinition</c>으로 읽도록 이미
-/// 구현되어 있어, 이 뷰도 그 스키마에 그대로 맞췄습니다(EC-05 다중 Flow 탭 전까지는 노드 전체가
-/// <see cref="DefaultFlowId"/> 하나에 속함). 노드 카드의 캔버스 좌표는 <see cref="NodeConfig.X"/>/
+/// 이 뷰가 로드될 때(<see cref="OnLoaded"/>) 저장된 내용이 있으면 노드·와이어를 그대로 복원하고,
+/// <see cref="SaveFlowAsync"/>를 호출하면(<c>MainWindow</c>의 "저장" 메뉴/Ctrl+S) 지금 캔버스 상태를
+/// <c>flows.json</c>에 원자적으로 저장합니다. 노드 카드의 캔버스 좌표는 <see cref="NodeConfig.X"/>/
 /// <see cref="NodeConfig.Y"/>에 직접 저장하도록 바뀌어(EC-04 신규 필드), <see cref="RenderNode"/>가
-/// 더 이상 별도의 드롭 좌표 매개변수를 받지 않고 <c>config.X</c>/<c>config.Y</c>를 그대로 읽습니다.
+/// 별도의 드롭 좌표 매개변수 없이 <c>config.X</c>/<c>config.Y</c>를 그대로 읽습니다.
+/// (EC-05, ★ 사용자 요청) 상단 <c>FlowTabStrip</c>에 여러 Flow 탭(<see cref="FlowTabInfo"/>)을
+/// 추가/전환/삭제할 수 있습니다. 이전에는 노드 전체가 고정 <c>FlowId</c>("f1") 하나에 속했지만,
+/// 이제 <see cref="_nodeConfigs"/>/<see cref="_wires"/>는 <b>모든 탭의 데이터를 함께</b> 보관하고
+/// 각 <see cref="NodeConfig.FlowId"/>로 소속 탭을 구분합니다 — 캔버스에는 <see cref="_activeFlowId"/>
+/// 탭의 노드·와이어만 그려집니다(<see cref="SwitchToFlow"/>가 <c>NodeCanvas</c>를 비우고 다시
+/// 그리는 방식, WPF 요소 show/hide보다 단순함). flows.json은 이제 <see cref="FlowDefinition"/>
+/// 목록(탭 개수만큼)이고, <see cref="SaveFlowAsync"/>는 탭별로 자기 소속 노드·와이어만 모아 각각의
+/// <see cref="FlowDefinition"/>을 만듭니다. 설계 판단 근거(단일 스키마 → 리스트 스키마 전환,
+/// Runner 쪽 <c>StartupSequencer</c>/<c>FlowDeployer</c> 동시 수정)는
+/// <c>NodeSharp.Editor.csproj</c>/<c>NodeSharp.Runner.csproj</c>의 EC-05 블록을 참고하십시오.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
-    // EC-05(다중 Flow 탭)가 만들어지기 전까지 모든 노드는 이 고정 FlowId 하나에 속한다(임시).
-    private const string DefaultFlowId = "f1";
-
     // EC-02 시점엔 모든 카드를 이 고정 크기·고정 포트 개수(입력1/출력1)로 그린다(위 클래스 주석 참고).
     private const double NodeCardWidth = 120;
     private const double NodeCardHeight = 40;
@@ -59,11 +61,20 @@ public partial class FlowCanvasView : UserControl
     private readonly FlowStore _flowStore = new();
     private bool _flowLoaded;
 
+    // (EC-05) 모든 Flow 탭의 데이터를 함께 담는 전역 딕셔너리 — NodeConfig.FlowId로 소속 탭을 구분한다.
+    // 노드 Id는 탭이 달라도 항상 전역적으로 유일해야 한다(Wire.SourceNodeId/TargetNodeId가 탭 구분 없이
+    // Id만으로 노드를 참조하고, Runner 배포 시(FlowDeployer)에도 여러 탭의 Nodes가 하나로 병합되므로).
     private readonly Dictionary<string, NodeConfig> _nodeConfigs = new();
     private readonly Dictionary<string, TextBlock> _nodeLabels = new();
     private readonly List<Wire> _wires = new();
     private readonly Dictionary<string, PlacedNodeVisual> _nodeVisuals = new();
     private int _nextNodeSeq = 1;
+
+    // (EC-05) Flow 탭 목록·현재 활성 탭·다음 탭 Id 발급 순번. 최초 상태는 탭 1개("f1", "Flow 1") —
+    // LoadFlowAsync가 저장된 flows.json을 찾으면 이 기본 탭을 지우고 불러온 탭들로 교체한다.
+    private readonly List<FlowTabInfo> _flowTabs = new() { new FlowTabInfo("f1", "Flow 1") };
+    private string _activeFlowId = "f1";
+    private int _nextFlowTabSeq = 2;
 
     // EC-02 와이어 드래그 진행 상태 — 출력 포트를 누르는 순간부터 마우스를 놓을 때까지만 값이 있다.
     private PortHandle? _dragSourcePort;
@@ -78,10 +89,15 @@ public partial class FlowCanvasView : UserControl
     /// </summary>
     public string DataDirectory { get; set; } = AppContext.BaseDirectory;
 
-    /// <summary>XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴).</summary>
+    /// <summary>
+    /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-05) 초기 탭 스트립("Flow 1" 탭
+    /// 1개)을 즉시 그립니다 — <see cref="LoadFlowAsync"/>는 <see cref="Loaded"/> 이후 비동기로
+    /// 실행되므로, 그 전까지 화면이 비어 보이지 않도록 기본 탭을 먼저 그려둡니다.
+    /// </summary>
     public FlowCanvasView()
     {
         InitializeComponent();
+        RenderFlowTabStrip();
         Loaded += OnLoaded;
     }
 
@@ -103,61 +119,301 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-04) <see cref="DataDirectory"/>\flows.json을 읽어 저장된 <c>FlowDefinition</c>이 있으면
-    /// 노드부터 전부 <see cref="RenderNode"/>로 그린 뒤(포트 좌표 계산이 노드 존재를 전제하므로 항상
-    /// 노드가 먼저), 와이어를 <see cref="DrawWireLine"/>로 이어 그립니다. 마지막으로 불러온 노드
-    /// Id("n1", "n2"...)들 중 가장 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>를 다시 계산해,
-    /// 이후 새로 드롭하는 노드의 Id가 불러온 노드와 겹치지 않도록 합니다.
+    /// (EC-04, EC-05 확장) <see cref="DataDirectory"/>\flows.json을 읽어 저장된 Flow 탭 목록이 있으면
+    /// 기본 탭("f1", "Flow 1")을 지우고 그 목록으로 완전히 교체합니다. 모든 탭의 노드·와이어를
+    /// <see cref="_nodeConfigs"/>/<see cref="_wires"/>에 함께 채운 뒤, 노드 Id("n1", "n2"...)와 탭
+    /// Id("f1", "f2"...) 각각 가장 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>/
+    /// <see cref="_nextFlowTabSeq"/>를 재계산해(불러온 것과 겹치지 않도록), 첫 번째 탭으로
+    /// <see cref="SwitchToFlow"/>를 호출해 화면을 그립니다.
     /// </summary>
     private async Task LoadFlowAsync()
     {
-        var flow = await _flowStore.LoadAsync(DataDirectory);
-        if (flow is null || flow.Nodes.Count == 0)
+        var flows = await _flowStore.LoadAsync(DataDirectory);
+        if (flows is null || flows.Count == 0)
         {
             return;
         }
 
-        foreach (var node in flow.Nodes)
+        _flowTabs.Clear();
+        _nodeConfigs.Clear();
+        _wires.Clear();
+
+        foreach (var flow in flows)
         {
-            _nodeConfigs[node.Id] = node;
-            RenderNode(node);
+            _flowTabs.Add(new FlowTabInfo(flow.Id, flow.Name));
+            foreach (var node in flow.Nodes)
+            {
+                _nodeConfigs[node.Id] = node;
+            }
+
+            _wires.AddRange(flow.Wires);
         }
 
-        foreach (var wire in flow.Wires)
+        if (_flowTabs.Count == 0)
         {
-            _wires.Add(wire);
-            var source = new PortHandle(wire.SourceNodeId, wire.SourcePort, IsOutput: true);
-            var target = new PortHandle(wire.TargetNodeId, wire.TargetPort, IsOutput: false);
-            DrawWireLine(source, target);
+            // 이론상 flows.json이 빈 배열([])로 저장된 경우 — 기본 탭 1개로 복구해 빈 목록 상태를 피한다.
+            _flowTabs.Add(new FlowTabInfo("f1", "Flow 1"));
         }
 
-        var maxSeq = 0;
-        foreach (var node in flow.Nodes)
+        var maxNodeSeq = 0;
+        foreach (var node in _nodeConfigs.Values)
         {
             if (node.Id.StartsWith("n", StringComparison.Ordinal) &&
-                int.TryParse(node.Id.AsSpan(1), out var seq) && seq > maxSeq)
+                int.TryParse(node.Id.AsSpan(1), out var seq) && seq > maxNodeSeq)
             {
-                maxSeq = seq;
+                maxNodeSeq = seq;
             }
         }
 
-        if (maxSeq > 0)
+        if (maxNodeSeq > 0)
         {
-            _nextNodeSeq = maxSeq + 1;
+            _nextNodeSeq = maxNodeSeq + 1;
         }
 
-        EmptyCanvasHint.Visibility = Visibility.Collapsed;
+        var maxTabSeq = 0;
+        foreach (var tab in _flowTabs)
+        {
+            if (tab.Id.StartsWith("f", StringComparison.Ordinal) &&
+                int.TryParse(tab.Id.AsSpan(1), out var seq) && seq > maxTabSeq)
+            {
+                maxTabSeq = seq;
+            }
+        }
+
+        if (maxTabSeq > 0)
+        {
+            _nextFlowTabSeq = maxTabSeq + 1;
+        }
+
+        SwitchToFlow(_flowTabs[0].Id);
     }
 
     /// <summary>
-    /// (EC-04) 지금 캔버스에 있는 노드·와이어를 하나의 <c>FlowDefinition</c>으로 모아
+    /// (EC-04, EC-05 확장) 지금 메모리에 있는 모든 Flow 탭의 노드·와이어를 탭별로 각각
+    /// <c>FlowDefinition</c> 하나씩으로 모아(탭에 속한 노드만 <see cref="NodeConfig.FlowId"/>로 필터링,
+    /// 와이어는 양쪽 끝 노드가 모두 그 탭에 속할 때만 포함) 목록으로 만든 뒤
     /// <see cref="DataDirectory"/>\flows.json에 원자적으로 저장합니다(<see cref="FlowStore.SaveAsync"/>).
     /// <c>MainWindow</c>의 "파일 → 저장" 메뉴/Ctrl+S가 이 메서드를 호출합니다.
     /// </summary>
     public async Task SaveFlowAsync()
     {
-        var flow = new FlowDefinition(DefaultFlowId, "Flow 1", _nodeConfigs.Values.ToList(), _wires.ToList());
-        await _flowStore.SaveAsync(flow, DataDirectory);
+        var flows = _flowTabs
+            .Select(tab => new FlowDefinition(
+                tab.Id,
+                tab.Name,
+                _nodeConfigs.Values.Where(n => n.FlowId == tab.Id).ToList(),
+                _wires.Where(w => IsWireInFlow(w, tab.Id)).ToList()))
+            .ToList();
+
+        await _flowStore.SaveAsync(flows, DataDirectory);
+    }
+
+    /// <summary>
+    /// <paramref name="wire"/>의 양쪽 끝 노드가 모두 <paramref name="flowId"/> 탭에 속하는지 확인합니다
+    /// (저장 시 와이어를 어느 탭의 <c>FlowDefinition.Wires</c>에 넣을지 판단하는 용도).
+    /// </summary>
+    private bool IsWireInFlow(Wire wire, string flowId) =>
+        _nodeConfigs.TryGetValue(wire.SourceNodeId, out var source) && source.FlowId == flowId &&
+        _nodeConfigs.TryGetValue(wire.TargetNodeId, out var target) && target.FlowId == flowId;
+
+    /// <summary>
+    /// (EC-05) 새 Flow 탭을 만들고("f{n}", "Flow {n}") 곧바로 그 탭으로 전환합니다. 탭 스트립의
+    /// "＋" 버튼이 이 메서드를 호출합니다.
+    /// </summary>
+    private void AddFlowTab()
+    {
+        var id = $"f{_nextFlowTabSeq}";
+        var name = $"Flow {_nextFlowTabSeq}";
+        _nextFlowTabSeq++;
+
+        _flowTabs.Add(new FlowTabInfo(id, name));
+        SwitchToFlow(id);
+    }
+
+    /// <summary>
+    /// (EC-05) <paramref name="flowId"/> 탭을 삭제합니다 — 이 탭에 속한 노드·와이어가 모두 함께
+    /// 삭제되므로 사용자에게 먼저 확인을 받습니다. 남은 탭이 1개뿐이면(완료 기준이 "탭 3개 이상을
+    /// 추가/전환/삭제해도"라 최소 1개는 항상 있어야 함) 삭제를 거부합니다. 삭제된 탭이 현재 활성
+    /// 탭이었으면 남은 탭 중 첫 번째로 전환합니다.
+    /// </summary>
+    private void RemoveFlowTab(string flowId)
+    {
+        if (_flowTabs.Count <= 1)
+        {
+            MessageBox.Show(
+                "마지막 남은 Flow 탭은 삭제할 수 없습니다.",
+                "탭 삭제 불가",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var tab = _flowTabs.FirstOrDefault(t => t.Id == flowId);
+        if (tab is null)
+        {
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"'{tab.Name}' 탭을 삭제하시겠습니까? 이 탭에 배치된 노드와 와이어가 모두 함께 삭제됩니다.",
+            "Flow 탭 삭제",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var removedNodeIds = new HashSet<string>(
+            _nodeConfigs.Values.Where(n => n.FlowId == flowId).Select(n => n.Id));
+        foreach (var nodeId in removedNodeIds)
+        {
+            _nodeConfigs.Remove(nodeId);
+        }
+
+        _wires.RemoveAll(w => removedNodeIds.Contains(w.SourceNodeId) || removedNodeIds.Contains(w.TargetNodeId));
+        _flowTabs.Remove(tab);
+
+        if (_activeFlowId == flowId)
+        {
+            SwitchToFlow(_flowTabs[0].Id);
+        }
+        else
+        {
+            RenderFlowTabStrip();
+        }
+    }
+
+    /// <summary>
+    /// (EC-05) <paramref name="flowId"/> 탭으로 전환합니다 — <c>NodeCanvas</c>의 시각 요소(카드·포트·
+    /// 와이어 선)를 전부 지우고(데이터인 <see cref="_nodeConfigs"/>/<see cref="_wires"/>는 그대로
+    /// 유지) 그 탭에 속한 노드만 <see cref="RenderNode"/>로, 양쪽 끝이 모두 그 탭에 속한 와이어만
+    /// <see cref="DrawWireLine"/>로 다시 그립니다. WPF 요소를 show/hide로 전환하는 대신 매번 새로
+    /// 그리는 더 단순한 방식을 택했습니다(탭 전환이 잦은 조작이 아니라 성능 부담이 적음).
+    /// </summary>
+    private void SwitchToFlow(string flowId)
+    {
+        _activeFlowId = flowId;
+
+        NodeCanvas.Children.Clear();
+        _nodeLabels.Clear();
+        _nodeVisuals.Clear();
+        _dragSourcePort = null;
+        _dragPreviewLine = null;
+        _hoveredInputPort = null;
+
+        var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == flowId).ToList();
+        foreach (var node in tabNodes)
+        {
+            RenderNode(node);
+        }
+
+        foreach (var wire in _wires)
+        {
+            if (IsWireInFlow(wire, flowId))
+            {
+                var source = new PortHandle(wire.SourceNodeId, wire.SourcePort, IsOutput: true);
+                var target = new PortHandle(wire.TargetNodeId, wire.TargetPort, IsOutput: false);
+                DrawWireLine(source, target);
+            }
+        }
+
+        EmptyCanvasHint.Visibility = tabNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderFlowTabStrip();
+    }
+
+    /// <summary>
+    /// (EC-05) <see cref="_flowTabs"/>를 <c>FlowTabStrip</c>(가로 <see cref="StackPanel"/>)에 탭
+    /// 버튼(이름 + "✕" 삭제 아이콘)으로 그리고, 맨 끝에 "＋"(새 탭 추가) 버튼을 붙입니다. 현재
+    /// <see cref="_activeFlowId"/>인 탭은 AccentBrush 배경으로 강조합니다. <see cref="RenderNode"/>와
+    /// 동일하게 데이터 템플릿 없이 즉석에서 Border+TextBlock을 만드는 코드비하인드 스타일입니다.
+    /// </summary>
+    private void RenderFlowTabStrip()
+    {
+        FlowTabStrip.Children.Clear();
+
+        foreach (var tab in _flowTabs)
+        {
+            var isActive = tab.Id == _activeFlowId;
+
+            var label = new TextBlock
+            {
+                Text = tab.Name,
+                Foreground = (Brush)FindResource(isActive ? "PrimaryTextBrush" : "SecondaryTextBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            };
+
+            var closeGlyph = new TextBlock
+            {
+                Text = "✕",
+                FontSize = 10,
+                Foreground = (Brush)FindResource("SecondaryTextBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Cursor = Cursors.Hand,
+                Tag = tab.Id
+            };
+            closeGlyph.MouseLeftButtonDown += OnFlowTabCloseClick;
+
+            var content = new StackPanel { Orientation = Orientation.Horizontal };
+            content.Children.Add(label);
+            content.Children.Add(closeGlyph);
+
+            var tabButton = new Border
+            {
+                Background = (Brush)FindResource(isActive ? "AccentBrush" : "ControlBackgroundBrush"),
+                BorderBrush = (Brush)FindResource("BorderBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 4, 0),
+                Cursor = Cursors.Hand,
+                Tag = tab.Id,
+                Child = content
+            };
+            tabButton.MouseLeftButtonDown += OnFlowTabClick;
+
+            FlowTabStrip.Children.Add(tabButton);
+        }
+
+        var addButton = new Border
+        {
+            Background = (Brush)FindResource("ControlBackgroundBrush"),
+            BorderBrush = (Brush)FindResource("BorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(8, 4, 8, 4),
+            Cursor = Cursors.Hand,
+            Child = new TextBlock { Text = "＋", Foreground = (Brush)FindResource("PrimaryTextBrush") }
+        };
+        addButton.MouseLeftButtonDown += (_, _) => AddFlowTab();
+
+        FlowTabStrip.Children.Add(addButton);
+    }
+
+    /// <summary>(EC-05) 탭 버튼을 클릭하면 그 탭으로 전환합니다.</summary>
+    private void OnFlowTabClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string flowId })
+        {
+            SwitchToFlow(flowId);
+        }
+    }
+
+    /// <summary>
+    /// (EC-05) 탭의 "✕" 아이콘을 클릭하면 그 탭을 삭제합니다. <paramref name="e"/>.Handled를
+    /// <c>true</c>로 설정해, 이 클릭이 부모 탭 버튼의 <see cref="OnFlowTabClick"/>(탭 전환)으로
+    /// 버블링되지 않도록 막습니다(삭제 확인 대화상자가 뜨기 직전에 먼저 그 탭으로 전환돼버리는
+    /// 것을 방지).
+    /// </summary>
+    private void OnFlowTabCloseClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string flowId })
+        {
+            RemoveFlowTab(flowId);
+        }
+
+        e.Handled = true;
     }
 
     /// <summary>
@@ -165,7 +421,8 @@ public partial class FlowCanvasView : UserControl
     /// <see cref="NodeConfig"/>를 새로 만들고(<see cref="_nextNodeSeq"/>로 "n1", "n2"... 순번 Id
     /// 발급) <see cref="RenderNode"/>로 화면에 카드를 그립니다. 팔레트의 "최근 사용"도 함께
     /// 갱신합니다(<see cref="PaletteView.MarkTypeUsed"/>) — 클릭뿐 아니라 실제 배치도 "사용"으로
-    /// 인정합니다.
+    /// 인정합니다. (EC-05) 새 노드의 <see cref="NodeConfig.FlowId"/>는 고정값이 아니라 지금
+    /// 활성화된 탭(<see cref="_activeFlowId"/>)입니다 — 사용자가 보고 있는 탭에 정확히 배치됩니다.
     /// </summary>
     private void OnCanvasDrop(object sender, DragEventArgs e)
     {
@@ -184,7 +441,7 @@ public partial class FlowCanvasView : UserControl
             Id: $"n{_nextNodeSeq++}",
             Type: typeName,
             Name: typeName,
-            FlowId: DefaultFlowId,
+            FlowId: _activeFlowId,
             Properties: new Dictionary<string, object?>(),
             X: position.X,
             Y: position.Y);
@@ -200,9 +457,9 @@ public partial class FlowCanvasView : UserControl
     /// <see cref="NodeConfig.Y"/> 중심으로 <c>NodeCanvas</c>에 추가하고(EC-01b), 좌우에 입력/출력
     /// 포트 Ellipse를 붙입니다(EC-02, <see cref="AddPortEllipse"/>). 카드 크기가 고정이라
     /// (<see cref="NodeCardWidth"/>/<see cref="NodeCardHeight"/>) WPF 레이아웃 측정을 기다리지
-    /// 않고도 포트 좌표를 바로 계산할 수 있습니다. (EC-04) 이전에는 드롭 좌표를 별도 매개변수로
-    /// 받았지만, 이제는 <paramref name="config"/> 자체에 X/Y가 저장되어 있어(flows.json 로드 시에도
-    /// 같은 메서드로 카드를 다시 그릴 수 있도록) 매개변수를 하나로 줄였습니다.
+    /// 않고도 포트 좌표를 바로 계산할 수 있습니다. (EC-05) 이 메서드는 <paramref name="config"/>.FlowId가
+    /// 현재 활성 탭인지 확인하지 않습니다 — 호출부(<see cref="OnCanvasDrop"/>/<see cref="SwitchToFlow"/>)가
+    /// 항상 활성 탭에 속한 노드만 넘겨준다는 것을 전제로 합니다.
     /// </summary>
     private void RenderNode(NodeConfig config)
     {

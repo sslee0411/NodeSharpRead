@@ -59,6 +59,7 @@ public class FlowDeployerTests
         var originalOut = Console.Out;
         try
         {
+            // (★ EC-05 확장) flows.json은 이제 FlowDefinition 목록(Flow 탭 개수만큼) — 클래스 주석 참고.
             var flow = new FlowDefinition(
                 Id: "f1", Name: "테스트 플로우",
                 Nodes: new List<NodeConfig>
@@ -66,7 +67,7 @@ public class FlowDeployerTests
                     new("n1", "status-ping", "핑", "f1", new Dictionary<string, object?>()),
                 },
                 Wires: new List<Wire>());
-            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(flow));
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow }));
 
             var stages = new List<StartupStageResult> { new("flows.json", Succeeded: true, ErrorMessage: null) };
 
@@ -86,6 +87,114 @@ public class FlowDeployerTests
         finally
         {
             Console.SetOut(originalOut);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EC05_확인_기준__여러_Flow_탭의_노드가_모두_한번에_병합_배포된다()
+    {
+        // (v2.51 신설, ★ 사용자 요청) EC-05 다중 Flow 탭 — flows.json에 탭 2개가 있으면 둘 다 동시에
+        // 배포돼야 한다(실제 Node-RED처럼 모든 활성 탭이 항상 함께 동작).
+        var dir = NewTempDir();
+        var originalOut = Console.Out;
+        try
+        {
+            var tab1 = new FlowDefinition(
+                Id: "f1", Name: "1호기 라인",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑1", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            var tab2 = new FlowDefinition(
+                Id: "f2", Name: "2호기 라인",
+                Nodes: new List<NodeConfig> { new("n2", "status-ping", "핑2", "f2", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { tab1, tab2 }));
+
+            var stages = new List<StartupStageResult> { new("flows.json", Succeeded: true, ErrorMessage: null) };
+
+            var writer = new StringWriter();
+            Console.SetOut(writer);
+
+            var engine = await new FlowDeployer().DeployIfAvailableAsync(
+                dir, stages, NewRegistryWithStatusPing(), CancellationToken.None);
+
+            Console.SetOut(originalOut);
+
+            Assert.NotNull(engine);
+            var output = writer.ToString();
+            Assert.Contains("n1", output); // 1호기 라인 노드
+            Assert.Contains("n2", output); // 2호기 라인 노드도 함께 배포됨
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EC05_확인_기준__Disabled인_탭의_노드는_배포되지_않는다()
+    {
+        // (v2.51 신설, ★ 사용자 요청) FlowDefinition.Disabled=true인 탭은 그 탭에 속한 노드가
+        // 하나도 생성되지 않아야 한다(FlowDefinition.Disabled 원래 XML 문서 그대로).
+        var dir = NewTempDir();
+        var originalOut = Console.Out;
+        try
+        {
+            var activeTab = new FlowDefinition(
+                Id: "f1", Name: "1호기 라인",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑1", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            var disabledTab = new FlowDefinition(
+                Id: "f2", Name: "2호기 라인(점검 중)",
+                Nodes: new List<NodeConfig> { new("n2", "status-ping", "핑2", "f2", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>(),
+                Disabled: true);
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { activeTab, disabledTab }));
+
+            var stages = new List<StartupStageResult> { new("flows.json", Succeeded: true, ErrorMessage: null) };
+
+            var writer = new StringWriter();
+            Console.SetOut(writer);
+
+            var engine = await new FlowDeployer().DeployIfAvailableAsync(
+                dir, stages, NewRegistryWithStatusPing(), CancellationToken.None);
+
+            Console.SetOut(originalOut);
+
+            Assert.NotNull(engine);
+            Assert.Contains("n1", engine!.Nodes.Keys);
+            Assert.DoesNotContain("n2", engine.Nodes.Keys); // Disabled 탭의 노드는 생성 자체가 안 됨
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EC05_확인_기준__모든_탭이_Disabled면_배포하지_않는다()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var disabledTab = new FlowDefinition(
+                Id: "f1", Name: "점검 중",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>(),
+                Disabled: true);
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { disabledTab }));
+
+            var stages = new List<StartupStageResult> { new("flows.json", Succeeded: true, ErrorMessage: null) };
+
+            var engine = await new FlowDeployer().DeployIfAvailableAsync(
+                dir, stages, NewRegistryWithStatusPing(), CancellationToken.None);
+
+            Assert.Null(engine);
+        }
+        finally
+        {
             Directory.Delete(dir, recursive: true);
         }
     }

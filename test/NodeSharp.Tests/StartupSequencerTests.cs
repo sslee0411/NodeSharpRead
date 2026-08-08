@@ -24,8 +24,9 @@ public class StartupSequencerTests
         File.WriteAllText(Path.Combine(dir, "device.json"), "{}");   // RN-01a 범위에서는 존재 여부만 확인
         File.WriteAllText(Path.Combine(dir, "sequences.json"),
             JsonSerializer.Serialize(new List<SequenceDefinition>()));
+        // (★ EC-05 확장) flows.json은 단일 FlowDefinition이 아니라 목록(Flow 탭 개수만큼) — StartupSequencer 클래스 주석 참고.
         File.WriteAllText(Path.Combine(dir, "flows.json"),
-            JsonSerializer.Serialize(new FlowDefinition("f1", "빈 플로우", new List<NodeConfig>(), new List<Wire>())));
+            JsonSerializer.Serialize(new List<FlowDefinition> { new("f1", "빈 플로우", new List<NodeConfig>(), new List<Wire>()) }));
         File.WriteAllText(Path.Combine(dir, "dashboard.json"),
             JsonSerializer.Serialize(new DashboardDefinition(new List<DashboardTabDto>())));
     }

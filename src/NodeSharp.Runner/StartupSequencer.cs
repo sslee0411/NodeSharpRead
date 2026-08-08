@@ -28,6 +28,15 @@ namespace NodeSharp.Runner;
 /// </list>
 /// flows.json 스키마 마이그레이션(<c>RT-11</c> <c>ConfigMigration</c>)도 실제 저장 포맷(<c>FlowFileHeader</c>
 /// 포함 여부)이 RN-02 배포 연동 시점에 확정될 예정이라 이번 Step에서는 연결하지 않았습니다.
+/// <para>
+/// (★ EC-05 확장, 사용자 요청, v2.51) flows.json의 최상위 형태를 단일 <see cref="FlowDefinition"/>
+/// 객체에서 <see cref="FlowDefinition"/> 목록(<c>List&lt;FlowDefinition&gt;</c>, Flow 탭 개수만큼)으로
+/// 바꿨습니다 — <see cref="FlowDefinition"/> 자신의 XML 문서가 애초에 "flows.json은 이 레코드의
+/// 목록으로 구성된다"고 명시하고 있었는데(<c>CT-02b</c> 시점부터), 이 클래스는 그동안 단일 객체로
+/// 역직렬화하고 있어 그 설계와 어긋나 있었습니다(발견한 공백, <c>NodeRef</c>·<c>AlarmRaisedEvent</c>와
+/// 동일 유형). 이 단계는 여전히 "역직렬화가 성공하는지"만 확인할 뿐(내용은 버림), 실제 병합·배포
+/// 로직은 <c>RN-02</c>(<c>FlowDeployer</c>) 몫입니다.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -73,11 +82,12 @@ public sealed class StartupSequencer
             }),
 
             // 3) Flow 정의 — 구조 트리 + Sequence를 함께 참조할 수 있어 마지막 순번 바로 앞.
+            //    (★ EC-05 확장) 단일 FlowDefinition이 아니라 목록(Flow 탭 개수만큼) — 위 remarks 참고.
             await RunStageAsync("flows.json", async () =>
             {
                 var path = Path.Combine(baseDirectory, "flows.json");
                 var json = await File.ReadAllTextAsync(path, ct);
-                _ = JsonSerializer.Deserialize<FlowDefinition>(json)
+                _ = JsonSerializer.Deserialize<List<FlowDefinition>>(json)
                     ?? throw new InvalidOperationException("flows.json 역직렬화 결과가 null입니다.");
             }),
 
