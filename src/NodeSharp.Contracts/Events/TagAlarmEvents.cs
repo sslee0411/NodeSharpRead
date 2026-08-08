@@ -27,6 +27,9 @@ namespace NodeSharp.Contracts.Events;
 ///
 /// // 알람이 없는 정상 값은 Alarm이 null
 /// eventBus.Publish(new TagValueUpdatedEvent(TagId: "tag-2", Value: 42, Alarm: null, At: DateTime.UtcNow));
+///
+/// // 이산 상태 태그의 특정값 일치 알람(EQ, ★ 사용자 요청 v2.50 신설) — 상태코드가 3(고장)과 일치
+/// eventBus.Publish(new TagValueUpdatedEvent(TagId: "tag-3", Value: 3, Alarm: AlarmLevel.EQ, At: DateTime.UtcNow));
 /// </code>
 /// </example>
 public sealed record TagValueUpdatedEvent(string TagId, object? Value, AlarmLevel? Alarm, DateTime At);
@@ -58,6 +61,9 @@ public sealed record TagValueUpdatedEvent(string TagId, object? Value, AlarmLeve
 ///     if (Definition.WatchedTagIds.Contains(e.TagId) &amp;&amp; e.Level == AlarmLevel.HH)
 ///         _ = AbortAsync();
 /// });
+///
+/// // 이산 상태 태그의 특정값 불일치 알람(NE, ★ 사용자 요청 v2.50 신설) — 상태코드가 1(정상)이 아님
+/// eventBus.Publish(new AlarmRaisedEvent(TagId: "tag-3", Level: AlarmLevel.NE, Value: 3, At: DateTime.UtcNow));
 /// </code>
 /// </example>
 public sealed record AlarmRaisedEvent(string TagId, AlarmLevel Level, double Value, DateTime At);

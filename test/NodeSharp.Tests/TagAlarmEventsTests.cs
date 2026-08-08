@@ -58,4 +58,33 @@ public class TagAlarmEventsTests
 
         Assert.True(shouldAutoAbort);
     }
+
+    [Theory]
+    [InlineData(AlarmLevel.EQ)]
+    [InlineData(AlarmLevel.NE)]
+    public void AlarmRaisedEvent_EQ_NE_레벨도_SystemTextJson_왕복에서_보존된다(AlarmLevel level)
+    {
+        // (v2.50 신설, ★ 사용자 요청) 특정값 일치(EQ)/불일치(NE) 알람도 기존 HH/H/L/LL과 동일하게
+        // AlarmLevel을 그대로 재사용하므로, JSON 왕복에서 값 손실이 없어야 한다.
+        var original = new AlarmRaisedEvent(TagId: "tag-3", Level: level, Value: 3, At: DateTime.UtcNow);
+
+        var json = JsonSerializer.Serialize(original);
+        var restored = JsonSerializer.Deserialize<AlarmRaisedEvent>(json);
+
+        Assert.Equal(original, restored);
+    }
+
+    [Fact]
+    public void AlarmRaisedEvent_NE_레벨은_지정된_특정값과_다를_때만_발생하는_조건식을_표현한다()
+    {
+        // (v2.50 신설, ★ 사용자 요청) NE(NotEqual) 알람 판정 로직 재현 — 상태코드가 1(정상)이 아니면 알람.
+        double normalStatus = 1;
+        double currentStatus = 3;
+
+        bool shouldRaiseNe = currentStatus != normalStatus;
+        Assert.True(shouldRaiseNe);
+
+        var evt = new AlarmRaisedEvent(TagId: "tag-3", Level: AlarmLevel.NE, Value: currentStatus, At: DateTime.UtcNow);
+        Assert.Equal(AlarmLevel.NE, evt.Level);
+    }
 }

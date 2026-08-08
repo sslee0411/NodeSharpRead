@@ -151,6 +151,36 @@
       없음). 기존 파라미터 뒤에 X/Y(double, 기본값 0)를 선택 매개변수로 추가 — 이미 이름 있는 인수로
       NodeConfig를 생성하던 기존 호출부(EC-01b~EC-03, 테스트 전체, 총 20개 파일 grep으로 확인)는 코드
       변경 없이 그대로 컴파일되는 낮은 리스크 판단이라 AskUserQuestion 없이 진행.
+
+    Step: CT-05b 확장 (03번 개발 Step맵.html, Phase 1 — AlarmLevel에 EQ/NE 2종 추가, ★ 사용자 요청, v2.50)
+    - 사용자 요청("AlarmLevel에 특정값인경우 알람, 특정값외 알람도 추가해주고, 시스템 전체에 해당사항
+      반영해줘")을 계기로 기존 HH/H/L/LL 4단계(아날로그 임계값 비교, &gt;=/&lt;=) 옆에 EQ(Equal, 특정값
+      일치)/NE(NotEqual, 특정값 불일치) 2종(이산/상태 태그의 ==/!= 비교)을 추가. CT-09(ProtocolDriverType
+      enum→string 카탈로그 확장)와 동일한 유형의 "이미 ✅ 완료된 Step의 사용자 요청 확장" 패턴이라 새
+      Step을 신설하지 않고 CT-05b 행에 이어서 기록. AlarmRuntimeInfo(HH/H/L/LL)와 동일한 패턴으로
+      EQ/NE도 각자 전용 double? 필드를 갖도록 설계(HH~LL과 같은 축으로 비교할 수 없는 별개 성격이라
+      단일 공유 필드 대신 필드 2개로 분리) — 기존 HH/H/L/LL 뒤에 선택 매개변수로 추가해 이미 이름
+      있는 인수로 AlarmRuntimeInfo를 생성하던 기존 호출부(TagRuntimeInfoTests.cs 등)는 코드 변경 없이
+      그대로 컴파일되는 낮은 리스크 판단이라 AskUserQuestion 없이 진행.
+    - src\Enums\AlarmLevel.cs 수정 — EQ/NE 멤버 추가, &lt;summary&gt;/&lt;remarks&gt;/&lt;example&gt;에 이산 상태
+      태그(설비 상태코드) 사용 예시 보강. src\Models\TagRuntimeInfo.cs 수정 — AlarmRuntimeInfo record에
+      EQ/NE(double?, 기본값 null) 필드 추가, XML &lt;param&gt;/&lt;example&gt; 보강(상태코드 태그 예시 3번
+      추가). src\Events\TagAlarmEvents.cs 수정 — TagValueUpdatedEvent/AlarmRaisedEvent의 &lt;example&gt;에
+      EQ/NE 사용 예시 추가(레코드 자체는 AlarmLevel을 그대로 재사용하는 기존 설계라 구조 변경 없음).
+    - 02번 문서(docs\02_CSharp_구조설계.html) 동시 수정 — 8번 탭 카드2(6단계 계층 mermaid·표)의 "알람"
+      설명에 EQ/NE 보강, 카드3의 AlarmNode 클래스(HH/H/L/LL 4필드)에 EQ/NE 2필드 + PropertyField 2개
+      추가, 카드11의 AlarmLevel enum 선언(HH,H,L,LL)에 EQ,NE 추가, ThresholdDetector 의사코드
+      (AlarmStateManager.Evaluate)의 레벨 판정식에 EQ/NE 분기 추가(HH→H→L→LL→EQ→NE 순서, 아날로그
+      임계값이 이미 설정된 태그는 그쪽을 우선 검사).
+    - test\NodeSharp.Tests\TagRuntimeInfoTests.cs에 테스트 2개(EQ/NE 생략 시 기본값 null, EQ/NE 설정
+      + 특정값 일치/불일치 판정 로직 재현) 추가. test\NodeSharp.Tests\TagAlarmEventsTests.cs에 테스트
+      2개(EQ/NE 레벨 JSON 왕복 Theory, NE 조건식 재현) 추가.
+    - AlarmStateManager 자체(런타임 판정 로직)는 아직 코드로 구현되지 않은 Phase 9(ED-D07a) Step이라
+      "시스템 전체 반영"의 실제 구현 대상은 이번 시점엔 Contracts(enum+모델+이벤트 문서)와 02번 설계
+      문서까지이며, ED-D07a가 착수되면 위 설계(AlarmNode.EQ/NE, Evaluate() 판정식)를 그대로 구현한다.
+    - tools/check-xmldoc.py 오류 0건, 신규/수정 5개 .cs 파일 전부 중괄호 균형 확인 완료 — 단, 이 세션은
+      샌드박스에 .NET SDK가 없어(dotnet: command not found, dot.net 설치 403) dotnet build/test는 이번에도
+      실행하지 못함(EC-04와 동일한 제약, 사용자 로컬 확인 필요).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

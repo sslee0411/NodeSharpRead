@@ -51,6 +51,41 @@ public class TagRuntimeInfoTests
         Assert.Null(tag.Alarm.LL);
     }
 
+    [Fact]
+    public void AlarmRuntimeInfo_EQ_NE를_생략하면_기본값_null이다()
+    {
+        // (v2.50 신설, ★ 사용자 요청) EQ/NE는 HH/H/L/LL 뒤에 추가된 선택 매개변수라, 생략하면
+        // 다른 임계값들과 마찬가지로 null(해당 등급 감시 안 함)이어야 한다.
+        var alarm = new AlarmRuntimeInfo(HH: 9.5, H: 8.0, L: null, LL: null);
+
+        Assert.Null(alarm.EQ);
+        Assert.Null(alarm.NE);
+    }
+
+    [Fact]
+    public void AlarmRuntimeInfo_EQ_NE_특정값_비교값을_설정할_수_있다()
+    {
+        // (v2.50 신설, ★ 사용자 요청) 이산/상태 태그(설비 상태코드)의 특정값 일치(EQ)/불일치(NE)
+        // 알람 — 상태코드 3(고장)과 일치하면 EQ, 1(정상)과 다르면 NE.
+        var alarm = new AlarmRuntimeInfo(HH: null, H: null, L: null, LL: null, EQ: 3, NE: 1);
+
+        var tag = new TagRuntimeInfo(
+            Id: "tag-3", Name: "설비 상태코드", ParentMapId: "map-1",
+            Offset: 16, BufType: BufFieldType.Int16LE,
+            Scale: null, Alarm: alarm);
+
+        Assert.Equal(3, tag.Alarm!.EQ);
+        Assert.Equal(1, tag.Alarm.NE);
+
+        // 특정값 일치/불일치 판정 로직 그대로 재현
+        double statusValue = 3;
+        bool isEqAlarm = tag.Alarm.EQ is double eq && statusValue == eq;
+        bool isNeAlarm = tag.Alarm.NE is double ne && statusValue != ne;
+
+        Assert.True(isEqAlarm);
+        Assert.True(isNeAlarm); // 3 != 1이므로 NE 조건도 함께 성립
+    }
+
     public static IEnumerable<object[]> 모든_BufFieldType_값 =>
         Enum.GetValues<BufFieldType>().Select(v => new object[] { v });
 

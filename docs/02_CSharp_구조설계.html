@@ -1697,7 +1697,7 @@ graph TB
   B --> C["디바이스맵(DeviceMap)<br/>예: 압력/유량 패킷 블록 (시작주소 40001, 16bytes)"]
   C --> D["태그(Tag)<br/>예: 토출압력 (40002, FloatLE, bar)"]
   D --> E["스케일(Scale)<br/>예: Raw 0~4095 → 0~10 bar"]
-  D --> F["알람(Alarm)<br/>예: HH=9.5bar, H=9.0bar, L=1.0bar, LL=0.5bar"]
+  D --> F["알람(Alarm)<br/>예: HH=9.5bar, H=9.0bar, L=1.0bar, LL=0.5bar<br/>(★v2.50) 상태 태그는 EQ=3(일치), NE=1(불일치)도 가능"]
     </div>
     <div class="src">참조: iiot-system-arch IIoT.Studio 장비 관리(S-01~S-10), 태그 템플릿 시스템(BufSchema 기반)</div>
   </div>
@@ -1711,7 +1711,7 @@ graph TB
       <tr><td>③ 디바이스맵(DeviceMap)</td><td>PLC의 레지스터 블록 하나(여러 태그를 한 번에 읽는 단위)</td><td>"압력/유량 블록" — 시작주소 40001, 16바이트</td><td>11번 탭 BufferParser 노드가 이 맵을 해석해 태그별로 분해</td></tr>
       <tr><td>④ 태그(Tag)</td><td>실제 측정/제어 값 하나. 계층의 "잎(leaf)" 단위 데이터</td><td>"토출압력" — offset 2, FloatLE, 단위 bar</td><td>Flow 캔버스 노드가 참조하는 최종 데이터 지점(아래 5번 카드)</td></tr>
       <tr><td>⑤ 스케일(Scale)</td><td>태그의 Raw 값을 사람이 읽는 공학단위로 변환하는 규칙</td><td>Raw 0~4095 → 0~10 bar</td><td>태그에 0개 또는 1개 연결(연결 안 하면 Raw 값 그대로 사용)</td></tr>
-      <tr><td>⑥ 알람(Alarm)</td><td>태그 값이 특정 임계값을 넘었을 때 발생하는 경고 규칙</td><td>HH=9.5, H=9.0, L=1.0, LL=0.5</td><td>태그에 0개 또는 1개 연결, 발생 시 9번 탭 Catch/Status 노드와 연동 가능</td></tr>
+      <tr><td>⑥ 알람(Alarm)</td><td>태그 값이 특정 임계값을 넘었거나(HH/H/L/LL), 특정값과 일치/불일치할 때(EQ/NE, ★v2.50 사용자 요청 신설) 발생하는 경고 규칙</td><td>HH=9.5, H=9.0, L=1.0, LL=0.5 (아날로그) / EQ=3, NE=1 (디지털·상태코드)</td><td>태그에 0개 또는 1개 연결, 발생 시 9번 탭 Catch/Status 노드와 연동 가능. EQ/NE는 연속값이 아닌 이산 상태 태그(설비 상태 코드 등)에 주로 사용</td></tr>
     </table>
   </div>
 
@@ -1750,6 +1750,7 @@ public abstract class StructureTreeNode
 /// var tag    = new TagNode    { Name = "토출압력", Offset = 2, BufType = "FloatLE", Unit = "bar" };
 /// var scale  = new ScaleNode  { Name = "압력 스케일", RawMin = 0, RawMax = 4095, EngMin = 0, EngMax = 10 };
 /// var alarm  = new AlarmNode  { Name = "압력 알람", HH = 9.5, H = 9.0, L = 1.0, LL = 0.5 };
+/// var statusAlarm = new AlarmNode { Name = "상태코드 알람", EQ = 3, NE = 1 };  // ★v2.50: 3(고장)과 일치 / 1(정상)과 불일치
 ///
 /// device.Children.Add(plc);
 /// plc.Children.Add(map);
@@ -1857,6 +1858,10 @@ public sealed class AlarmNode : StructureTreeNode
     public double? H  { get; set; }
     public double? L  { get; set; }
     public double? LL { get; set; }
+    // ★v2.50 신설(사용자 요청) — 이산/상태 태그(설비 상태 코드 등)의 특정값 일치(EQ)/불일치(NE) 알람.
+    // HH/H/L/LL은 &gt;=/&lt;= 임계값 비교, EQ/NE는 ==/!= 특정값 비교로 성격이 다르다.
+    public double? EQ { get; set; }
+    public double? NE { get; set; }
     public override string IconGlyph =&gt; "🔔";
     public override IReadOnlyList&lt;Type&gt; AllowedChildTypes =&gt; Array.Empty&lt;Type&gt;();
     public override IReadOnlyList&lt;PropertyField&gt; PropertySchema =&gt; new[]
@@ -1866,6 +1871,10 @@ public sealed class AlarmNode : StructureTreeNode
         new PropertyField("h",  "H(주의 상한)",  PropertyFieldType.Number, HelpText: "HH보다 낮은 1차 경고 임계값입니다(주황)."),
         new PropertyField("l",  "L(주의 하한)",  PropertyFieldType.Number, HelpText: "값이 이보다 낮으면 1차 경고입니다(파랑)."),
         new PropertyField("ll", "LL(위험 하한)", PropertyFieldType.Number, HelpText: "값이 이보다 낮으면 가장 심각한 경보입니다(보라)."),
+        new PropertyField("eq", "EQ(특정값 일치)", PropertyFieldType.Number,
+            HelpText: "태그 값이 이 값과 정확히 같으면 알람이 발생합니다. 이산/상태 태그(예: 상태코드=고장)에 사용합니다. 비워두면 이 등급은 검사하지 않습니다.", Example: "예: 3 (고장 상태코드)"),
+        new PropertyField("ne", "NE(특정값 불일치)", PropertyFieldType.Number,
+            HelpText: "태그 값이 이 값과 다르면(그 값 이외의 모든 값) 알람이 발생합니다. 이산/상태 태그(예: 상태코드≠정상)에 사용합니다. 비워두면 이 등급은 검사하지 않습니다.", Example: "예: 1 (정상 가동 상태코드)"),
     };
 }</code></pre>
     <div class="src">참조: iiot-system-arch S-01(AbstractTreeNode·GroupTreeNode·DeviceTreeNode·PlcTreeNode·TagTreeNode), S-06~S-07(스케일·알람 라이브러리)</div>
@@ -1969,7 +1978,9 @@ public sealed record TagRuntimeInfo(
     int Offset, BufFieldType BufType,
     ScaleRuntimeInfo? Scale, AlarmRuntimeInfo? Alarm);
 public sealed record ScaleRuntimeInfo(double RawMin, double RawMax, double EngMin, double EngMax);
-public sealed record AlarmRuntimeInfo(double? HH, double? H, double? L, double? LL);
+// ★v2.50 신설(사용자 요청) — EQ(특정값 일치)/NE(특정값 불일치) 2종을 HH/H/L/LL 뒤에 선택 매개변수로
+// 추가(기존 호출부는 전부 이름 있는 인수를 써서 그대로 컴파일됨).
+public sealed record AlarmRuntimeInfo(double? HH, double? H, double? L, double? LL, double? EQ = null, double? NE = null);
 
 // ★ v1.60 보강 — Flow의 특정 노드를 가리키는 최소 참조. IStructureService.FindNodesByTagRef(아래)와
 // IFlowNodeIndex.FindNodesBySequenceId(10번 탭)가 공통으로 반환하는 "역방향 조회 결과 1건" 모양이라
@@ -2105,15 +2116,18 @@ public sealed class DeviceMapPoller : ISharedServiceNode
     <p>8번 탭 <code>AlarmNode</code>는 HH/H/L/LL "설정값"만 정의했다. 실제로 태그 값이 들어올 때마다 임계값을 검사하고, <b>활성 알람 목록을 추적</b>하며, 운영자가 "확인(Acknowledge)"할 수 있는 런타임 매니저를 추가한다.</p>
     <div class="mermaid">
 graph LR
-  Tag["TagNode 값 갱신<br/>(PlcTagReadNode 등)"] --> Det["ThresholdDetector<br/>(HH/H/L/LL 비교)"]
-  Det -- "임계값 초과" --> Mgr["AlarmStateManager<br/>(활성 알람 목록)"]
+  Tag["TagNode 값 갱신<br/>(PlcTagReadNode 등)"] --> Det["ThresholdDetector<br/>(HH/H/L/LL 임계값 비교 + EQ/NE 특정값 비교, ★v2.50)"]
+  Det -- "임계값 초과 또는 특정값 일치/불일치" --> Mgr["AlarmStateManager<br/>(활성 알람 목록)"]
   Mgr -- "AlarmRaisedEvent" --> Mon["7번 탭 모니터링<br/>(캔버스 빨강 배지)"]
   Mgr -- "AlarmRaisedEvent" --> Notify["9번(당 탭) 알림 채널 노드<br/>(Email/SMS/Webhook)"]
   Op["운영자"] -- "Acknowledge 클릭" --> Mgr
   Mgr -- "AlarmClearedEvent" --> Mon
     </div>
-    <pre><code>/// &lt;summary&gt;태그 값 갱신마다 알람 임계값을 검사하고 활성 알람 상태를 관리한다.&lt;/summary&gt;
-public enum AlarmLevel { HH, H, L, LL }
+    <pre><code>/// &lt;summary&gt;태그 값 갱신마다 알람 임계값/특정값을 검사하고 활성 알람 상태를 관리한다.&lt;/summary&gt;
+// ★v2.50 신설(사용자 요청) — EQ(특정값 일치)/NE(특정값 불일치) 2종 추가. HH/H/L/LL은 아날로그 태그의
+// 임계값(&gt;=/&lt;=) 비교, EQ/NE는 디지털/상태 태그의 특정값(==/!=) 비교로 성격이 다르다(3번 카드
+// AlarmRuntimeInfo, Contracts NodeSharp.Contracts.Enums.AlarmLevel과 동일하게 반영).
+public enum AlarmLevel { HH, H, L, LL, EQ, NE }
 public enum AlarmState { Active, Acknowledged, Cleared }
 public sealed record ActiveAlarm(string TagId, AlarmLevel Level, double Value, DateTime RaisedAt, AlarmState State);
 
@@ -2132,9 +2146,14 @@ public sealed class AlarmStateManager
 
     public void Evaluate(TagNode tag, AlarmNode rule, double value)
     {
-        // HH → H → L → LL 순서로 검사, 가장 심각한 레벨 하나만 활성화(중복 알람 방지)
+        // HH → H → L → LL → EQ → NE 순서로 검사, 가장 먼저 조건을 만족하는 레벨 하나만 활성화(중복 알람 방지).
+        // ★v2.50 신설(사용자 요청) — EQ/NE는 HH~LL과 달리 임계값 비교(&gt;=/&lt;=)가 아니라 특정값
+        // 비교(==/!=)라 순서상 맨 뒤에 검사(아날로그 임계값이 이미 설정된 태그라면 그쪽을 우선).
         var level = value &gt;= rule.HH ? AlarmLevel.HH : value &gt;= rule.H ? AlarmLevel.H
-                  : value &lt;= rule.LL ? AlarmLevel.LL : value &lt;= rule.L ? AlarmLevel.L : (AlarmLevel?)null;
+                  : value &lt;= rule.LL ? AlarmLevel.LL : value &lt;= rule.L ? AlarmLevel.L
+                  : rule.EQ is double eq &amp;&amp; value == eq ? AlarmLevel.EQ
+                  : rule.NE is double ne &amp;&amp; value != ne ? AlarmLevel.NE
+                  : (AlarmLevel?)null;
         var key = $"{tag.Id}";
         if (level is null) { if (_active.TryRemove(key, out _)) /* AlarmClearedEvent 발행 */; return; }
         _active.GetOrAdd(key, _ =&gt; new ActiveAlarm(tag.Id, level.Value, value, DateTime.Now, AlarmState.Active));
