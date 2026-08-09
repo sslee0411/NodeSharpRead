@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
 using NodeSharp.Registry;
 
@@ -53,6 +54,16 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="NodeConfig"/>를 내부 클립보드(<see cref="_clipboardNode"/>)에 복제해 담고, Ctrl+V를
 /// 누르면 <see cref="PasteNode"/>가 새 Id를 재발급해(<see cref="_nextNodeSeq"/>, 원본과 Id가
 /// 겹치지 않도록) 지금 활성 탭(<see cref="_activeFlowId"/>)에 살짝 어긋난 위치로 붙여넣습니다.
+/// (EC-07) 노드 추가(팔레트 드롭·붙여넣기)/와이어 연결/속성 편집 3가지 캔버스 편집을
+/// <see cref="NodeSharp.Editor.Core.Commands.IEditorCommand"/> 구현체(이 클래스의 중첩 클래스
+/// <see cref="AddNodeCommand"/>/<see cref="AddWireCommand"/>/<see cref="EditNodePropertiesCommand"/>)로
+/// 감싸 <see cref="_history"/>(<see cref="NodeSharp.Editor.Core.Commands.CommandHistory"/>, 최대
+/// 50단계)에 실행합니다 — 각 커맨드는 데이터(<see cref="_nodeConfigs"/>/<see cref="_wires"/>)만
+/// 바꾸고 <see cref="RedrawActiveTab"/>(<see cref="SwitchToFlow"/>에서 화면 그리기 부분만 분리한
+/// 메서드) 하나로 화면을 데이터와 다시 맞춥니다. <see cref="Undo"/>/<see cref="Redo"/>(공개, Ctrl+Z/
+/// Ctrl+Y — <c>MainWindow</c>가 호출)가 <see cref="_history"/>를 그대로 위임합니다. 탭 관리(추가/
+/// 전환/삭제, EC-05)는 이 Undo 대상에 포함하지 않습니다(설계 근거: 03번 Step맵 EC-07 desc "캔버스
+/// 커맨드부터 시작" — 구조 트리 커맨드 공유는 ED-D13 범위).
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -89,7 +100,7 @@ public partial class FlowCanvasView : UserControl
     private PortHandle? _hoveredInputPort;
 
     // (EC-06) 카드 선택·복사/붙여넣기 상태. _nodeCards는 선택 시 테두리 강조를 위한 Border 참조
-    // 보관용(RenderNode가 채움, SwitchToFlow가 탭 전환 시 함께 비움). _selectedNodeId는 탭 전환마다
+    // 보관용(RenderNode가 채움, RedrawActiveTab이 다시 그릴 때마다 함께 비움). _selectedNodeId는 탭 전환마다
     // 초기화되지만(그 탭에 없는 노드를 계속 가리키면 안 되므로) _clipboardNode는 탭을 넘나들며
     // 계속 유지된다 — 다른 탭에 붙여넣는 것도 자연스러운 동작이라 판단(활성 탭 기준으로 FlowId를
     // 다시 매기므로 항상 붙여넣는 시점의 탭에 정확히 들어간다).
@@ -97,6 +108,11 @@ public partial class FlowCanvasView : UserControl
     private string? _selectedNodeId;
     private NodeConfig? _clipboardNode;
     private const double PasteOffset = 24;
+
+    // (EC-07) 노드 추가/와이어 연결/속성 편집을 Undo/Redo 가능하게 만드는 커맨드 히스토리(최대 50단계,
+    // 클래스 자체 주석 참고). 지금은 이 뷰만 쓰지만 IEditorCommand 인터페이스 자체는 ED-D13에서
+    // 구조 트리 커맨드도 같은 스택을 공유하도록 미리 열어둔 설계(02번 문서 8번 탭 카드16).
+    private readonly CommandHistory _history = new();
 
     /// <summary>
     /// (EC-04) flows.json을 읽고 쓸 데이터 폴더 경로. Runner의 <c>Worker.cs</c>가 쓰는 것과 같은
@@ -317,16 +333,28 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-05) <paramref name="flowId"/> 탭으로 전환합니다 — <c>NodeCanvas</c>의 시각 요소(카드·포트·
-    /// 와이어 선)를 전부 지우고(데이터인 <see cref="_nodeConfigs"/>/<see cref="_wires"/>는 그대로
-    /// 유지) 그 탭에 속한 노드만 <see cref="RenderNode"/>로, 양쪽 끝이 모두 그 탭에 속한 와이어만
-    /// <see cref="DrawWireLine"/>로 다시 그립니다. WPF 요소를 show/hide로 전환하는 대신 매번 새로
-    /// 그리는 더 단순한 방식을 택했습니다(탭 전환이 잦은 조작이 아니라 성능 부담이 적음).
+    /// (EC-05) <paramref name="flowId"/> 탭으로 전환합니다 — <see cref="RedrawActiveTab"/>로 캔버스
+    /// 시각 요소를 그 탭 기준으로 다시 그리고, 탭 스트립도 새로 활성화된 탭에 맞춰 강조를 갱신합니다.
     /// </summary>
     private void SwitchToFlow(string flowId)
     {
         _activeFlowId = flowId;
+        RedrawActiveTab();
+        RenderFlowTabStrip();
+    }
 
+    /// <summary>
+    /// (EC-07, <see cref="SwitchToFlow"/>에서 분리) <c>NodeCanvas</c>의 시각 요소(카드·포트·와이어
+    /// 선)를 전부 지우고, 지금 활성 탭(<see cref="_activeFlowId"/>)에 속한 노드만 <see cref="RenderNode"/>로,
+    /// 양쪽 끝이 모두 그 탭에 속한 와이어만 <see cref="DrawWireLine"/>로 다시 그립니다. 데이터인
+    /// <see cref="_nodeConfigs"/>/<see cref="_wires"/>는 건드리지 않습니다 — 탭 전환(<see cref="SwitchToFlow"/>)뿐
+    /// 아니라 <see cref="CommandHistory"/>로 실행된 커맨드(노드 추가, 와이어 연결, 속성 편집)의
+    /// Do/Undo 양쪽에서도 데이터를 바꾼 뒤 이 메서드 하나만 호출하면 화면이 항상 데이터와 일치하도록
+    /// 맞출 수 있습니다(WPF 요소를 하나씩 추가/제거하는 대신 매번 새로 그리는 EC-05의 단순한 방식을
+    /// 그대로 재사용 — 캔버스 편집이 잦은 조작이 아니라 성능 부담이 적다는 같은 판단).
+    /// </summary>
+    private void RedrawActiveTab()
+    {
         NodeCanvas.Children.Clear();
         _nodeLabels.Clear();
         _nodeVisuals.Clear();
@@ -335,12 +363,13 @@ public partial class FlowCanvasView : UserControl
         _hoveredInputPort = null;
 
         // (EC-06) 카드 자체가 전부 다시 그려지므로 이전 Border 참조는 무효 — 선택 상태도 함께
-        // 초기화한다(다른 탭에 있던 노드를 계속 "선택됨"으로 표시할 수는 없으므로). _clipboardNode는
-        // 탭을 넘나들며 붙여넣을 수 있어야 하므로 여기서 지우지 않는다.
+        // 초기화한다(방금 Undo/Redo나 탭 전환으로 없어졌거나 다른 탭 소속이 된 노드를 계속
+        // "선택됨"으로 표시할 수는 없으므로). _clipboardNode는 여기서 지우지 않는다(탭을 넘나들며
+        // 붙여넣기가 계속 가능해야 하고, Undo/Redo로도 클립보드 내용이 사라질 이유가 없으므로).
         _nodeCards.Clear();
         _selectedNodeId = null;
 
-        var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == flowId).ToList();
+        var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == _activeFlowId).ToList();
         foreach (var node in tabNodes)
         {
             RenderNode(node);
@@ -348,7 +377,7 @@ public partial class FlowCanvasView : UserControl
 
         foreach (var wire in _wires)
         {
-            if (IsWireInFlow(wire, flowId))
+            if (IsWireInFlow(wire, _activeFlowId))
             {
                 var source = new PortHandle(wire.SourceNodeId, wire.SourcePort, IsOutput: true);
                 var target = new PortHandle(wire.TargetNodeId, wire.TargetPort, IsOutput: false);
@@ -357,7 +386,6 @@ public partial class FlowCanvasView : UserControl
         }
 
         EmptyCanvasHint.Visibility = tabNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        RenderFlowTabStrip();
     }
 
     /// <summary>
@@ -455,11 +483,12 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-01b) 팔레트 카드가 <c>NodeCanvas</c> 위에 드롭되면 문자열 데이터(TypeName)를 꺼내
-    /// <see cref="NodeConfig"/>를 새로 만들고(<see cref="_nextNodeSeq"/>로 "n1", "n2"... 순번 Id
-    /// 발급) <see cref="RenderNode"/>로 화면에 카드를 그립니다. 팔레트의 "최근 사용"도 함께
-    /// 갱신합니다(<see cref="PaletteView.MarkTypeUsed"/>) — 클릭뿐 아니라 실제 배치도 "사용"으로
-    /// 인정합니다. (EC-05) 새 노드의 <see cref="NodeConfig.FlowId"/>는 고정값이 아니라 지금
+    /// (EC-01b, EC-07 확장) 팔레트 카드가 <c>NodeCanvas</c> 위에 드롭되면 문자열 데이터(TypeName)를
+    /// 꺼내 <see cref="NodeConfig"/>를 새로 만들고(<see cref="_nextNodeSeq"/>로 "n1", "n2"... 순번 Id
+    /// 발급) <see cref="AddNodeCommand"/>로 <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수
+    /// 있음). 팔레트의 "최근 사용"도 함께 갱신합니다(<see cref="PaletteView.MarkTypeUsed"/>) — 클릭뿐
+    /// 아니라 실제 배치도 "사용"으로 인정합니다(단, 이건 Undo 대상이 아닌 팔레트 쪽 부가 상태라
+    /// 커맨드 밖에서 처리). (EC-05) 새 노드의 <see cref="NodeConfig.FlowId"/>는 고정값이 아니라 지금
     /// 활성화된 탭(<see cref="_activeFlowId"/>)입니다 — 사용자가 보고 있는 탭에 정확히 배치됩니다.
     /// </summary>
     private void OnCanvasDrop(object sender, DragEventArgs e)
@@ -484,10 +513,8 @@ public partial class FlowCanvasView : UserControl
             X: position.X,
             Y: position.Y);
 
-        _nodeConfigs[config.Id] = config;
-        RenderNode(config);
+        _history.Execute(new AddNodeCommand(this, config));
         Palette.MarkTypeUsed(typeName);
-        EmptyCanvasHint.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
@@ -637,10 +664,11 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-02) 마우스를 놓으면 드래그를 끝냅니다. <see cref="_hoveredInputPort"/>가 다른 노드의
-    /// 입력 포트를 가리키고 있으면 <see cref="Wire"/>를 만들고 실선으로 그리며, 포트 영역 밖(또는
-    /// 자기 자신)에서 놓으면 미리보기 선만 지우고 아무 것도 만들지 않습니다(완료 기준의 "포트
-    /// 영역 밖에서 드롭하면 생성되지 않는지" 조건).
+    /// (EC-02, EC-07 확장) 마우스를 놓으면 드래그를 끝냅니다. <see cref="_hoveredInputPort"/>가 다른
+    /// 노드의 입력 포트를 가리키고 있으면 <see cref="Wire"/>를 만들어 <see cref="AddWireCommand"/>로
+    /// <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수 있음), 포트 영역 밖(또는 자기 자신)에서
+    /// 놓으면 미리보기 선만 지우고 아무 것도 만들지 않습니다(완료 기준의 "포트 영역 밖에서 드롭하면
+    /// 생성되지 않는지" 조건).
     /// </summary>
     private void OnCanvasMouseUp(object sender, MouseButtonEventArgs e)
     {
@@ -656,8 +684,7 @@ public partial class FlowCanvasView : UserControl
         if (_hoveredInputPort is { } target && target.NodeId != source.NodeId)
         {
             var wire = new Wire(source.NodeId, source.PortIndex, target.NodeId, target.PortIndex);
-            _wires.Add(wire);
-            DrawWireLine(source, target);
+            _history.Execute(new AddWireCommand(this, wire));
         }
 
         _dragSourcePort = null;
@@ -761,13 +788,15 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-06) 내부 클립보드(<see cref="_clipboardNode"/>)에 담긴 노드를 새 Id로 재발급해
-    /// (<see cref="_nextNodeSeq"/>, 원본과 절대 겹치지 않음) 지금 활성 탭(<see cref="_activeFlowId"/>)에
-    /// 붙여넣습니다. 원본 카드 위에 완전히 겹쳐 보이지 않도록 좌표를 <see cref="PasteOffset"/>만큼
+    /// (EC-06, EC-07 확장) 내부 클립보드(<see cref="_clipboardNode"/>)에 담긴 노드를 새 Id로
+    /// 재발급해(<see cref="_nextNodeSeq"/>, 원본과 절대 겹치지 않음) 지금 활성 탭
+    /// (<see cref="_activeFlowId"/>)에 <see cref="AddNodeCommand"/>로 붙여넣습니다(Ctrl+Z로 되돌릴
+    /// 수 있음). 원본 카드 위에 완전히 겹쳐 보이지 않도록 좌표를 <see cref="PasteOffset"/>만큼
     /// 대각선으로 어긋나게 놓고, 붙여넣은 새 노드를 곧바로 <see cref="SelectNode"/>로 선택 상태로
     /// 만듭니다(연속으로 Ctrl+V를 누르면 매번 조금씩 어긋난 위치에 새 사본이 쌓이는 자연스러운
-    /// 동작). 클립보드가 비어있으면(아직 복사한 적 없음) 아무 것도 하지 않습니다 — <c>MainWindow</c>의
-    /// Ctrl+V/"편집 → 붙여넣기"가 이 메서드를 호출합니다.
+    /// 동작 — 선택 상태 자체는 Undo 대상이 아니라 커맨드 실행 뒤에 별도로 적용). 클립보드가
+    /// 비어있으면(아직 복사한 적 없음) 아무 것도 하지 않습니다 — <c>MainWindow</c>의 Ctrl+V/
+    /// "편집 → 붙여넣기"가 이 메서드를 호출합니다.
     /// </summary>
     public void PasteNode()
     {
@@ -785,17 +814,17 @@ public partial class FlowCanvasView : UserControl
             Properties = new Dictionary<string, object?>(source.Properties)
         };
 
-        _nodeConfigs[pasted.Id] = pasted;
-        RenderNode(pasted);
+        _history.Execute(new AddNodeCommand(this, pasted));
         SelectNode(pasted.Id);
-        EmptyCanvasHint.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
-    /// (EC-03) <paramref name="nodeId"/>의 현재 <see cref="NodeConfig"/>와, <see cref="_registry"/>에
-    /// 등록된 해당 타입의 PropertySchema(없으면 빈 목록 — Phase 7 이전엔 항상 이 경우)로
-    /// <see cref="NodePropertyDialog"/>를 모달로 띄웁니다. "완료"로 닫히면 <see cref="_nodeConfigs"/>와
-    /// 카드에 표시된 이름(<see cref="_nodeLabels"/>)을 갱신합니다.
+    /// (EC-03, EC-07 확장) <paramref name="nodeId"/>의 현재 <see cref="NodeConfig"/>와,
+    /// <see cref="_registry"/>에 등록된 해당 타입의 PropertySchema(없으면 빈 목록 — Phase 7
+    /// 이전엔 항상 이 경우)로 <see cref="NodePropertyDialog"/>를 모달로 띄웁니다. "완료"로 닫히면
+    /// 편집 전/후 <see cref="NodeConfig"/> 스냅샷을 <see cref="EditNodePropertiesCommand"/>로 감싸
+    /// <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수 있음) — 화면 갱신(카드 이름 표시 등)은
+    /// 커맨드가 호출하는 <see cref="RedrawActiveTab"/>이 처리합니다.
     /// </summary>
     private void OpenPropertyDialog(string nodeId)
     {
@@ -815,11 +844,149 @@ public partial class FlowCanvasView : UserControl
 
         if (dialog.ShowDialog() == true && dialog.UpdatedConfig is { } updated)
         {
-            _nodeConfigs[nodeId] = updated;
-            if (_nodeLabels.TryGetValue(nodeId, out var label))
-            {
-                label.Text = updated.Name;
-            }
+            _history.Execute(new EditNodePropertiesCommand(this, nodeId, before: config, after: updated));
+        }
+    }
+
+    /// <summary>
+    /// (EC-07) Ctrl+Z(<c>MainWindow</c>의 <c>ApplicationCommands.Undo</c>)로 <see cref="_history"/>의
+    /// 가장 최근 커맨드(노드 추가/와이어 연결/속성 편집 중 하나)를 되돌립니다. 되돌릴 커맨드가
+    /// 없으면 아무 것도 하지 않습니다.
+    /// </summary>
+    public void Undo() => _history.Undo();
+
+    /// <summary>
+    /// (EC-07) Ctrl+Y(<c>MainWindow</c>의 <c>ApplicationCommands.Redo</c>)로 <see cref="_history"/>가
+    /// Undo로 되돌렸던 커맨드를 다시 실행합니다. 다시 실행할 커맨드가 없으면 아무 것도 하지 않습니다.
+    /// </summary>
+    public void Redo() => _history.Redo();
+
+    /// <summary>(EC-07) <c>MainWindow</c>가 "편집 → 실행 취소"/Ctrl+Z의 활성화 여부를 판단하는 데 씁니다.</summary>
+    public bool CanUndo => _history.CanUndo;
+
+    /// <summary>(EC-07) <c>MainWindow</c>가 "편집 → 다시 실행"/Ctrl+Y의 활성화 여부를 판단하는 데 씁니다.</summary>
+    public bool CanRedo => _history.CanRedo;
+
+    /// <summary>
+    /// Class명 : 노드 추가 커맨드
+    /// 역활 및 기능 : 새 NodeConfig를 캔버스에 추가하는 Undo/Redo 가능한 커맨드
+    ///
+    /// 팔레트 드롭(<see cref="OnCanvasDrop"/>)과 붙여넣기(<see cref="PasteNode"/>) 양쪽이 공유하는
+    /// 커맨드입니다 — 둘 다 "새 NodeConfig 하나를 <see cref="_nodeConfigs"/>에 추가하고 화면을
+    /// 갱신"이라는 같은 동작이라, 새 노드가 어디서 왔는지(팔레트 vs 클립보드)와 무관하게 이 커맨드
+    /// 하나로 처리합니다. 이 클래스는 <see cref="FlowCanvasView"/>의 중첩 클래스라 <c>_owner</c>를
+    /// 통해 바깥 클래스의 private 필드(<see cref="_nodeConfigs"/> 등)에 직접 접근합니다.
+    /// </summary>
+    private sealed class AddNodeCommand : IEditorCommand
+    {
+        private readonly FlowCanvasView _owner;
+        private readonly NodeConfig _config;
+
+        /// <summary>추가되는 <paramref name="config"/>를 기억해두는 생성자.</summary>
+        public AddNodeCommand(FlowCanvasView owner, NodeConfig config)
+        {
+            _owner = owner;
+            _config = config;
+        }
+
+        /// <inheritdoc />
+        public string Description => $"노드 추가: {_config.Name}";
+
+        /// <inheritdoc />
+        public void Do()
+        {
+            _owner._nodeConfigs[_config.Id] = _config;
+            _owner.RedrawActiveTab();
+        }
+
+        /// <inheritdoc />
+        public void Undo()
+        {
+            _owner._nodeConfigs.Remove(_config.Id);
+            _owner.RedrawActiveTab();
+        }
+    }
+
+    /// <summary>
+    /// Class명 : 와이어 연결 커맨드
+    /// 역활 및 기능 : 출력 포트와 입력 포트를 잇는 Wire 하나를 추가하는 Undo/Redo 가능한 커맨드
+    ///
+    /// <see cref="OnCanvasMouseUp"/>에서 포트 드래그가 유효한 입력 포트 위에서 끝났을 때 실행됩니다.
+    /// <see cref="Wire"/>가 값 동등성을 갖는 record라 Undo 시 <c>List.Remove</c>로 정확히 이 와이어
+    /// 하나만 지울 수 있습니다(같은 두 포트 사이에 와이어를 두 번 만들 수 없다는 전제 — EC-02가 이미
+    /// 같은 자기 자신 노드로의 연결만 막아뒀을 뿐 중복 와이어 자체는 막지 않지만, 그 경우에도
+    /// List.Remove는 먼저 찾은 것 하나만 지우므로 Undo/Redo 짝은 항상 맞게 동작합니다).
+    /// </summary>
+    private sealed class AddWireCommand : IEditorCommand
+    {
+        private readonly FlowCanvasView _owner;
+        private readonly Wire _wire;
+
+        /// <summary>추가되는 <paramref name="wire"/>를 기억해두는 생성자.</summary>
+        public AddWireCommand(FlowCanvasView owner, Wire wire)
+        {
+            _owner = owner;
+            _wire = wire;
+        }
+
+        /// <inheritdoc />
+        public string Description => "와이어 연결";
+
+        /// <inheritdoc />
+        public void Do()
+        {
+            _owner._wires.Add(_wire);
+            _owner.RedrawActiveTab();
+        }
+
+        /// <inheritdoc />
+        public void Undo()
+        {
+            _owner._wires.Remove(_wire);
+            _owner.RedrawActiveTab();
+        }
+    }
+
+    /// <summary>
+    /// Class명 : 노드 속성 편집 커맨드
+    /// 역활 및 기능 : NodePropertyDialog에서 "완료"로 확정한 NodeConfig 교체를 Undo/Redo 가능하게 만드는 커맨드
+    ///
+    /// <see cref="OpenPropertyDialog"/>가 다이얼로그를 닫을 때 실행됩니다. <paramref name="before"/>/
+    /// <paramref name="after"/> 두 스냅샷을 통째로 기억해두는 방식(필드 단위 diff가 아님)이라 구현이
+    /// 단순합니다 — <see cref="NodeConfig"/>는 불변 record라 두 스냅샷을 들고 있어도 이후 다른 편집이
+    /// 이 값을 몰래 바꿀 수 없습니다.
+    /// </summary>
+    private sealed class EditNodePropertiesCommand : IEditorCommand
+    {
+        private readonly FlowCanvasView _owner;
+        private readonly string _nodeId;
+        private readonly NodeConfig _before;
+        private readonly NodeConfig _after;
+
+        /// <summary>편집 전(<paramref name="before"/>)/후(<paramref name="after"/>) 스냅샷을 기억해두는 생성자.</summary>
+        public EditNodePropertiesCommand(FlowCanvasView owner, string nodeId, NodeConfig before, NodeConfig after)
+        {
+            _owner = owner;
+            _nodeId = nodeId;
+            _before = before;
+            _after = after;
+        }
+
+        /// <inheritdoc />
+        public string Description => $"노드 속성 편집: {_after.Name}";
+
+        /// <inheritdoc />
+        public void Do()
+        {
+            _owner._nodeConfigs[_nodeId] = _after;
+            _owner.RedrawActiveTab();
+        }
+
+        /// <inheritdoc />
+        public void Undo()
+        {
+            _owner._nodeConfigs[_nodeId] = _before;
+            _owner.RedrawActiveTab();
         }
     }
 }

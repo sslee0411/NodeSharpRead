@@ -32,6 +32,12 @@
   동일한 패턴(Window.InputBindings의 KeyBinding + Window.CommandBindings의 CommandBinding.Executed)으로
   ApplicationCommands.Copy/Paste 단축키를 연결했다 — 메뉴 클릭과 단축키가 각각
   OnCopyNodeClick/OnPasteNodeClick 하나씩을 공유한다.
+  (EC-07) "편집" 메뉴에 "실행 취소"(Ctrl+Z)/"다시 실행"(Ctrl+Y) 2개 항목을 추가했다 — 이 둘은
+  Click 대신 Command="{x:Static ApplicationCommands.Undo/Redo}"를 직접 바인딩해, CommandBinding의
+  CanExecute(FlowCanvas.CanUndo/CanRedo)에 따라 되돌릴/다시 실행할 것이 없으면 메뉴가 자동으로
+  회색 비활성화되도록 했다(복사/붙여넣기·저장은 항상 클릭 가능해도 되는 동작이라 Click을 쓰지만,
+  Undo/Redo는 스택이 비었을 때 눌러도 아무 효과가 없다는 걸 시각적으로 보여주는 편이 더 나은
+  사용성이라 판단).
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -46,16 +52,22 @@
         ResizeMode="CanResize"
         StateChanged="OnWindowStateChanged">
     <!-- (EC-04) Ctrl+S로도 저장을 트리거 — 메뉴 클릭과 동일한 OnSaveFlowClick을 호출한다.
-         (EC-06) Ctrl+C/Ctrl+V도 같은 패턴으로 추가 — 각각 OnCopyNodeClick/OnPasteNodeClick 호출. -->
+         (EC-06) Ctrl+C/Ctrl+V도 같은 패턴으로 추가 — 각각 OnCopyNodeClick/OnPasteNodeClick 호출.
+         (EC-07) Ctrl+Z/Ctrl+Y도 같은 패턴으로 추가 — CommandBinding에 CanExecute까지 연결해
+         Undo/Redo할 것이 없으면(FlowCanvas.CanUndo/CanRedo가 false) 명령 자체가 비활성화된다. -->
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Control" Command="{x:Static ApplicationCommands.Save}" />
         <KeyBinding Key="C" Modifiers="Control" Command="{x:Static ApplicationCommands.Copy}" />
         <KeyBinding Key="V" Modifiers="Control" Command="{x:Static ApplicationCommands.Paste}" />
+        <KeyBinding Key="Z" Modifiers="Control" Command="{x:Static ApplicationCommands.Undo}" />
+        <KeyBinding Key="Y" Modifiers="Control" Command="{x:Static ApplicationCommands.Redo}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Save}" Executed="OnSaveFlowClick" />
         <CommandBinding Command="{x:Static ApplicationCommands.Copy}" Executed="OnCopyNodeClick" />
         <CommandBinding Command="{x:Static ApplicationCommands.Paste}" Executed="OnPasteNodeClick" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Undo}" Executed="OnUndoClick" CanExecute="OnUndoCanExecute" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Redo}" Executed="OnRedoClick" CanExecute="OnRedoCanExecute" />
     </Window.CommandBindings>
     <shell:WindowChrome.WindowChrome>
         <!-- CaptionHeight를 아래 타이틀바 Row 높이(32)와 맞춰야 드래그 이동·더블클릭 최대화가
@@ -171,6 +183,9 @@
                     <MenuItem Header="저장" InputGestureText="Ctrl+S" Click="OnSaveFlowClick" />
                 </MenuItem>
                 <MenuItem Header="편집">
+                    <MenuItem Header="실행 취소" InputGestureText="Ctrl+Z" Command="{x:Static ApplicationCommands.Undo}" />
+                    <MenuItem Header="다시 실행" InputGestureText="Ctrl+Y" Command="{x:Static ApplicationCommands.Redo}" />
+                    <Separator />
                     <MenuItem Header="복사" InputGestureText="Ctrl+C" Click="OnCopyNodeClick" />
                     <MenuItem Header="붙여넣기" InputGestureText="Ctrl+V" Click="OnPasteNodeClick" />
                 </MenuItem>

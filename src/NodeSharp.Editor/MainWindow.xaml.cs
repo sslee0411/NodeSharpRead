@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace NodeSharp.Editor;
 
@@ -21,6 +22,11 @@ namespace NodeSharp.Editor;
 /// (EC-06) 같은 패턴으로 "편집 → 복사"/Ctrl+C가 공유하는 <see cref="OnCopyNodeClick"/>과
 /// "편집 → 붙여넣기"/Ctrl+V가 공유하는 <see cref="OnPasteNodeClick"/>이 추가됐습니다 — 각각
 /// <c>FlowCanvas.CopySelectedNode()</c>/<c>FlowCanvas.PasteNode()</c>를 호출합니다.
+/// (EC-07) "편집 → 실행 취소"/Ctrl+Z가 공유하는 <see cref="OnUndoClick"/>과 "편집 → 다시 실행"/
+/// Ctrl+Y가 공유하는 <see cref="OnRedoClick"/>이 추가됐습니다 — 각각 <c>FlowCanvas.Undo()</c>/
+/// <c>FlowCanvas.Redo()</c>를 호출합니다. 이 둘은 <see cref="OnUndoCanExecute"/>/
+/// <see cref="OnRedoCanExecute"/>(CommandBinding.CanExecute)로 <c>FlowCanvas.CanUndo</c>/
+/// <c>CanRedo</c>를 확인해, 되돌리거나 다시 실행할 것이 없으면 메뉴가 자동으로 비활성화됩니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -109,6 +115,34 @@ public partial class MainWindow : Window
     /// <see cref="Views.FlowCanvasView.PasteNode"/> 내부에서 아무 동작도 하지 않습니다).
     /// </summary>
     private void OnPasteNodeClick(object sender, RoutedEventArgs e) => FlowCanvas.PasteNode();
+
+    /// <summary>
+    /// (EC-07) "편집 → 실행 취소" 메뉴의 <c>Command</c> 바인딩과 Ctrl+Z가 공유하는
+    /// <c>CommandBinding.Executed</c> 핸들러입니다. <c>FlowCanvas.Undo()</c>를 호출해 캔버스의
+    /// 가장 최근 커맨드(노드 추가/와이어 연결/속성 편집)를 되돌립니다.
+    /// </summary>
+    private void OnUndoClick(object sender, ExecutedRoutedEventArgs e) => FlowCanvas.Undo();
+
+    /// <summary>
+    /// (EC-07) "편집 → 다시 실행" 메뉴의 <c>Command</c> 바인딩과 Ctrl+Y가 공유하는
+    /// <c>CommandBinding.Executed</c> 핸들러입니다. <c>FlowCanvas.Redo()</c>를 호출해 Undo로
+    /// 되돌렸던 커맨드를 다시 실행합니다.
+    /// </summary>
+    private void OnRedoClick(object sender, ExecutedRoutedEventArgs e) => FlowCanvas.Redo();
+
+    /// <summary>
+    /// (EC-07) <c>ApplicationCommands.Undo</c>의 <c>CommandBinding.CanExecute</c> 핸들러입니다.
+    /// <c>FlowCanvas.CanUndo</c>가 <c>false</c>이면(되돌릴 커맨드가 없으면) "편집 → 실행 취소"
+    /// 메뉴가 자동으로 회색 비활성화됩니다.
+    /// </summary>
+    private void OnUndoCanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = FlowCanvas.CanUndo;
+
+    /// <summary>
+    /// (EC-07) <c>ApplicationCommands.Redo</c>의 <c>CommandBinding.CanExecute</c> 핸들러입니다.
+    /// <c>FlowCanvas.CanRedo</c>가 <c>false</c>이면(다시 실행할 커맨드가 없으면) "편집 → 다시 실행"
+    /// 메뉴가 자동으로 회색 비활성화됩니다.
+    /// </summary>
+    private void OnRedoCanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = FlowCanvas.CanRedo;
 
     /// <summary>
     /// (ED-B3) 창 상태가 바뀔 때마다 최대화/복원 버튼 아이콘을 맞는 모양으로 바꾸고, 최대화 상태일
