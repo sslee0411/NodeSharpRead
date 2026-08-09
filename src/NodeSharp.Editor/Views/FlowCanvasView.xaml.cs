@@ -115,7 +115,22 @@ public partial class FlowCanvasView : UserControl
         }
 
         _flowLoaded = true;
-        await LoadFlowAsync();
+
+        // (v2.53 버그 수정) OnLoaded는 async void라 처리되지 않은 예외가 그대로 앱 전체를
+        // 크래시시킨다(WPF/일반 C#의 잘 알려진 함정) — JsonWriteService.ReadAsync가 스키마 불일치를
+        // 이미 내부에서 흡수하지만, 그 밖의 예상 못 한 오류(디스크 I/O 등)까지 대비해 한 번 더 감싼다.
+        try
+        {
+            await LoadFlowAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"flows.json 불러오기 중 오류가 발생했습니다. 빈 캔버스로 시작합니다.\n{ex.Message}",
+                "불러오기 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     /// <summary>

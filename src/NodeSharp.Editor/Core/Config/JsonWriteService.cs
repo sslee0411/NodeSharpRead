@@ -24,6 +24,13 @@ namespace NodeSharp.Editor.Core.Config;
 /// 씁니다. Runner 쪽의 <c>FileSystemWatcher</c>(LK-01, 아직 미착수)가 이 파일의 변경을 감지해
 /// 자동 재배포를 트리거할 예정입니다 — 이 Step(EC-04)은 신호를 "보내는" 쪽만 구현하고, "받는" 쪽은
 /// LK-01 범위입니다.</item>
+/// <item><b>(v2.53 버그 수정) 스키마가 안 맞는 파일도 손상으로 취급</b>: <see cref="ReadAsync{T}"/>는
+/// 파일은 있지만 지금 <c>T</c>의 모양과 JSON 내용이 안 맞을 때(예: EC-05 전에 단일 객체로 저장해둔
+/// 옛 flows.json을 EC-05 이후 <c>List&lt;FlowDefinition&gt;</c>로 읽으려는 경우) 예외를 밖으로 던지지
+/// 않고 "저장된 값 없음"과 동일하게 <c>default</c>를 반환합니다 — <c>StartupSequencer</c>(RN-01a)가
+/// flows.json이 손상됐을 때 그 단계만 실패로 기록하고 나머지는 계속 진행하는 것과 같은 "격리"
+/// 원칙입니다. 이 보호가 없으면 <c>FlowCanvasView.OnLoaded</c>처럼 <c>async void</c> 이벤트
+/// 핸들러에서 처리되지 않은 예외가 그대로 앱 전체를 크래시시킵니다(실제 발견된 버그).</item>
 /// </list>
 /// </remarks>
 public static class JsonWriteService
@@ -74,7 +81,9 @@ public static class JsonWriteService
     /// <summary>
     /// <paramref name="filePath"/>를 읽어 <typeparamref name="T"/>로 역직렬화합니다. 파일이 없으면
     /// (아직 한 번도 저장한 적 없는 최초 실행) 예외 없이 <c>default</c>(참조 타입은 <c>null</c>)를
-    /// 반환합니다.
+    /// 반환합니다. (v2.53 버그 수정) 파일은 있지만 JSON 내용이 <typeparamref name="T"/>의 모양과
+    /// 맞지 않아 역직렬화에 실패해도(예: 스키마가 바뀌기 전 버전으로 저장된 옛 파일) 예외를 밖으로
+    /// 던지지 않고 <c>default</c>를 반환합니다 — 클래스 remarks 참고.
     /// </summary>
     public static async Task<T?> ReadAsync<T>(string filePath, CancellationToken ct = default)
     {
@@ -84,6 +93,14 @@ public static class JsonWriteService
         }
 
         var json = await File.ReadAllTextAsync(filePath, ct);
-        return JsonSerializer.Deserialize<T>(json);
+        try
+        {
+            return JsonSerializer.Deserialize<T>(json);
+        }
+        catch (JsonException)
+        {
+            // 스키마 불일치·손상된 JSON — "저장된 값 없음"과 동일하게 취급(위 remarks의 격리 원칙).
+            return default;
+        }
     }
 }

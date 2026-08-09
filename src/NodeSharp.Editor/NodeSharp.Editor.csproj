@@ -330,6 +330,32 @@
       자동 검증 불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다(탭 3개 이상 추가 → 각
       탭에 서로 다른 노드 배치 → 전환하며 노드가 섞이지 않는지 → 저장 후 재시작해 탭 구성이 그대로
       복원되는지 → 탭 삭제 시 확인창과 함께 정상 삭제되는지).
+
+    Step: EC-05 버그 수정 (v2.53, 사용자가 실행 중 발견해 보고 — JsonWriteService.ReadAsync 크래시)
+    - 사용자가 Windows에서 Editor를 실행하자 "[예외] JsonWriteService.ReadAsync<T>() 줄 87"에서
+      크래시 발생. 원인: 사용자가 EC-04 시절(단일 FlowDefinition 스키마)에 이미 한 번 저장해둔
+      flows.json이 디스크에 남아있는 상태에서, EC-05가 flows.json을 List&lt;FlowDefinition&gt;으로
+      읽도록 바뀌면서 그 옛 파일(JSON 객체 `{...}`)을 리스트(JSON 배열 `[...]`)로 역직렬화하려다
+      System.Text.Json이 JsonException을 던짐 — StartupSequencer(RN-01a)가 애초에 Runner 쪽에서는
+      이런 "손상/스키마 불일치" 상황을 단계별로 격리해 처리하도록 설계돼 있었는데, Editor 쪽
+      JsonWriteService.ReadAsync에는 "파일 없음"만 방어돼 있고 "파일은 있지만 지금 T와 안 맞음"은
+      방어가 없던 공백이었다. 게다가 이 예외를 부르는 FlowCanvasView.OnLoaded가 async void
+      이벤트 핸들러라, 처리되지 않은 예외가 그대로 앱 전체를 크래시시켰다(WPF/C#의 잘 알려진 함정).
+    - src\NodeSharp.Editor\Core\Config\JsonWriteService.cs 수정 — ReadAsync&lt;T&gt;의 역직렬화를
+      try/catch(JsonException)로 감싸 실패 시 "저장된 값 없음"과 동일하게 default를 반환하도록
+      변경(StartupSequencer가 flows.json 손상 시 그 단계만 실패로 기록하고 나머지는 계속 진행하는
+      것과 동일한 "격리" 원칙 — device.json/sequences.json/credentials.json 등 이 헬퍼를 재사용할
+      미래의 다른 설정 파일에도 동일하게 적용됨).
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 수정 — OnLoaded 전체를 try/catch로 한 번 더
+      감싸(ReadAsync의 방어를 통과한 그 밖의 예상 못 한 오류까지 대비, OnSaveFlowClick과 동일한
+      패턴) 실패 시 MessageBox로 안내하고 빈 캔버스로 계속 진행하도록 변경 — 어떤 경우에도 Editor
+      전체가 죽지 않도록 이중 방어.
+    - 참고: 이 수정은 옛 형식(단일 객체)의 flows.json을 새 형식(리스트)으로 자동 마이그레이션하지는
+      않는다 — 손상된 것과 동일하게 취급해 "저장된 값 없음"으로 처리하므로, 그 안에 있던 노드 배치는
+      복원되지 않고 다음 저장부터 새 형식으로 다시 쓰인다(개발 중 테스트 데이터라 데이터 손실 영향
+      적다고 판단, 별도 마이그레이션 코드는 만들지 않음).
+    - tools/check-xmldoc.py 오류 0건, 수정 2개 파일 중괄호 균형 확인 완료 — 이 세션도 샌드박스에
+      .NET SDK가 없어 dotnet build/test는 사용자 로컬 확인 필요.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
