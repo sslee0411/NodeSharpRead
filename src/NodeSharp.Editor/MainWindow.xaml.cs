@@ -18,6 +18,9 @@ namespace NodeSharp.Editor;
 /// (EC-04) "파일 → 저장" 메뉴와 Ctrl+S(Window.InputBindings/CommandBindings, ApplicationCommands.Save)
 /// 가 공유하는 <see cref="OnSaveFlowClick"/>가 추가됐습니다 — 캔버스(<c>FlowCanvas</c>, x:Name)의
 /// <c>SaveFlowAsync()</c>를 호출해 flows.json에 저장합니다.
+/// (EC-06) 같은 패턴으로 "편집 → 복사"/Ctrl+C가 공유하는 <see cref="OnCopyNodeClick"/>과
+/// "편집 → 붙여넣기"/Ctrl+V가 공유하는 <see cref="OnPasteNodeClick"/>이 추가됐습니다 — 각각
+/// <c>FlowCanvas.CopySelectedNode()</c>/<c>FlowCanvas.PasteNode()</c>를 호출합니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -90,6 +93,22 @@ public partial class MainWindow : Window
                 MessageBoxImage.Error);
         }
     }
+
+    /// <summary>
+    /// (EC-06) "편집 → 복사" 메뉴 Click과 Ctrl+C(CommandBinding.Executed)가 공유하는 핸들러입니다.
+    /// <c>FlowCanvas.CopySelectedNode()</c>를 호출해 지금 캔버스에서 선택된 노드를 내부 클립보드에
+    /// 담습니다(선택된 노드가 없으면 <see cref="Views.FlowCanvasView.CopySelectedNode"/> 내부에서
+    /// 아무 동작도 하지 않고 조용히 반환합니다).
+    /// </summary>
+    private void OnCopyNodeClick(object sender, RoutedEventArgs e) => FlowCanvas.CopySelectedNode();
+
+    /// <summary>
+    /// (EC-06) "편집 → 붙여넣기" 메뉴 Click과 Ctrl+V(CommandBinding.Executed)가 공유하는
+    /// 핸들러입니다. <c>FlowCanvas.PasteNode()</c>를 호출해 내부 클립보드에 담긴 노드를 새 Id로
+    /// 재발급해 지금 활성 Flow 탭에 붙여넣습니다(복사한 적이 없으면
+    /// <see cref="Views.FlowCanvasView.PasteNode"/> 내부에서 아무 동작도 하지 않습니다).
+    /// </summary>
+    private void OnPasteNodeClick(object sender, RoutedEventArgs e) => FlowCanvas.PasteNode();
 
     /// <summary>
     /// (ED-B3) 창 상태가 바뀔 때마다 최대화/복원 버튼 아이콘을 맞는 모양으로 바꾸고, 최대화 상태일

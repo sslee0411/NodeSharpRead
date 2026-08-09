@@ -46,6 +46,13 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="FlowDefinition"/>을 만듭니다. 설계 판단 근거(단일 스키마 → 리스트 스키마 전환,
 /// Runner 쪽 <c>StartupSequencer</c>/<c>FlowDeployer</c> 동시 수정)는
 /// <c>NodeSharp.Editor.csproj</c>/<c>NodeSharp.Runner.csproj</c>의 EC-05 블록을 참고하십시오.
+/// (EC-06) 카드를 한 번 클릭(<c>e.ClickCount == 1</c>)하면 선택 상태가 되어 테두리가
+/// <c>AccentBrush</c>로 강조됩니다(<see cref="SelectNode"/>) — 더블클릭(속성 다이얼로그)과는
+/// <see cref="OnCardMouseLeftButtonDown"/> 안에서 클릭 횟수로 분기합니다. 선택된 노드가 있는
+/// 상태에서 Ctrl+C를 누르면(<c>MainWindow</c>) <see cref="CopySelectedNode"/>가 그 노드의
+/// <see cref="NodeConfig"/>를 내부 클립보드(<see cref="_clipboardNode"/>)에 복제해 담고, Ctrl+V를
+/// 누르면 <see cref="PasteNode"/>가 새 Id를 재발급해(<see cref="_nextNodeSeq"/>, 원본과 Id가
+/// 겹치지 않도록) 지금 활성 탭(<see cref="_activeFlowId"/>)에 살짝 어긋난 위치로 붙여넣습니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -80,6 +87,16 @@ public partial class FlowCanvasView : UserControl
     private PortHandle? _dragSourcePort;
     private Line? _dragPreviewLine;
     private PortHandle? _hoveredInputPort;
+
+    // (EC-06) 카드 선택·복사/붙여넣기 상태. _nodeCards는 선택 시 테두리 강조를 위한 Border 참조
+    // 보관용(RenderNode가 채움, SwitchToFlow가 탭 전환 시 함께 비움). _selectedNodeId는 탭 전환마다
+    // 초기화되지만(그 탭에 없는 노드를 계속 가리키면 안 되므로) _clipboardNode는 탭을 넘나들며
+    // 계속 유지된다 — 다른 탭에 붙여넣는 것도 자연스러운 동작이라 판단(활성 탭 기준으로 FlowId를
+    // 다시 매기므로 항상 붙여넣는 시점의 탭에 정확히 들어간다).
+    private readonly Dictionary<string, Border> _nodeCards = new();
+    private string? _selectedNodeId;
+    private NodeConfig? _clipboardNode;
+    private const double PasteOffset = 24;
 
     /// <summary>
     /// (EC-04) flows.json을 읽고 쓸 데이터 폴더 경로. Runner의 <c>Worker.cs</c>가 쓰는 것과 같은
@@ -317,6 +334,12 @@ public partial class FlowCanvasView : UserControl
         _dragPreviewLine = null;
         _hoveredInputPort = null;
 
+        // (EC-06) 카드 자체가 전부 다시 그려지므로 이전 Border 참조는 무효 — 선택 상태도 함께
+        // 초기화한다(다른 탭에 있던 노드를 계속 "선택됨"으로 표시할 수는 없으므로). _clipboardNode는
+        // 탭을 넘나들며 붙여넣을 수 있어야 하므로 여기서 지우지 않는다.
+        _nodeCards.Clear();
+        _selectedNodeId = null;
+
         var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == flowId).ToList();
         foreach (var node in tabNodes)
         {
@@ -509,6 +532,7 @@ public partial class FlowCanvasView : UserControl
         Canvas.SetTop(card, top);
         NodeCanvas.Children.Add(card);
         _nodeLabels[config.Id] = label;
+        _nodeCards[config.Id] = card; // (EC-06) 선택 시 테두리 강조를 위해 Border 참조를 보관
 
         // EC-02 범위: 지금은 모든 노드를 입력 1개·출력 1개로 고정한다(클래스 주석 참고 — Phase 7
         // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정).
@@ -661,19 +685,110 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-03) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로
-    /// <see cref="OpenPropertyDialog"/>를 엽니다. 한 번 클릭은 무시합니다(포트 드래그와 헷갈리지
-    /// 않도록 카드 자체에는 단일 클릭 동작을 두지 않음).
+    /// (EC-03, EC-06 확장) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로
+    /// <see cref="OpenPropertyDialog"/>를 엽니다. (EC-06) 한 번 클릭이면 더 이상 무시하지 않고
+    /// <see cref="SelectNode"/>로 그 노드를 선택 상태로 만듭니다(Ctrl+C 복사 대상). 어느 쪽이든
+    /// <paramref name="e"/>.Handled를 <c>true</c>로 설정해, 이 클릭이 <see cref="NodeCanvas"/>의
+    /// 배경 클릭 핸들러(<see cref="OnCanvasBackgroundMouseDown"/>)로 버블링되어 방금 한 선택이
+    /// 곧바로 해제되는 것을 막습니다.
     /// </summary>
     private void OnCardMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount != 2 || sender is not FrameworkElement { Tag: string nodeId })
+        if (sender is not FrameworkElement { Tag: string nodeId })
         {
             return;
         }
 
-        OpenPropertyDialog(nodeId);
+        if (e.ClickCount == 2)
+        {
+            OpenPropertyDialog(nodeId);
+        }
+        else
+        {
+            SelectNode(nodeId);
+        }
+
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// (EC-06) <paramref name="nodeId"/>를 선택 상태로 만들고(<c>null</c>이면 선택 해제) 카드
+    /// 테두리로 그 상태를 표시합니다 — 이전에 선택돼 있던 카드는 기본 <c>BorderBrush</c>/두께 1로
+    /// 되돌리고, 새로 선택된 카드는 <c>AccentBrush</c>/두께 2로 강조합니다. <see cref="_nodeCards"/>에
+    /// 없는 Id(이미 지워졌거나 다른 탭 소속)가 들어오면 그 카드에 대한 강조만 건너뜁니다.
+    /// </summary>
+    private void SelectNode(string? nodeId)
+    {
+        if (_selectedNodeId is { } previousId && _nodeCards.TryGetValue(previousId, out var previousCard))
+        {
+            previousCard.BorderBrush = (Brush)FindResource("BorderBrush");
+            previousCard.BorderThickness = new Thickness(1);
+        }
+
+        _selectedNodeId = nodeId;
+
+        if (nodeId is not null && _nodeCards.TryGetValue(nodeId, out var card))
+        {
+            card.BorderBrush = (Brush)FindResource("AccentBrush");
+            card.BorderThickness = new Thickness(2);
+        }
+    }
+
+    /// <summary>
+    /// (EC-06) <see cref="NodeCanvas"/>의 빈 배경(카드·포트가 아닌 영역)을 클릭하면 선택을
+    /// 해제합니다. 카드 클릭(<see cref="OnCardMouseLeftButtonDown"/>)과 포트 클릭
+    /// (<see cref="OnOutputPortMouseDown"/>)은 각자 <c>e.Handled = true</c>로 이 핸들러까지
+    /// 버블링되지 않도록 이미 막고 있으므로, 이 핸들러는 정말 빈 배경을 눌렀을 때만 실행됩니다.
+    /// </summary>
+    private void OnCanvasBackgroundMouseDown(object sender, MouseButtonEventArgs e) => SelectNode(null);
+
+    /// <summary>
+    /// (EC-06) 지금 선택된 노드(<see cref="_selectedNodeId"/>)의 <see cref="NodeConfig"/>를 내부
+    /// 클립보드(<see cref="_clipboardNode"/>)에 복사합니다. <see cref="NodeConfig.Properties"/>는
+    /// 참조 타입(Dictionary)이라 그대로 담으면 원본과 클립보드가 같은 인스턴스를 공유하게 되므로,
+    /// 새 Dictionary로 복제해 독립시킵니다(<see cref="NodeConfig"/> 자체 XML 문서의 "record 동등성
+    /// 주의"와 같은 이유). 선택된 노드가 없으면 아무 것도 하지 않습니다 — <c>MainWindow</c>의
+    /// Ctrl+C/"편집 → 복사"가 이 메서드를 호출합니다.
+    /// </summary>
+    public void CopySelectedNode()
+    {
+        if (_selectedNodeId is not { } nodeId || !_nodeConfigs.TryGetValue(nodeId, out var config))
+        {
+            return;
+        }
+
+        _clipboardNode = config with { Properties = new Dictionary<string, object?>(config.Properties) };
+    }
+
+    /// <summary>
+    /// (EC-06) 내부 클립보드(<see cref="_clipboardNode"/>)에 담긴 노드를 새 Id로 재발급해
+    /// (<see cref="_nextNodeSeq"/>, 원본과 절대 겹치지 않음) 지금 활성 탭(<see cref="_activeFlowId"/>)에
+    /// 붙여넣습니다. 원본 카드 위에 완전히 겹쳐 보이지 않도록 좌표를 <see cref="PasteOffset"/>만큼
+    /// 대각선으로 어긋나게 놓고, 붙여넣은 새 노드를 곧바로 <see cref="SelectNode"/>로 선택 상태로
+    /// 만듭니다(연속으로 Ctrl+V를 누르면 매번 조금씩 어긋난 위치에 새 사본이 쌓이는 자연스러운
+    /// 동작). 클립보드가 비어있으면(아직 복사한 적 없음) 아무 것도 하지 않습니다 — <c>MainWindow</c>의
+    /// Ctrl+V/"편집 → 붙여넣기"가 이 메서드를 호출합니다.
+    /// </summary>
+    public void PasteNode()
+    {
+        if (_clipboardNode is not { } source)
+        {
+            return;
+        }
+
+        var pasted = source with
+        {
+            Id = $"n{_nextNodeSeq++}",
+            FlowId = _activeFlowId,
+            X = source.X + PasteOffset,
+            Y = source.Y + PasteOffset,
+            Properties = new Dictionary<string, object?>(source.Properties)
+        };
+
+        _nodeConfigs[pasted.Id] = pasted;
+        RenderNode(pasted);
+        SelectNode(pasted.Id);
+        EmptyCanvasHint.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>

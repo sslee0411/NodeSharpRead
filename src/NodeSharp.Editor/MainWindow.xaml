@@ -28,6 +28,10 @@
   (EC-04) FlowCanvasView에 x:Name="FlowCanvas"를 붙여 코드비하인드에서 SaveFlowAsync()를 호출할 수
   있게 하고, "파일" 메뉴에 "저장" 항목(Click=OnSaveFlowClick)과 Ctrl+S 단축키(Window.InputBindings)를
   추가했다 — 둘 다 같은 저장 로직을 호출한다.
+  (EC-06) 빈 자리였던 "편집" 메뉴에 "복사"(Ctrl+C)/"붙여넣기"(Ctrl+V) 2개 항목을 채우고, Ctrl+S와
+  동일한 패턴(Window.InputBindings의 KeyBinding + Window.CommandBindings의 CommandBinding.Executed)으로
+  ApplicationCommands.Copy/Paste 단축키를 연결했다 — 메뉴 클릭과 단축키가 각각
+  OnCopyNodeClick/OnPasteNodeClick 하나씩을 공유한다.
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -41,12 +45,17 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         StateChanged="OnWindowStateChanged">
-    <!-- (EC-04) Ctrl+S로도 저장을 트리거 — 메뉴 클릭과 동일한 OnSaveFlowClick을 호출한다. -->
+    <!-- (EC-04) Ctrl+S로도 저장을 트리거 — 메뉴 클릭과 동일한 OnSaveFlowClick을 호출한다.
+         (EC-06) Ctrl+C/Ctrl+V도 같은 패턴으로 추가 — 각각 OnCopyNodeClick/OnPasteNodeClick 호출. -->
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Control" Command="{x:Static ApplicationCommands.Save}" />
+        <KeyBinding Key="C" Modifiers="Control" Command="{x:Static ApplicationCommands.Copy}" />
+        <KeyBinding Key="V" Modifiers="Control" Command="{x:Static ApplicationCommands.Paste}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Save}" Executed="OnSaveFlowClick" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Copy}" Executed="OnCopyNodeClick" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Paste}" Executed="OnPasteNodeClick" />
     </Window.CommandBindings>
     <shell:WindowChrome.WindowChrome>
         <!-- CaptionHeight를 아래 타이틀바 Row 높이(32)와 맞춰야 드래그 이동·더블클릭 최대화가
@@ -161,7 +170,10 @@
                 <MenuItem Header="파일">
                     <MenuItem Header="저장" InputGestureText="Ctrl+S" Click="OnSaveFlowClick" />
                 </MenuItem>
-                <MenuItem Header="편집" />
+                <MenuItem Header="편집">
+                    <MenuItem Header="복사" InputGestureText="Ctrl+C" Click="OnCopyNodeClick" />
+                    <MenuItem Header="붙여넣기" InputGestureText="Ctrl+V" Click="OnPasteNodeClick" />
+                </MenuItem>
                 <MenuItem Header="보기">
                     <MenuItem Header="Sequence Editor" Click="OnSequenceEditorEntryClick" />
                     <MenuItem Header="Dashboard" Click="OnDashboardEntryClick" />

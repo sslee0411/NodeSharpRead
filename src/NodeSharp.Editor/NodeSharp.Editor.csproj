@@ -356,6 +356,50 @@
       적다고 판단, 별도 마이그레이션 코드는 만들지 않음).
     - tools/check-xmldoc.py 오류 0건, 수정 2개 파일 중괄호 균형 확인 완료 — 이 세션도 샌드박스에
       .NET SDK가 없어 dotnet build/test는 사용자 로컬 확인 필요.
+
+    Step: EC-06 (03번 개발 Step맵.html, Phase 6 — 노드 복사/붙여넣기)
+    - 완료 기준: "복사·붙여넣기한 새 노드의 Id가 원본과 달리 재발급되고, 단축키로 동작하는지 확인"
+      (Ctrl+C/V, ID는 재발급, v1.7 확정). 착수 전 확인: 이 시점까지 카드 단일 클릭에는 아무 동작이
+      없었고(더블클릭만 OpenPropertyDialog로 반응) "선택"이라는 상태 자체가 코드에 없었음 — 복사할
+      대상을 지정하려면 선택 개념이 먼저 있어야 하므로, EC-06 범위를 "단일 노드 선택(클릭)
+      + Ctrl+C/V 복사·붙여넣기"로 판단(멀티 선택·러버밴드 드래그는 완료 기준에 없어 범위 밖, 낮은
+      리스크 판단이라 AskUserQuestion 없이 진행 — 필요해지면 NR-09 캔버스 UX 마감에서 재검토 가능).
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 수정 — 필드 _nodeCards(Dictionary&lt;Id,
+      Border&gt;, RenderNode가 채움 — 선택 시 테두리 강조 대상), _selectedNodeId(string?),
+      _clipboardNode(NodeConfig?), PasteOffset(상수, 24) 신규. OnCardMouseLeftButtonDown이 더 이상
+      더블클릭만 반응하지 않고 단일 클릭이면 SelectNode(nodeId)를 호출하도록 분기(어느 쪽이든
+      e.Handled=true로 NodeCanvas 배경 클릭 핸들러까지 버블링되지 않게 막음). SelectNode(string?)
+      신규 — 이전 선택 카드는 기본 BorderBrush/두께 1로 되돌리고 새로 선택된 카드는 AccentBrush/
+      두께 2로 강조. OnCanvasBackgroundMouseDown(NodeCanvas의 새 MouseLeftButtonDown) 신규 — 카드/
+      포트가 아닌 빈 배경을 클릭하면 SelectNode(null)로 선택 해제. CopySelectedNode()(공개) 신규 —
+      _selectedNodeId의 NodeConfig를 _clipboardNode에 복사, Properties(Dictionary, 참조 타입)는
+      새 Dictionary로 복제해 원본과 독립시킴(NodeConfig 자체 XML 문서의 "record 동등성 주의"와
+      같은 이유). PasteNode()(공개) 신규 — _clipboardNode를 "n{_nextNodeSeq++}"로 새 Id 재발급,
+      FlowId는 지금 활성 탭(_activeFlowId, 다른 탭으로 붙여넣는 것도 허용하는 자연스러운 설계),
+      X/Y는 PasteOffset만큼 대각선으로 어긋나게 놓아 원본과 완전히 겹치지 않게 하고 RenderNode 후
+      곧바로 SelectNode로 새 노드를 선택 상태로 만듦. SwitchToFlow가 탭 전환 시 _nodeCards.Clear()/
+      _selectedNodeId=null도 함께 초기화(카드 자체가 다시 그려지므로 이전 Border 참조가 무효화되고,
+      다른 탭 노드를 계속 "선택됨"으로 표시할 수 없음) — 단, _clipboardNode는 탭을 넘나들며 붙여넣을
+      수 있어야 하므로 여기서 지우지 않음.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml 수정 — NodeCanvas에
+      MouseLeftButtonDown="OnCanvasBackgroundMouseDown" 추가(기존 Drop/MouseMove/MouseLeftButtonUp과
+      같은 Canvas 엘리먼트, 서로 다른 이벤트라 충돌 없음).
+    - src\NodeSharp.Editor\MainWindow.xaml(.cs) 수정 — Ctrl+S와 동일한 패턴(Window.InputBindings의
+      KeyBinding + Window.CommandBindings의 CommandBinding, ExecutedRoutedEventArgs도
+      RoutedEventArgs 파생이라 ED-B2b/EC-04와 같은 델리게이트 반공변성 기법)으로
+      ApplicationCommands.Copy/Paste에 Ctrl+C/Ctrl+V를 연결. 그동안 비어 있던 "편집" 메뉴에 "복사"
+      (Ctrl+C)/"붙여넣기"(Ctrl+V) 2개 MenuItem 신규 추가. OnCopyNodeClick/OnPasteNodeClick 2개
+      메서드 신규 — 각각 FlowCanvas.CopySelectedNode()/FlowCanvas.PasteNode()를 호출, 메뉴 Click과
+      Ctrl+C/V 단축키가 하나씩 공유.
+    - tools/check-xmldoc.py XML 주석 파싱 오류 0건, 수정 4개 파일(FlowCanvasView.xaml.cs/
+      FlowCanvasView.xaml/MainWindow.xaml/MainWindow.xaml.cs) 전부 중괄호 균형·XML 정형성 확인
+      완료 — 이 세션도 샌드박스에 .NET SDK가 없어(dotnet: command not found) dotnet build/test는
+      실행하지 못했다(사용자 로컬 확인 필요).
+    - 완료 기준 확인은 WPF 창이 실제로 그려지고 클릭 선택·Ctrl+C/V가 동작하는지 봐야 해서 자동
+      검증 불가 — xUnit 없이 사용자가 Windows에서 직접 확인해야 한다(카드를 클릭해 테두리가
+      강조되는지 → 다른 카드/빈 배경을 클릭하면 선택이 옮겨가거나 해제되는지 → Ctrl+C 후 Ctrl+V로
+      새 카드가 원본과 다른 Id·살짝 어긋난 위치에 생기는지 → 편집 메뉴의 복사/붙여넣기 클릭도
+      동일하게 동작하는지).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

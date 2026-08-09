@@ -18,6 +18,10 @@
   "1호기 라인/2호기 라인/공통 알림/＋"와 동일한 위치(팔레트+캔버스 2단 영역 전체 위, 전체 폭). 탭
   버튼들은 코드비하인드(FlowCanvasView.xaml.cs)가 동적으로 그린다(RenderNode와 동일한 Border+
   TextBlock 즉석 생성 패턴, 별도 데이터 템플릿 없음).
+  (EC-06) NodeCanvas에 MouseLeftButtonDown(OnCanvasBackgroundMouseDown)을 추가했다 — 카드/포트
+  클릭은 각자 이벤트를 Handled 처리해 이 핸들러까지 올라오지 않으므로, 정말 빈 배경을 눌렀을
+  때만 실행되어 선택을 해제한다(코드비하인드 클래스 주석 참고, 카드 선택은 카드 자체의
+  MouseLeftButtonDown이 담당).
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.FlowCanvasView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -71,7 +75,8 @@
                             AllowDrop="True"
                             Drop="OnCanvasDrop"
                             MouseMove="OnCanvasMouseMove"
-                            MouseLeftButtonUp="OnCanvasMouseUp" />
+                            MouseLeftButtonUp="OnCanvasMouseUp"
+                            MouseLeftButtonDown="OnCanvasBackgroundMouseDown" />
                 </Grid>
             </Border>
         </Grid>
