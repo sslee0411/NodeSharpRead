@@ -55,6 +55,13 @@
   선택 시 ControlBackgroundBrush+AccentBrush 밑줄, 아니면 WindowBackgroundBrush+SecondaryTextBrush,
   호버 시 BorderBrush)/ThemedTabControlStyle(탭 스트립+본문 배경)을 새로 그려 TabControl.Style로
   교체했다 — 단순 속성 설정이 아니라 ControlTemplate 전체를 새로 그려야 실제로 반영된다.
+  (EC-12) 세 번째 탭 "Explorer"를 추가하고, Ctrl+F(ApplicationCommands.Find, Ctrl+S/C/V/Z/Y/G와
+  동일한 KeyBinding+CommandBinding 패턴)와 "편집" 메뉴의 "찾기" 항목이 공유하는 OnFindClick을
+  추가했다 — SidebarTabControl.SelectedItem을 ExplorerTab으로 바꾸고 ExplorerPanel.FocusSearchBox()를
+  호출해 탭 전환과 동시에 검색창에 포커스를 준다. ExplorerPanel의 QueryChanged/ResultActivated
+  이벤트를 각각 FlowCanvas.SearchNodes/FlowCanvas.NavigateToNode에 연결하는 OnExplorerQueryChanged/
+  OnExplorerResultActivated도 생성자에서 함께 구독한다(FlowCanvas.SelectionChanged 구독과 동일한
+  패턴).
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -74,7 +81,10 @@
          (EC-07) Ctrl+Z/Ctrl+Y도 같은 패턴으로 추가 — CommandBinding에 CanExecute까지 연결해
          Undo/Redo할 것이 없으면(FlowCanvas.CanUndo/CanRedo가 false) 명령 자체가 비활성화된다.
          (EC-10) Ctrl+G/Ctrl+Shift+G도 같은 패턴 — 단, ApplicationCommands에 없는 명령이라
-         EditorCommands(local:)에 직접 선언한 RoutedCommand를 대신 참조한다. -->
+         EditorCommands(local:)에 직접 선언한 RoutedCommand를 대신 참조한다.
+         (EC-12) Ctrl+F도 같은 패턴 — ApplicationCommands.Find(WPF 표준 명령, 기본 제스처 없음)를
+         명시적으로 바인딩해, Explorer 탭으로 전환 + 검색창 포커스를 트리거하는 OnFindClick 하나를
+         공유한다. -->
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Control" Command="{x:Static ApplicationCommands.Save}" />
         <KeyBinding Key="C" Modifiers="Control" Command="{x:Static ApplicationCommands.Copy}" />
@@ -83,6 +93,7 @@
         <KeyBinding Key="Y" Modifiers="Control" Command="{x:Static ApplicationCommands.Redo}" />
         <KeyBinding Key="G" Modifiers="Control" Command="{x:Static local:EditorCommands.GroupNodes}" />
         <KeyBinding Key="G" Modifiers="Control+Shift" Command="{x:Static local:EditorCommands.UngroupNodes}" />
+        <KeyBinding Key="F" Modifiers="Control" Command="{x:Static ApplicationCommands.Find}" />
     </Window.InputBindings>
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static ApplicationCommands.Save}" Executed="OnSaveFlowClick" />
@@ -92,6 +103,7 @@
         <CommandBinding Command="{x:Static ApplicationCommands.Redo}" Executed="OnRedoClick" CanExecute="OnRedoCanExecute" />
         <CommandBinding Command="{x:Static local:EditorCommands.GroupNodes}" Executed="OnGroupNodesClick" />
         <CommandBinding Command="{x:Static local:EditorCommands.UngroupNodes}" Executed="OnUngroupNodesClick" />
+        <CommandBinding Command="{x:Static ApplicationCommands.Find}" Executed="OnFindClick" />
     </Window.CommandBindings>
     <shell:WindowChrome.WindowChrome>
         <!-- CaptionHeight를 아래 타이틀바 Row 높이(32)와 맞춰야 드래그 이동·더블클릭 최대화가
@@ -275,6 +287,8 @@
                     <Separator />
                     <MenuItem Header="그룹으로 묶기" InputGestureText="Ctrl+G" Click="OnGroupNodesClick" />
                     <MenuItem Header="그룹 해제" InputGestureText="Ctrl+Shift+G" Click="OnUngroupNodesClick" />
+                    <Separator />
+                    <MenuItem Header="찾기" InputGestureText="Ctrl+F" Command="{x:Static ApplicationCommands.Find}" />
                 </MenuItem>
                 <MenuItem Header="보기">
                     <MenuItem Header="Sequence Editor" Click="OnSequenceEditorEntryClick" />
@@ -331,14 +345,22 @@
                      설명·HelpText/Example·인스턴스 설명 표시)을 탭으로 공존시킨다 — 배치 확인
                      AskUserQuestion에서 "StructureView 자리에 탭 추가" 옵션 채택. (v2.65 버그 수정)
                      Background/Foreground 직접 지정 대신 ThemedTabControlStyle(위 Window.Resources)을
-                     써야 탭 헤더까지 테마가 반영된다 — WPF 기본 템플릿은 그 두 속성을 무시한다. -->
-                <TabControl Grid.Column="2"
+                     써야 탭 헤더까지 테마가 반영된다 — WPF 기본 템플릿은 그 두 속성을 무시한다.
+                     (EC-12) 세 번째 탭 "Explorer"(신규, Ctrl+F 캔버스 노드 검색)를 EC-11에서 미리
+                     예상했던 대로 탭만 추가해 그대로 확장했다(별도 AskUserQuestion 없이 진행 — v2.63
+                     README에 이미 "EC-12 Explorer 통합 시에도 탭만 늘리면 됨"이라고 명시해둔 낮은
+                     리스크 결정). -->
+                <TabControl x:Name="SidebarTabControl"
+                            Grid.Column="2"
                             Style="{StaticResource ThemedTabControlStyle}">
                     <TabItem Header="구조 설정">
                         <views:StructureView />
                     </TabItem>
                     <TabItem Header="Information">
                         <views:InformationPanelView x:Name="InformationPanel" />
+                    </TabItem>
+                    <TabItem x:Name="ExplorerTab" Header="Explorer">
+                        <views:ExplorerPanelView x:Name="ExplorerPanel" />
                     </TabItem>
                 </TabControl>
             </Grid>

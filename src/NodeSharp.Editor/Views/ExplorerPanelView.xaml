@@ -1,0 +1,44 @@
+<!--
+  ExplorerPanelView.xaml
+  ====================
+  (EC-12) Node-RED 5.0의 "Explorer" 사이드바(02번 문서 9번 탭 카드16)에 대응 — EC-11 Information과
+  짝을 이루는 세 번째 탭으로 MainWindow의 TabControl에 배치된다. 위쪽 검색창(TextBox)에 이름/속성
+  값을 입력하면(Ctrl+F로 이 탭에 포커스가 이동한 뒤 바로 입력 가능) 아래에 일치하는 노드 목록이
+  Flow 탭·타입과 함께 나타나고, 클릭하면 그 탭으로 전환 + 노드가 하이라이트된다.
+-->
+<UserControl x:Class="NodeSharp.Editor.Views.ExplorerPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{DynamicResource ControlBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBox x:Name="QueryBox"
+                 Grid.Row="0"
+                 Margin="8"
+                 Background="{DynamicResource WindowBackgroundBrush}"
+                 Foreground="{DynamicResource PrimaryTextBrush}"
+                 BorderBrush="{DynamicResource BorderBrush}"
+                 TextChanged="OnQueryTextChanged" />
+
+        <!-- 검색어가 비어 있거나 일치하는 노드가 없을 때 보이는 안내 문구. -->
+        <TextBlock x:Name="EmptyHint"
+                   Grid.Row="1"
+                   Text="이름이나 속성 값을 입력하면 캔버스에 이미 배치된 노드를 여러 Flow 탭에 걸쳐 찾습니다."
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   TextWrapping="Wrap"
+                   Margin="10"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+
+        <!-- 검색 결과가 있을 때 코드비하인드(ShowResults)가 채우는 목록. -->
+        <ScrollViewer x:Name="ResultsScroll"
+                      Grid.Row="1"
+                      Visibility="Collapsed"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ResultsPanel" Margin="6" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

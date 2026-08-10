@@ -37,18 +37,29 @@ namespace NodeSharp.Editor;
 /// (EC-11) 우측 패널이 TabControl("구조 설정"/"Information")로 바뀌면서, 생성자에서
 /// <c>FlowCanvas.SelectionChanged</c>를 <see cref="OnCanvasSelectionChanged"/>에 구독해 캔버스에서
 /// 선택이 바뀔 때마다 <c>InformationPanel.Update(...)</c>를 호출하도록 연결했습니다.
+/// (EC-12) 세 번째 탭 "Explorer"가 추가되면서, 같은 패턴으로 생성자에서
+/// <c>ExplorerPanel.QueryChanged</c>/<c>ResultActivated</c>를 각각 <see cref="OnExplorerQueryChanged"/>/
+/// <see cref="OnExplorerResultActivated"/>에 구독했습니다 — 검색어가 바뀔 때마다
+/// <c>FlowCanvas.SearchNodes(...)</c>를 호출해 결과를 <c>ExplorerPanel.ShowResults(...)</c>로
+/// 넘기고, 결과를 클릭하면 <c>FlowCanvas.NavigateToNode(...)</c>로 해당 Flow 탭 전환 + 노드
+/// 하이라이트를 트리거합니다. "편집 → 찾기"/Ctrl+F(<c>ApplicationCommands.Find</c>)가 공유하는
+/// <see cref="OnFindClick"/>은 <c>SidebarTabControl.SelectedItem</c>을 <c>ExplorerTab</c>으로 바꾸고
+/// <c>ExplorerPanel.FocusSearchBox()</c>를 호출해 탭 전환과 동시에 검색창에 포커스를 줍니다.
 /// </summary>
 public partial class MainWindow : Window
 {
     /// <summary>
     /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-11) <c>FlowCanvas</c>는
     /// <c>InitializeComponent</c> 직후 이미 생성돼 있으므로(x:Name 필드), <see cref="Window.Loaded"/>를
-    /// 기다리지 않고 바로 <c>SelectionChanged</c>를 구독합니다.
+    /// 기다리지 않고 바로 <c>SelectionChanged</c>를 구독합니다. (EC-12) <c>ExplorerPanel</c>의
+    /// <c>QueryChanged</c>/<c>ResultActivated</c>도 같은 방식으로 함께 구독합니다.
     /// </summary>
     public MainWindow()
     {
         InitializeComponent();
         FlowCanvas.SelectionChanged += OnCanvasSelectionChanged;
+        ExplorerPanel.QueryChanged += OnExplorerQueryChanged;
+        ExplorerPanel.ResultActivated += OnExplorerResultActivated;
     }
 
     /// <summary>
@@ -58,6 +69,35 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnCanvasSelectionChanged(NodeConfig? config, INodeTypeDescriptor? descriptor) =>
         InformationPanel.Update(config, descriptor);
+
+    /// <summary>
+    /// (EC-12) <c>ExplorerPanel.QueryChanged</c>(검색창 텍스트가 바뀔 때마다)가 발생하면
+    /// <c>FlowCanvas.SearchNodes(query)</c>로 모든 Flow 탭에 걸쳐 노드를 찾고, 그 결과를
+    /// <c>ExplorerPanel.ShowResults(...)</c>로 그대로 넘겨 화면을 갱신합니다.
+    /// </summary>
+    private void OnExplorerQueryChanged(string query) =>
+        ExplorerPanel.ShowResults(FlowCanvas.SearchNodes(query));
+
+    /// <summary>
+    /// (EC-12) <c>ExplorerPanel.ResultActivated</c>(검색 결과 하나를 클릭하면 (FlowId, NodeId))가
+    /// 발생하면 <c>FlowCanvas.NavigateToNode(flowId, nodeId)</c>를 그대로 위임 호출해, 해당 Flow
+    /// 탭으로 전환하고 노드를 선택 상태로 만들어 하이라이트합니다(완료 기준).
+    /// </summary>
+    private void OnExplorerResultActivated(string flowId, string nodeId) =>
+        FlowCanvas.NavigateToNode(flowId, nodeId);
+
+    /// <summary>
+    /// (EC-12) "편집 → 찾기" 메뉴 Click과 Ctrl+F(<c>ApplicationCommands.Find</c>의
+    /// <c>CommandBinding.Executed</c>)가 공유하는 핸들러입니다. <c>SidebarTabControl.SelectedItem</c>을
+    /// <c>ExplorerTab</c>으로 바꿔 Explorer 탭을 화면에 띄우고, <c>ExplorerPanel.FocusSearchBox()</c>를
+    /// 호출해 검색창에 곧바로 포커스를 줍니다(탭을 직접 클릭할 필요 없이 Ctrl+F 한 번으로 바로
+    /// 검색어를 입력할 수 있게 하기 위함).
+    /// </summary>
+    private void OnFindClick(object sender, RoutedEventArgs e)
+    {
+        SidebarTabControl.SelectedItem = ExplorerTab;
+        ExplorerPanel.FocusSearchBox();
+    }
 
     /// <summary>
     /// (ED-B2b) 헤더 "보기 → Sequence Editor" 메뉴와 좌측 네비게이션 "Sequence" 항목이 공유하는

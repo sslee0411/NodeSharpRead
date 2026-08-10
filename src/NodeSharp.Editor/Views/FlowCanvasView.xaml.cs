@@ -101,6 +101,12 @@ namespace NodeSharp.Editor.Views;
 /// <c>(null, null)</c>을 전달합니다 — <c>MainWindow</c>가 이 이벤트를 <see cref="Views.InformationPanelView"/>(우측
 /// "Information" 탭, 02번 문서 9번 탭 카드16의 Node-RED 5.0 명칭 채택)에 연결해 선택한 노드 타입의
 /// HelpText/Example과 인스턴스 Description을 읽기 전용으로 보여줍니다.
+/// (EC-12) <see cref="SearchNodes"/>(공개)가 모든 Flow 탭에 걸쳐 노드 이름/속성 값을 대소문자 구분
+/// 없이 검색해 <see cref="NodeSearchResult"/> 목록을 돌려줍니다 — <c>MainWindow</c>가 Ctrl+F로
+/// <see cref="Views.ExplorerPanelView"/>(EC-11 Information과 짝을 이루는 "Explorer 패널", 같은
+/// TabControl의 세 번째 탭)의 검색어 변경 이벤트를 이 메서드에 연결합니다. 결과를 클릭하면
+/// <see cref="NavigateToNode"/>(공개)가 해당 Flow 탭으로 전환하고(접힌 그룹 소속이면 먼저 펼치고)
+/// <see cref="SelectNode"/>로 선택 상태를 줘 하이라이트합니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -1212,6 +1218,75 @@ public partial class FlowCanvasView : UserControl
         }
 
         RedrawActiveTab();
+    }
+
+    /// <summary>
+    /// (EC-12) 모든 Flow 탭(EC-05)에 걸쳐 노드 이름(<see cref="NodeConfig.Name"/>) 또는 속성 값
+    /// (<see cref="NodeConfig.Properties"/>)에 <paramref name="query"/>가 대소문자 구분 없이 포함된
+    /// 노드를 찾습니다 — Ctrl+F(<c>MainWindow</c>)로 Explorer 패널이 이 메서드를 호출합니다.
+    /// <paramref name="query"/>가 비어 있으면 빈 목록을 돌려줍니다(검색창이 비었을 때 노드 전체를
+    /// 나열하지 않도록). Properties 값은 flows.json에서 막 불러온 직후엔
+    /// <see cref="System.Text.Json.JsonElement"/>, 방금 편집한 직후엔 일반 <c>string</c>일 수 있어(
+    /// <see cref="NodeConfig"/> 자체 문서의 "Properties 역직렬화 주의" 참고) 타입을 가리지 않고
+    /// <c>ToString()</c>으로 통일해 비교합니다 — Ctrl+F는 Node-RED에서도 필드 타입을 구분하지 않는
+    /// 단순 텍스트 검색이라 이 정도 정밀도로 충분하다고 판단했습니다.
+    /// </summary>
+    public IReadOnlyList<NodeSearchResult> SearchNodes(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return Array.Empty<NodeSearchResult>();
+        }
+
+        var results = new List<NodeSearchResult>();
+        foreach (var node in _nodeConfigs.Values)
+        {
+            var nameMatch = node.Name.Contains(query, StringComparison.OrdinalIgnoreCase);
+            var propertyMatch = node.Properties.Values.Any(value =>
+                value is not null && value.ToString()!.Contains(query, StringComparison.OrdinalIgnoreCase));
+
+            if (!nameMatch && !propertyMatch)
+            {
+                continue;
+            }
+
+            var flowName = _flowTabs.FirstOrDefault(tab => tab.Id == node.FlowId)?.Name ?? node.FlowId;
+            results.Add(new NodeSearchResult(node.FlowId, flowName, node.Id, node.Name, node.Type));
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// (EC-12) Explorer 패널의 검색 결과 하나를 클릭했을 때 호출됩니다 — <paramref name="nodeId"/>가
+    /// 속한 Flow 탭으로 전환하고(다른 탭이면 <see cref="SwitchToFlow"/>), 그 노드가 접힌 그룹
+    /// (<see cref="GroupDefinition.Collapsed"/>) 소속이면 카드가 실제로 보이도록 먼저 펼친 뒤,
+    /// <see cref="SelectNode"/>로 선택 상태(<c>AccentBrush</c> 테두리)를 줘 완료 기준의 "노드가
+    /// 하이라이트"를 만족시킵니다. <paramref name="nodeId"/>가 이미 삭제됐거나 존재하지 않으면 아무
+    /// 것도 하지 않습니다.
+    /// </summary>
+    public void NavigateToNode(string flowId, string nodeId)
+    {
+        if (!_nodeConfigs.ContainsKey(nodeId))
+        {
+            return;
+        }
+
+        if (_activeFlowId != flowId)
+        {
+            SwitchToFlow(flowId);
+        }
+
+        // 접힌 그룹 소속이면 먼저 펼친다 — 그렇지 않으면 RedrawActiveTab이 그 카드 자체를 그리지
+        // 않아(EC-10) SelectNode로 선택해도 화면에 아무 것도 강조되지 않는다.
+        var containingGroup = _groups.Values.FirstOrDefault(g => g.Collapsed && g.MemberNodeIds.Contains(nodeId));
+        if (containingGroup is not null)
+        {
+            _groups[containingGroup.Id] = containingGroup with { Collapsed = false };
+            RedrawActiveTab();
+        }
+
+        SelectNode(nodeId);
     }
 
     /// <summary>
