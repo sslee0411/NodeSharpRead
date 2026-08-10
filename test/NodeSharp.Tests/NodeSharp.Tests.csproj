@@ -11,6 +11,10 @@
       없는 구조적 공백을 발견해 이 Step으로 앞당겼다(README v1.46, 03번 문서 v1.21 근거).
     - OP-06은 이 프로젝트의 신규 생성이 아니라, 그동안 누적된 테스트가 CI에서 한 번에
       통과하는지 확인하고 커버리지 설정을 추가하는 역할로 범위가 조정되었다.
+
+    Step: NR-03a (03번 개발 Step맵.html, Phase 7)
+    - InjectNode(Inject 노드의 첫 구현체)를 실제 FlowEngine 배포·라우팅 경로로 검증하기 위해
+      nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -51,6 +55,9 @@
          Runner는 OutputType=Exe(콘솔/Worker Service)지만 ProjectReference로 그 안의 public 타입을
          그대로 테스트할 수 있음(Program.cs 최상위 문의 진입점은 호출하지 않고 Worker 클래스만 사용). -->
     <ProjectReference Include="..\..\src\NodeSharp.Runner\NodeSharp.Runner.csproj" />
+    <!-- NR-03a(03번 개발 Step맵.html) — InjectNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
+         배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj" />
   </ItemGroup>
 
 </Project>
