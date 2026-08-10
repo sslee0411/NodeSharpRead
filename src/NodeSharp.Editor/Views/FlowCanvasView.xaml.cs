@@ -64,6 +64,13 @@ namespace NodeSharp.Editor.Views;
 /// Ctrl+Y — <c>MainWindow</c>가 호출)가 <see cref="_history"/>를 그대로 위임합니다. 탭 관리(추가/
 /// 전환/삭제, EC-05)는 이 Undo 대상에 포함하지 않습니다(설계 근거: 03번 Step맵 EC-07 desc "캔버스
 /// 커맨드부터 시작" — 구조 트리 커맨드 공유는 ED-D13 범위).
+/// (EC-08) <see cref="RenderNode"/>가 카드를 그릴 때마다 <c>config.Type</c>이 <see cref="_registry"/>
+/// (Descriptors)에 있는지 확인합니다 — 없으면 <c>RT-02a</c>의 <c>MissingNode</c>와 같은 개념
+/// ("존재하지 않는 노드 타입")을 Editor 쪽에서 독립적으로 판정해 제목을 "⚠ {Type}", 부제목을
+/// "missing type"으로 바꾸고 <see cref="ApplyCardBorder"/>가 <c>RedBrush</c>로 테두리를 강조합니다.
+/// Editor와 Runner는 별도 프로세스(ED-B0.6 결정)이므로 실제 배포 결과를 기다리지 않고, flows.json을
+/// 불러오거나 캔버스를 다시 그릴 때마다 이 뷰 자신의 <c>NodeTypeRegistry</c> 기준으로 매번 다시
+/// 판정합니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -518,40 +525,63 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// <paramref name="config"/>를 나타내는 작은 카드(Border+TextBlock)를 <see cref="NodeConfig.X"/>/
-    /// <see cref="NodeConfig.Y"/> 중심으로 <c>NodeCanvas</c>에 추가하고(EC-01b), 좌우에 입력/출력
-    /// 포트 Ellipse를 붙입니다(EC-02, <see cref="AddPortEllipse"/>). 카드 크기가 고정이라
+    /// (EC-01b~EC-02, EC-08 확장) <paramref name="config"/>를 나타내는 작은 카드(Border+TextBlock)를
+    /// <see cref="NodeConfig.X"/>/<see cref="NodeConfig.Y"/> 중심으로 <c>NodeCanvas</c>에 추가하고,
+    /// 좌우에 입력/출력 포트 Ellipse를 붙입니다(<see cref="AddPortEllipse"/>). 카드 크기가 고정이라
     /// (<see cref="NodeCardWidth"/>/<see cref="NodeCardHeight"/>) WPF 레이아웃 측정을 기다리지
     /// 않고도 포트 좌표를 바로 계산할 수 있습니다. (EC-05) 이 메서드는 <paramref name="config"/>.FlowId가
-    /// 현재 활성 탭인지 확인하지 않습니다 — 호출부(<see cref="OnCanvasDrop"/>/<see cref="SwitchToFlow"/>)가
-    /// 항상 활성 탭에 속한 노드만 넘겨준다는 것을 전제로 합니다.
+    /// 현재 활성 탭인지 확인하지 않습니다 — 호출부(<see cref="OnCanvasDrop"/>/<see cref="RedrawActiveTab"/>)가
+    /// 항상 활성 탭에 속한 노드만 넘겨준다는 것을 전제로 합니다. (EC-08) <paramref name="config"/>.Type이
+    /// <see cref="_registry"/>에 등록돼 있지 않으면(RT-02a <c>MissingNode</c>와 동일한 판정 —
+    /// Editor는 Runner와 별도 프로세스라 실제 배포 결과 대신 이 뷰의 자체 <c>NodeTypeRegistry</c>로
+    /// "타입을 찾을 수 없음"을 독립적으로 판단합니다) 제목을 "⚠ {Type}"으로, 부제목을 "missing type"으로
+    /// 바꿔 표시하고(12번 탭 카드2 목업 <c>mock-node err</c>와 동일한 문구), 테두리는
+    /// <see cref="ApplyCardBorder"/>가 <c>RedBrush</c>로 강조합니다.
     /// </summary>
     private void RenderNode(NodeConfig config)
     {
         var left = Math.Max(0, config.X - NodeCardWidth / 2);
         var top = Math.Max(0, config.Y - NodeCardHeight / 2);
 
+        // (EC-08) Editor 자체 레지스트리 기준의 "타입 없음" 판정 — RT-02a의 MissingNode와 같은 개념을
+        // Runner 배포 결과를 기다리지 않고 Editor 쪽에서 독립적으로 판단한다(위 클래스 주석 참고).
+        var isMissing = !_registry.Descriptors.ContainsKey(config.Type);
+
         var label = new TextBlock
         {
-            Text = config.Name,
-            Foreground = (Brush)FindResource("PrimaryTextBrush"),
+            Text = isMissing ? $"⚠ {config.Type}" : config.Name,
+            Foreground = (Brush)FindResource(isMissing ? "RedBrush" : "PrimaryTextBrush"),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(4)
+            Margin = new Thickness(4, 4, 4, isMissing ? 0 : 4)
         };
+
+        // (EC-08) 알 수 없는 타입일 때만 "missing type" 부제목을 라벨 아래에 추가한다(12번 탭 카드2
+        // 목업 mock-node의 .t/.s 두 줄 구성과 동일) — 정상 노드는 기존과 동일하게 라벨 한 줄만 표시.
+        FrameworkElement cardContent = label;
+        if (isMissing)
+        {
+            var subtitle = new TextBlock
+            {
+                Text = "missing type",
+                FontSize = 9,
+                Foreground = (Brush)FindResource("SecondaryTextBrush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(4, 0, 4, 2)
+            };
+            cardContent = new StackPanel { Children = { label, subtitle } };
+        }
 
         var card = new Border
         {
             Width = NodeCardWidth,
             Height = NodeCardHeight,
             Background = (Brush)FindResource("ControlBackgroundBrush"),
-            BorderBrush = (Brush)FindResource("BorderBrush"),
-            BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
             Cursor = Cursors.Arrow,
             Tag = config.Id,
-            Child = label
+            Child = cardContent
         };
         card.MouseLeftButtonDown += OnCardMouseLeftButtonDown;
 
@@ -560,9 +590,11 @@ public partial class FlowCanvasView : UserControl
         NodeCanvas.Children.Add(card);
         _nodeLabels[config.Id] = label;
         _nodeCards[config.Id] = card; // (EC-06) 선택 시 테두리 강조를 위해 Border 참조를 보관
+        ApplyCardBorder(config.Id, card, selected: false); // (EC-08) 최초 테두리도 선택/누락 상태에 맞춰 설정
 
         // EC-02 범위: 지금은 모든 노드를 입력 1개·출력 1개로 고정한다(클래스 주석 참고 — Phase 7
-        // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정).
+        // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정, MissingNode의 실제
+        // 포트 0개(위 클래스 주석) 반영도 같은 Phase 7 이후 범위).
         const int inputs = 1;
         const int outputs = 1;
 
@@ -739,25 +771,54 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-06) <paramref name="nodeId"/>를 선택 상태로 만들고(<c>null</c>이면 선택 해제) 카드
-    /// 테두리로 그 상태를 표시합니다 — 이전에 선택돼 있던 카드는 기본 <c>BorderBrush</c>/두께 1로
-    /// 되돌리고, 새로 선택된 카드는 <c>AccentBrush</c>/두께 2로 강조합니다. <see cref="_nodeCards"/>에
-    /// 없는 Id(이미 지워졌거나 다른 탭 소속)가 들어오면 그 카드에 대한 강조만 건너뜁니다.
+    /// (EC-06, EC-08 확장) <paramref name="nodeId"/>를 선택 상태로 만들고(<c>null</c>이면 선택 해제)
+    /// <see cref="ApplyCardBorder"/>로 카드 테두리를 그 상태에 맞게 다시 칠합니다 — 이전에 선택돼
+    /// 있던 카드는 선택 해제 상태로(기본 <c>BorderBrush</c>, 단 알 수 없는 타입이면 <c>RedBrush</c>가
+    /// 우선), 새로 선택된 카드는 <c>AccentBrush</c>로 강조합니다. <see cref="_nodeCards"/>에 없는
+    /// Id(이미 지워졌거나 다른 탭 소속)가 들어오면 그 카드에 대한 강조만 건너뜁니다.
     /// </summary>
     private void SelectNode(string? nodeId)
     {
         if (_selectedNodeId is { } previousId && _nodeCards.TryGetValue(previousId, out var previousCard))
         {
-            previousCard.BorderBrush = (Brush)FindResource("BorderBrush");
-            previousCard.BorderThickness = new Thickness(1);
+            ApplyCardBorder(previousId, previousCard, selected: false);
         }
 
         _selectedNodeId = nodeId;
 
         if (nodeId is not null && _nodeCards.TryGetValue(nodeId, out var card))
         {
+            ApplyCardBorder(nodeId, card, selected: true);
+        }
+    }
+
+    /// <summary>
+    /// (EC-08) <paramref name="card"/>의 테두리를 상태 우선순위(선택 &gt; 알 수 없는 타입 &gt; 기본)에
+    /// 따라 정합니다 — <see cref="RenderNode"/>(최초 렌더링)와 <see cref="SelectNode"/>(선택/해제)
+    /// 양쪽이 이 메서드 하나를 공유해 테두리 규칙이 한 곳에만 있도록 합니다. <paramref name="selected"/>가
+    /// <c>true</c>이면 무조건 <c>AccentBrush</c>/두께 2로 강조하고, 아니면 <paramref name="nodeId"/>의
+    /// <see cref="NodeConfig.Type"/>이 <see cref="_registry"/>에 없을 때(EC-08 "누락 노드") <c>RedBrush</c>/
+    /// 두께 2로, 그 외에는 기본 <c>BorderBrush</c>/두께 1로 되돌립니다.
+    /// </summary>
+    private void ApplyCardBorder(string nodeId, Border card, bool selected)
+    {
+        if (selected)
+        {
             card.BorderBrush = (Brush)FindResource("AccentBrush");
             card.BorderThickness = new Thickness(2);
+            return;
+        }
+
+        var isMissing = _nodeConfigs.TryGetValue(nodeId, out var config) && !_registry.Descriptors.ContainsKey(config.Type);
+        if (isMissing)
+        {
+            card.BorderBrush = (Brush)FindResource("RedBrush");
+            card.BorderThickness = new Thickness(2);
+        }
+        else
+        {
+            card.BorderBrush = (Brush)FindResource("BorderBrush");
+            card.BorderThickness = new Thickness(1);
         }
     }
 
