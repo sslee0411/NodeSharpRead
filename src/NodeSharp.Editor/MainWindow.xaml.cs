@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
+using NodeSharp.Contracts.Interfaces;
+using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Editor;
 
@@ -32,14 +34,30 @@ namespace NodeSharp.Editor;
 /// 각각 <c>FlowCanvas.GroupSelectedNodes()</c>/<c>FlowCanvas.UngroupSelectedGroup()</c>를
 /// 호출합니다. WPF ApplicationCommands에는 대응하는 표준 명령이 없어 <see cref="EditorCommands"/>에
 /// 직접 선언한 <see cref="RoutedCommand"/> 2개(GroupNodes/UngroupNodes)를 대신 씁니다.
+/// (EC-11) 우측 패널이 TabControl("구조 설정"/"Information")로 바뀌면서, 생성자에서
+/// <c>FlowCanvas.SelectionChanged</c>를 <see cref="OnCanvasSelectionChanged"/>에 구독해 캔버스에서
+/// 선택이 바뀔 때마다 <c>InformationPanel.Update(...)</c>를 호출하도록 연결했습니다.
 /// </summary>
 public partial class MainWindow : Window
 {
-    /// <summary>XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴).</summary>
+    /// <summary>
+    /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-11) <c>FlowCanvas</c>는
+    /// <c>InitializeComponent</c> 직후 이미 생성돼 있으므로(x:Name 필드), <see cref="Window.Loaded"/>를
+    /// 기다리지 않고 바로 <c>SelectionChanged</c>를 구독합니다.
+    /// </summary>
     public MainWindow()
     {
         InitializeComponent();
+        FlowCanvas.SelectionChanged += OnCanvasSelectionChanged;
     }
+
+    /// <summary>
+    /// (EC-11) <c>FlowCanvas.SelectionChanged</c>가 발생할 때마다(선택/해제/다중 선택/탭 전환·Undo·
+    /// Redo로 인한 재렌더링) <c>InformationPanel.Update(...)</c>를 그대로 위임 호출합니다 — 정확히
+    /// 노드 하나가 선택돼 있으면 그 정보를, 아니면 안내 문구로 되돌립니다.
+    /// </summary>
+    private void OnCanvasSelectionChanged(NodeConfig? config, INodeTypeDescriptor? descriptor) =>
+        InformationPanel.Update(config, descriptor);
 
     /// <summary>
     /// (ED-B2b) 헤더 "보기 → Sequence Editor" 메뉴와 좌측 네비게이션 "Sequence" 항목이 공유하는

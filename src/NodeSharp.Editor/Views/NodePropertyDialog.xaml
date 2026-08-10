@@ -8,6 +8,11 @@
   목록(구조 설정 데이터)은 Phase 9 이후에나 채워지므로 지금은 빈 콤보박스로 표시된다(카드3 목업의
   <select disabled>와 같은 취지). 메인 창과 달리 커스텀 타이틀바(ED-B3)는 적용하지 않음 — 모달
   다이얼로그는 OS 기본 창 틀로도 목업(카드3)이 요구하는 모습과 다르지 않다.
+  (EC-11) 이름 아래에 "설명"(NodeConfig.Description) 여러 줄 텍스트박스를 고정 필드로 추가 — 02번
+  문서 9번 탭 카드16이 "노드 편집 다이얼로그에 설명 탭을 추가하면 문서 배지가 표시되고 클릭 시
+  팝업으로 보여준다"고 명시한 값으로, PropertySchema 소속 필드가 아니라 이름과 동일하게 고정 위치에
+  둔다(탭이 아니라 폼 상단 필드로 구현 — 이미 폼 자체가 모달 하나뿐이라 별도 탭 컨트롤을 새로
+  두는 것보다 이름 옆에 나란히 두는 편이 더 단순함).
 -->
 <Window x:Class="NodeSharp.Editor.Views.NodePropertyDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -19,6 +24,7 @@
         Background="{DynamicResource WindowBackgroundBrush}">
     <Grid Margin="14">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
@@ -33,12 +39,26 @@
                      BorderBrush="{DynamicResource BorderBrush}" />
         </StackPanel>
 
+        <!-- (EC-11) 설명 — NodeConfig.Description. 채워두면 캔버스 카드에 문서 배지가 표시되고
+             클릭 시 팝업으로 이 텍스트를 그대로 보여준다. -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,12">
+            <TextBlock Text="설명" Foreground="{DynamicResource PrimaryTextBrush}" FontWeight="SemiBold" />
+            <TextBox x:Name="DescriptionBox"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="60"
+                     VerticalScrollBarVisibility="Auto"
+                     Background="{DynamicResource ControlBackgroundBrush}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     BorderBrush="{DynamicResource BorderBrush}" />
+        </StackPanel>
+
         <!-- PropertySchema 필드는 코드비하인드 BuildFields가 여기에 동적으로 채운다. -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="360">
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" MaxHeight="360">
             <StackPanel x:Name="FieldsPanel" />
         </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
             <Button x:Name="CancelButton" Content="취소" Width="70" Margin="0,0,8,0" Click="OnCancelClick" />
             <Button x:Name="OkButton" Content="완료" Width="70" Click="OnOkClick" />
         </StackPanel>

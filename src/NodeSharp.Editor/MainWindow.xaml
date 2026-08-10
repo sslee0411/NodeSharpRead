@@ -42,6 +42,12 @@
   ApplicationCommands에는 대응하는 표준 명령이 없어 EditorCommands.cs에 RoutedCommand 2개를 새로
   선언(xmlns:local="clr-namespace:NodeSharp.Editor")하고, Ctrl+S/C/V와 동일한 KeyBinding+
   CommandBinding 패턴으로 연결했다.
+  (EC-11) 우측 320px 고정폭 패널이던 StructureView 자리를 TabControl로 바꿔 "구조 설정"/"Information"
+  2개 탭으로 공존시켰다(AskUserQuestion으로 확인한 3가지 배치안 중 "StructureView 자리에 탭 추가"
+  옵션 채택 — 창 폭이 좁아지지 않고, 02번 문서 9번 탭 카드16의 EC-12(Explorer) 통합 시에도 탭만
+  늘리면 됨). 신규 InformationPanelView를 두 번째 탭에 배치하고, FlowCanvas.SelectionChanged
+  이벤트를 OnCanvasSelectionChanged로 연결해(Loaded 핸들러에서 구독) 캔버스 선택이 바뀔 때마다 즉시
+  갱신한다.
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -254,7 +260,19 @@
                                Background="{DynamicResource BorderBrush}"
                                ShowsPreview="True" />
 
-                <views:StructureView Grid.Column="2" />
+                <!-- (EC-11) "구조 설정"(기존 StructureView)과 "Information"(신규, 선택 노드의 타입
+                     설명·HelpText/Example·인스턴스 설명 표시)을 탭으로 공존시킨다 — 배치 확인
+                     AskUserQuestion에서 "StructureView 자리에 탭 추가" 옵션 채택. -->
+                <TabControl Grid.Column="2"
+                            Background="{DynamicResource ControlBackgroundBrush}"
+                            Foreground="{DynamicResource PrimaryTextBrush}">
+                    <TabItem Header="구조 설정">
+                        <views:StructureView />
+                    </TabItem>
+                    <TabItem Header="Information">
+                        <views:InformationPanelView x:Name="InformationPanel" />
+                    </TabItem>
+                </TabControl>
             </Grid>
         </Grid>
     </Grid>

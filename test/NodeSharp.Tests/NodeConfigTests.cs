@@ -33,6 +33,9 @@ public class NodeConfigTests
         // (EC-04) X/Y도 생략하면 0이어야 한다(캔버스 좌표 미지정 상태의 기본값).
         Assert.Equal(0, config.X);
         Assert.Equal(0, config.Y);
+
+        // (EC-11) Description도 생략하면 null이어야 한다(문서 배지를 표시하지 않는 기본 상태).
+        Assert.Null(config.Description);
     }
 
     [Fact]
@@ -52,6 +55,23 @@ public class NodeConfigTests
         Assert.NotNull(restored);
         Assert.Equal(original.X, restored!.X);
         Assert.Equal(original.Y, restored.Y);
+    }
+
+    [Fact]
+    public void EC11_Description이_SystemTextJson_왕복에서_보존된다()
+    {
+        // (EC-11) 노드 편집 다이얼로그의 "설명" 입력값이 flows.json 저장/로드를 거쳐도 그대로
+        // 남아있어야 캔버스 카드의 문서 배지가 재로드 후에도 유지된다.
+        var original = new NodeConfig(
+            Id: "n1", Type: "function", Name: "온도 변환", FlowId: "f1",
+            Properties: new Dictionary<string, object?>(),
+            Description: "화씨로 변환하는 노드입니다.");
+
+        var json = JsonSerializer.Serialize(original);
+        var restored = JsonSerializer.Deserialize<NodeConfig>(json);
+
+        Assert.NotNull(restored);
+        Assert.Equal(original.Description, restored!.Description);
     }
 
     [Fact]

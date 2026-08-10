@@ -18,6 +18,9 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="UpdatedConfig"/>에 담고 <see cref="Window.DialogResult"/>를 true로 닫습니다. "취소"를
 /// 누르면 아무 것도 만들지 않고 닫습니다. TagRef는 이 Step 요구대로 ComboBox로 렌더링하지만, 실제
 /// 태그 목록(구조 설정 데이터)은 Phase 9 이후에나 채워지므로 지금은 빈 콤보박스로 표시됩니다.
+/// (EC-11) 이름 바로 아래에 "설명"(<see cref="NodeConfig.Description"/>) 입력란도 고정 필드로
+/// 함께 제공합니다 — 값이 있으면 캔버스 카드에 문서 배지가 표시되고 클릭 시 팝업으로 이 텍스트를
+/// 그대로 보여줍니다.
 /// </summary>
 public partial class NodePropertyDialog : Window
 {
@@ -38,6 +41,7 @@ public partial class NodePropertyDialog : Window
 
         Title = $"{config.Type} — 속성 편집";
         NameBox.Text = config.Name;
+        DescriptionBox.Text = config.Description ?? string.Empty;
 
         BuildFields();
     }
@@ -187,9 +191,10 @@ public partial class NodePropertyDialog : Window
     };
 
     /// <summary>
-    /// "완료" — 모든 입력 컨트롤 값을 모아 새 Properties 딕셔너리를 만들고, 이름까지 반영한 새
+    /// "완료" — 모든 입력 컨트롤 값을 모아 새 Properties 딕셔너리를 만들고, 이름·설명까지 반영한 새
     /// NodeConfig를 <see cref="UpdatedConfig"/>에 담은 뒤 <see cref="Window.DialogResult"/>를
-    /// true로 창을 닫습니다.
+    /// true로 창을 닫습니다. (EC-11) 설명란이 빈 문자열이면 <c>null</c>로 정규화해, 문서 배지 표시
+    /// 여부를 판단하는 <c>string.IsNullOrWhiteSpace</c> 검사가 일관되게 동작하도록 합니다.
     /// </summary>
     private void OnOkClick(object sender, RoutedEventArgs e)
     {
@@ -199,7 +204,8 @@ public partial class NodePropertyDialog : Window
             updatedProperties[key] = ReadValue(control);
         }
 
-        UpdatedConfig = _config with { Name = NameBox.Text, Properties = updatedProperties };
+        var description = string.IsNullOrWhiteSpace(DescriptionBox.Text) ? null : DescriptionBox.Text;
+        UpdatedConfig = _config with { Name = NameBox.Text, Properties = updatedProperties, Description = description };
         DialogResult = true;
         Close();
     }

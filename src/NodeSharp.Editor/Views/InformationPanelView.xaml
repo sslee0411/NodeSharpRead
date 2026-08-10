@@ -1,0 +1,30 @@
+<!--
+  InformationPanelView.xaml
+  ====================
+  (EC-11) Node-RED Editor 사이드바의 "정보(info)" 탭에 대응하는 읽기 전용 패널 — 02번 문서 9번 탭
+  카드16(line 2980)이 Node-RED 5.0 조사로 확인한 "Explorer/Information 분리" 명칭을 그대로 채택했다.
+  캔버스에서 노드를 하나 선택하면 그 타입의 PropertySchema(각 필드의 Label/HelpText/Example)와, 노드
+  편집 다이얼로그에 채운 인스턴스별 "설명"(NodeConfig.Description)을 모아 보여준다. 선택이 없거나
+  2개 이상이면 안내 문구만 표시한다(FlowCanvasView.SelectionChanged가 그 경우 (null, null)을 전달).
+-->
+<UserControl x:Class="NodeSharp.Editor.Views.InformationPanelView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid Background="{DynamicResource ControlBackgroundBrush}">
+        <!-- 선택된 노드가 없거나 다중 선택 상태일 때 보이는 안내 문구. -->
+        <TextBlock x:Name="EmptySelectionHint"
+                   Text="노드를 하나 선택하면 여기에 정보가 표시됩니다."
+                   Foreground="{DynamicResource SecondaryTextBrush}"
+                   TextWrapping="Wrap"
+                   Margin="10"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+
+        <!-- 선택된 노드가 정확히 1개일 때 코드비하인드(BuildContent)가 채우는 내용. -->
+        <ScrollViewer x:Name="ContentScroll"
+                      Visibility="Collapsed"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ContentPanel" Margin="10" />
+        </ScrollViewer>
+    </Grid>
+</UserControl>

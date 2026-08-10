@@ -29,6 +29,14 @@ namespace NodeSharp.Contracts.Models;
 /// 하는데 그 자리가 없었음). 기존 파라미터 뒤에 <see cref="X"/>/<see cref="Y"/>를 기본값 0인 선택
 /// 매개변수로 추가해, 이미 이름 있는 인수로 <see cref="NodeConfig"/>를 생성하던 기존 호출부(EC-01b~
 /// EC-03, 테스트 전체)는 코드 변경 없이 그대로 컴파일됩니다.</item>
+/// <item><b>(EC-11) Description 추가</b>: 02번 문서 9번 탭 카드16(line 2980)이 "CT-07
+/// <see cref="PropertyField"/>와 별개로 노드 타입 자체의 설명 텍스트 필드 추가 필요"라고 명시한
+/// 값입니다 — 노드 편집 다이얼로그의 "설명" 입력란에 사용자가 채우는 노드 인스턴스별 자유 텍스트로,
+/// <see cref="PropertyField.HelpText"/>/<see cref="PropertyField.Example"/>(노드 타입 개발자가 미리
+/// 정의해두는 필드 단위 도움말)과는 성격이 다릅니다(값이 있으면 캔버스 카드에 문서 배지 표시, 클릭
+/// 시 팝업으로 전체 텍스트 확인 — Information 패널의 타입 단위 HelpText/Example 표시와도 구분됨).
+/// <see cref="X"/>/<see cref="Y"/>와 동일하게 기존 파라미터 뒤에 기본값 <c>null</c>인 선택 매개변수로
+/// 추가해 기존 호출부는 코드 변경 없이 컴파일됩니다.</item>
 /// </list>
 /// </remarks>
 /// <param name="Id">이 노드의 고유 식별자(플로우 내에서 유일). 캔버스에서 노드를 배치할 때 발급되며 이후 변경되지 않습니다.</param>
@@ -42,6 +50,7 @@ namespace NodeSharp.Contracts.Models;
 /// <param name="Disabled">이 노드가 비활성화되어 있는지. <c>true</c>면 배포 시 이 노드는 생성되지 않습니다.</param>
 /// <param name="X">(EC-04) 캔버스에서 이 노드 카드의 중심 X좌표(픽셀). flows.json 저장/로드 시 배치를 그대로 복원하기 위한 값 — 배포 로직에는 영향을 주지 않는 순수 표시용 정보입니다.</param>
 /// <param name="Y">(EC-04) 캔버스에서 이 노드 카드의 중심 Y좌표(픽셀). <see cref="X"/>와 동일한 용도입니다.</param>
+/// <param name="Description">(EC-11) 노드 편집 다이얼로그의 "설명" 입력란에 사용자가 채운 이 노드 인스턴스의 자유 텍스트. 비어 있으면(<c>null</c> 또는 빈 문자열) 캔버스 카드에 문서 배지를 표시하지 않습니다.</param>
 /// <example>
 /// <code>
 /// // 1) Function 노드 — 순차 처리(기본값), 자격증명 없음
@@ -82,4 +91,5 @@ public sealed record NodeConfig(
     string? CredentialRefId = null,
     bool Disabled = false,
     double X = 0,
-    double Y = 0);
+    double Y = 0,
+    string? Description = null);

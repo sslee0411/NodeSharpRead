@@ -208,6 +208,26 @@
       .NET SDK가 없어(dotnet: command not found) dotnet build/test는 실행하지 못했다(사용자 로컬 확인
       필요 — 이 프로젝트는 헤드리스라 원래는 이 샌드박스에서도 dotnet test가 가능한 유형이지만, 이번
       세션엔 SDK 자체가 없어 예외적으로 실행하지 못함).
+
+    Step: EC-11 (03번 개발 Step맵.html, Phase 6 — Information 패널, Contracts 쪽 모델 추가분만)
+    - Editor 쪽 Information 패널·문서 배지·속성 다이얼로그 "설명" 입력란은 NodeSharp.Editor.csproj
+      EC-11 블록 참고 — 이 프로젝트는 그 값이 저장되는 필드(NodeConfig.Description)만 담당한다.
+    - src\Models\NodeConfig.cs 수정 — 02번 문서 9번 탭 카드16(line 2980)이 "CT-07 PropertyField와
+      별개로 노드 타입 자체의 설명 텍스트 필드 추가 필요"라고 명시한 값. 실제로는 편집 다이얼로그에서
+      노드 인스턴스별로 채우는 자유 텍스트라(문서상 "노드 타입 자체의"라는 표현과 달리, 다이얼로그가
+      NodeConfig 하나를 편집하는 구조상 필드 값을 공유할 수 있는 유일한 위치는 NodeConfig뿐)
+      PropertyField(필드 단위 HelpText/Example, 노드 타입 개발자가 미리 정의)와는 별개로 기존
+      X/Y(EC-04) 뒤에 Description(string?, 기본값 null) 선택 매개변수를 추가했다 — 이미 이름 있는
+      인수로 NodeConfig를 생성하던 기존 호출부(FlowCanvasView.xaml.cs/NodePropertyDialog.xaml.cs/
+      테스트 전체 grep으로 확인)는 코드 변경 없이 그대로 컴파일(낮은 리스크 판단, AskUserQuestion
+      없이 진행 — 필드 위치 자체는 EC-11 착수 전 설계 문서 재확인으로 이미 명확했음, 애매했던 것은
+      Information 패널의 화면 배치뿐이라 그 부분만 AskUserQuestion으로 확인).
+    - test\NodeSharp.Tests\NodeConfigTests.cs에 테스트 2개(Description 기본값 null 확인, System.Text.Json
+      왕복에서 값이 보존되는지) 추가.
+    - tools/check-xmldoc.py 오류 0건, 수정 2개(NodeConfig.cs/NodeConfigTests.cs) 파일 전부 중괄호 균형
+      확인 완료 — 이 세션도 샌드박스에 .NET SDK가 없어(dotnet: command not found) dotnet build/test는
+      실행하지 못했다(사용자 로컬 확인 필요 — 이 프로젝트는 헤드리스라 원래는 이 샌드박스에서도
+      dotnet test가 가능한 유형이지만, 이번 세션엔 SDK 자체가 없어 예외적으로 실행하지 못함).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

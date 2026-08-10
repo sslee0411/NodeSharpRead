@@ -7,6 +7,14 @@ using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
 using NodeSharp.Registry;
+// (EC-11 버그 수정, v2.64) NodeSharp.Contracts.Interfaces에도 별도 용도의 IEditorCommand가 이미
+// 선언돼 있어(ED-D13이 미리 열어둔 "구조 트리 커맨드 공유" 설계, 이 파일의 AddNodeCommand 등이 구현
+// 하는 NodeSharp.Editor.Core.Commands.IEditorCommand와는 다른 타입), 이 네임스페이스를 통째로
+// using하면 파일 안의 모든 "IEditorCommand" 참조가 어느 쪽인지 모호해져 CS0104가 발생한다(그 여파로
+// AddNodeCommand/AddWireCommand/EditNodePropertiesCommand를 IEditorCommand로 넘기는 곳마다 CS1503도
+// 함께 발생). 이 파일이 실제로 필요한 건 INodeTypeDescriptor 하나뿐이라, 네임스페이스 전체 대신
+// 이 타입 하나만 별칭으로 가져와 충돌을 원천 차단한다.
+using INodeTypeDescriptor = NodeSharp.Contracts.Interfaces.INodeTypeDescriptor;
 
 namespace NodeSharp.Editor.Views;
 
@@ -84,6 +92,15 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="FlowDefinition.Groups"/>로 그룹을 함께 저장/복원합니다. 그룹 생성/접기는
 /// <see cref="_history"/>(EC-07 CommandHistory) 대상이 아닙니다(탭 관리와 같은 이유로 범위 밖 —
 /// 설계 근거: 03번 Step맵 EC-10 desc).
+/// (EC-11) <see cref="RenderNode"/>가 <c>config.Description</c>이 채워진 카드 우측 상단에 "📝" 문서
+/// 배지를 추가로 그립니다 — 클릭하면(<c>e.Handled = true</c>로 카드 자체의 선택/더블클릭 처리로
+/// 버블링되지 않게 막고) <see cref="MessageBox"/> 팝업으로 전체 설명 텍스트를 보여줍니다. 선택 상태가
+/// 바뀔 때마다(<see cref="SelectNode"/>/<see cref="ToggleNodeSelection"/>/<see cref="RedrawActiveTab"/>)
+/// <see cref="SelectionChanged"/> 이벤트를 발생시켜, 정확히 노드 하나가 선택돼 있으면 그
+/// <see cref="NodeConfig"/>와 <see cref="_registry"/> 기준 <see cref="INodeTypeDescriptor"/>를, 아니면
+/// <c>(null, null)</c>을 전달합니다 — <c>MainWindow</c>가 이 이벤트를 <see cref="Views.InformationPanelView"/>(우측
+/// "Information" 탭, 02번 문서 9번 탭 카드16의 Node-RED 5.0 명칭 채택)에 연결해 선택한 노드 타입의
+/// HelpText/Example과 인스턴스 Description을 읽기 전용으로 보여줍니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -132,6 +149,39 @@ public partial class FlowCanvasView : UserControl
     private readonly HashSet<string> _selectedNodeIds = new();
     private NodeConfig? _clipboardNode;
     private const double PasteOffset = 24;
+
+    /// <summary>
+    /// (EC-11) 선택 상태가 바뀔 때마다(단일 선택/해제/다중 선택/탭 전환·Undo·Redo로 인한 재렌더링)
+    /// 발생합니다 — 정확히 노드 하나가 선택돼 있으면 그 <see cref="NodeConfig"/>와 <see cref="_registry"/>에
+    /// 등록된 해당 타입의 <see cref="INodeTypeDescriptor"/>(아직 등록 안 된 타입이면 <c>null</c> —
+    /// Phase 7 이전엔 항상 이 경우)를 함께 전달하고, 0개 또는 2개 이상 선택돼 있으면 <c>(null, null)</c>을
+    /// 전달합니다. <c>MainWindow</c>가 이 이벤트를 Information 패널
+    /// (<see cref="Views.InformationPanelView"/>)에 연결해 "다른 노드 선택 시 즉시 갱신"을 구현합니다.
+    /// </summary>
+    public event Action<NodeConfig?, INodeTypeDescriptor?>? SelectionChanged;
+
+    /// <summary>
+    /// <see cref="_selectedNodeIds"/>의 현재 상태를 읽어 <see cref="SelectionChanged"/>를 발생시킵니다.
+    /// <see cref="SelectNode"/>/<see cref="ToggleNodeSelection"/>/<see cref="RedrawActiveTab"/> 끝에서
+    /// 호출합니다.
+    /// </summary>
+    private void RaiseSelectionChanged()
+    {
+        if (SelectionChanged is null)
+        {
+            return;
+        }
+
+        if (_selectedNodeIds.Count == 1 && _nodeConfigs.TryGetValue(_selectedNodeIds.First(), out var config))
+        {
+            _registry.Descriptors.TryGetValue(config.Type, out var descriptor);
+            SelectionChanged.Invoke(config, descriptor);
+        }
+        else
+        {
+            SelectionChanged.Invoke(null, null);
+        }
+    }
 
     // (EC-07) 노드 추가/와이어 연결/속성 편집을 Undo/Redo 가능하게 만드는 커맨드 히스토리(최대 50단계,
     // 클래스 자체 주석 참고). 지금은 이 뷰만 쓰지만 IEditorCommand 인터페이스 자체는 ED-D13에서
@@ -490,6 +540,8 @@ public partial class FlowCanvasView : UserControl
         }
 
         EmptyCanvasHint.Visibility = tabNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        RaiseSelectionChanged(); // (EC-11) 이 메서드 시작부에서 _selectedNodeIds가 비워졌으므로 Information 패널도 함께 비운다.
     }
 
     /// <summary>
@@ -668,6 +720,34 @@ public partial class FlowCanvasView : UserControl
                 Margin = new Thickness(4, 0, 4, 2)
             };
             cardContent = new StackPanel { Children = { label, subtitle } };
+        }
+
+        // (EC-11) config.Description이 채워져 있으면 카드 우측 상단에 문서 배지를 겹쳐 그린다 — 라벨
+        // 한 줄/missing type 두 줄 구성 그 자체는 그대로 두고, Grid로 감싸 배지만 덧붙이는 방식이라
+        // 기존 레이아웃(위 두 케이스)에 영향을 주지 않는다.
+        if (!string.IsNullOrWhiteSpace(config.Description))
+        {
+            var badge = new TextBlock
+            {
+                Text = "📝",
+                FontSize = 10,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 3, 0),
+                Cursor = Cursors.Hand,
+                ToolTip = "설명 보기"
+            };
+            var description = config.Description;
+            badge.MouseLeftButtonDown += (_, e) =>
+            {
+                MessageBox.Show(description, $"{config.Name} — 설명", MessageBoxButton.OK, MessageBoxImage.Information);
+                e.Handled = true; // 카드 자체의 선택/더블클릭 처리로 버블링되지 않게 막는다.
+            };
+
+            var overlay = new Grid();
+            overlay.Children.Add(cardContent);
+            overlay.Children.Add(badge);
+            cardContent = overlay;
         }
 
         var card = new Border
@@ -902,6 +982,8 @@ public partial class FlowCanvasView : UserControl
                 ApplyCardBorder(id, card);
             }
         }
+
+        RaiseSelectionChanged(); // (EC-11) Information 패널 갱신
     }
 
     /// <summary>
@@ -921,6 +1003,8 @@ public partial class FlowCanvasView : UserControl
         {
             ApplyCardBorder(nodeId, card);
         }
+
+        RaiseSelectionChanged(); // (EC-11) Information 패널 갱신
     }
 
     /// <summary>
