@@ -4,6 +4,7 @@ using NodeSharp.Contracts.Models;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Registry;
 using NodeSharp.Runtime;
+using NodeSharp.Util.Messaging;
 using Xunit;
 
 namespace NodeSharp.Tests;
@@ -15,7 +16,10 @@ namespace NodeSharp.Tests;
 /// 실제 WPF 클릭으로는 시연할 수 없으므로(NodeSharp.Nodes.Inject.csproj의 NR-03a 블록에 판단 근거
 /// 기록), <see cref="InjectNode.TriggerAsync"/> 직접 호출을 "버튼 클릭"의 대역으로 삼아 실제
 /// <see cref="FlowEngine"/> 배포·라우팅 경로로 이 완료 기준을 증명합니다(AskUserQuestion으로 확인한
-/// 범위).
+/// 범위). (NR-03b) Interval 트리거 완료 기준("간격을 5초로 설정했을 때 AsyncSchedulerAdapter를 통해
+/// 약 5초 주기로 발행되는지 확인")도 같은 방식(실제 <see cref="FlowEngine"/> 배포·라우팅 경로 + 짧은
+/// 간격(수십 ms)·<see cref="AsyncSchedulerAdapterTests"/>와 동일한 InRange 허용 오차)으로 이 클래스에서
+/// 함께 검증합니다.
 /// </summary>
 public class InjectNodeTests
 {
@@ -71,8 +75,12 @@ public class InjectNodeTests
         Assert.Equal("input", registry.Descriptors["inject"].Category);
         Assert.Equal(0, registry.Descriptors["inject"].DefaultInputs);
         Assert.Equal(1, registry.Descriptors["inject"].DefaultOutputs);
-        Assert.Single(registry.Descriptors["inject"].PropertySchema);
+        // (NR-03b) PropertySchema가 "payload" 1개 → "payload"/"trigger"/"intervalSeconds" 3개로 늘어남 —
+        // Interval 모드 관련 필드 2개 추가로 인한 변경(InjectNodeType.cs PropertySchema 참고).
+        Assert.Equal(3, registry.Descriptors["inject"].PropertySchema.Count);
         Assert.Equal("payload", registry.Descriptors["inject"].PropertySchema[0].Key);
+        Assert.Equal("trigger", registry.Descriptors["inject"].PropertySchema[1].Key);
+        Assert.Equal("intervalSeconds", registry.Descriptors["inject"].PropertySchema[2].Key);
     }
 
     [Fact]
@@ -128,5 +136,123 @@ public class InjectNodeTests
 
         Assert.Empty(node.InputPorts);
         Assert.Single(node.OutputPorts);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_trigger_intervalSeconds_payload_속성을_읽어_InjectNode에_채운다()
+    {
+        var cfg = new NodeConfig(
+            "n1", "inject", "주기 트리거", "f1",
+            new Dictionary<string, object?> { ["trigger"] = "interval", ["intervalSeconds"] = 5.0, ["payload"] = "tick" });
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.Equal("interval", node.TriggerMode);
+        Assert.Equal(5.0, node.IntervalSeconds);
+        Assert.Equal("tick", node.DefaultPayload);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_trigger_속성이_없으면_manual을_기본값으로_쓴다()
+    {
+        var cfg = new NodeConfig("n1", "inject", "수동 트리거", "f1", new Dictionary<string, object?>());
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.Equal("manual", node.TriggerMode);
+        Assert.Equal(0.0, node.IntervalSeconds);
+        Assert.Null(node.DefaultPayload);
+    }
+
+    /// <summary>
+    /// (NR-03b) Interval/OnCloseAsync 테스트 전용 — <see cref="FlowEngine"/>에 "n1"용 <c>NodeConfig</c>
+    /// 없이 Wire(n1→n2)와 receiver(n2)만 배포한다(<see cref="FlowEngine.RouteAsync"/>는 소스 노드가 실제로
+    /// <see cref="FlowEngine.Nodes"/>에 등록돼 있을 필요가 없고 Wire의 SourceNodeId만 일치하면 됨 — 기존
+    /// FlowEngineRouteAsyncTests의 전제와 동일). 이렇게 하면 <see cref="InjectNode"/>를 Factory 경로가
+    /// 아니라 이 테스트가 직접 생성해 <see cref="InjectNode.Scheduler"/>에 격리된 테스트 전용
+    /// <see cref="AsyncScheduler"/>를 주입할 수 있다(<see cref="AsyncSchedulerAdapterTests"/>와 동일한
+    /// 원칙 — 앱 전체 공유 싱글턴과 예약이 섞이지 않게 함).
+    /// </summary>
+    private static FlowEngine BuildWireOnlyEngine()
+    {
+        var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
+        registry.TryRegister(new PluginManifest("receiver", "1.0.0", RequiredContractsVersion: "1.0.0"), typeof(ReceiverNode));
+        var engine = new FlowEngine(registry);
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "Interval 테스트 플로우",
+            Nodes: new[] { new NodeConfig("n2", "receiver", "수신", "f1", new Dictionary<string, object?>()) },
+            Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n2", TargetPort: 0) });
+        engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None).GetAwaiter().GetResult();
+        return engine;
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__Interval_모드는_설정한_간격마다_반복_발행한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            TriggerMode = "interval",
+            IntervalSeconds = 0.02,
+            DefaultPayload = "auto",
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(160);
+        await injectNode.OnCloseAsync(ctx);   // 다음 테스트로 스케줄이 새지 않도록 정리
+
+        Assert.True(ReceiverNode.Received.Count >= 3,
+            $"160ms 동안 20ms 간격이면 최소 3번은 발행돼야 하는데 {ReceiverNode.Received.Count}번 발행됨");
+        Assert.All(ReceiverNode.Received, payload => Assert.Equal("auto", payload));
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__OnCloseAsync_이후로는_더_이상_발행되지_않는다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            TriggerMode = "interval",
+            IntervalSeconds = 0.02,
+            DefaultPayload = "auto",
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(80);
+        await injectNode.OnCloseAsync(ctx);
+        var countAtClose = ReceiverNode.Received.Count;
+        await Task.Delay(150);
+
+        Assert.InRange(ReceiverNode.Received.Count, countAtClose, countAtClose + 1);   // 진행 중이던 1회는 예외로 허용
+    }
+
+    [Fact]
+    public async Task IntervalSeconds가_0이면_OnStartAsync가_아무것도_예약하지_않는다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            TriggerMode = "interval",
+            IntervalSeconds = 0,   // 0 이하 — 자동 발행 시작 안 함
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(80);
+        var ex = await Record.ExceptionAsync(() => injectNode.OnCloseAsync(ctx));   // 예약이 없어도 안전해야 함
+
+        Assert.Empty(ReceiverNode.Received);
+        Assert.Null(ex);
     }
 }

@@ -1,5 +1,4 @@
 using NodeSharp.Contracts.Interfaces;
-using NodeSharp.Runtime;
 using NodeSharp.Util.Messaging;
 using Xunit;
 
@@ -10,7 +9,9 @@ namespace NodeSharp.Tests;
 /// 완료 기준(03번 Step맵 RT-08): AsyncSchedulerAdapter로 등록한 주기 작업이 while-true 없이 정확한
 /// 간격으로 실행되고, IScheduler 계약을 만족하는지 확인. 테스트마다 새 <see cref="AsyncScheduler"/>
 /// 인스턴스를 감싼 어댑터를 써서, 앱 전체 공유 싱글턴(<see cref="AsyncScheduler.Instance"/>)과 예약
-/// 목록이 섞이지 않게 합니다(EventBusTests와 동일한 원칙).
+/// 목록이 섞이지 않게 합니다(EventBusTests와 동일한 원칙). (NR-03b) <see cref="AsyncSchedulerAdapter"/>가
+/// NodeSharp.Runtime에서 NodeSharp.Util.Messaging으로 이동해 <c>using NodeSharp.Runtime;</c>이 더 이상
+/// 필요하지 않습니다 — 동작·시그니처는 그대로입니다.
 /// </summary>
 public class AsyncSchedulerAdapterTests
 {

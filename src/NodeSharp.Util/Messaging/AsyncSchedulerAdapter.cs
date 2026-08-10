@@ -1,15 +1,14 @@
 using NodeSharp.Contracts.Interfaces;
-using NodeSharp.Util.Messaging;
 
-namespace NodeSharp.Runtime;
+namespace NodeSharp.Util.Messaging;
 
 /// <summary>
 /// Class명 : 비동기 스케줄러 어댑터
 /// 역활 및 기능 : IScheduler 계약을 포팅된 AsyncScheduler로 구현하는 어댑터
 ///
 /// <see cref="IScheduler"/>(Contracts 계약)를 <see cref="AsyncScheduler"/>(NodeSharp.Util로 포팅된
-/// lssLib.Messaging.AsyncScheduler)로 구현하는 어댑터입니다. <see cref="EventBusAdapter"/>와 같은 역할 —
-/// Contracts는 구체 타입을 몰라야 하므로 이 어댑터가 그 둘을 이어줍니다.
+/// lssLib.Messaging.AsyncScheduler)로 구현하는 어댑터입니다. NodeSharp.Runtime의 EventBusAdapter와 같은
+/// 역할 — Contracts는 구체 타입을 몰라야 하므로 이 어댑터가 그 둘을 이어줍니다.
 /// 설계 근거: 02번 문서 6번 탭 카드5(<c>IScheduler</c> 계약), dev-csharp 스킬 lssLib.Messaging 문서(원본
 /// <c>AsyncScheduler</c> 동작).
 /// </summary>
@@ -26,6 +25,12 @@ namespace NodeSharp.Runtime;
 /// 반복하는 <see cref="AsyncScheduler.ScheduleRecurring"/>을 하나 등록하고, 매초 <see cref="CronExpression.IsMatch"/>로
 /// "지금이 cron 조건에 맞는 순간인지"를 확인해 맞을 때만 실제 콜백을 호출하는 방식으로 구현했습니다 —
 /// 초 단위보다 더 정밀한 cron 문법은 다루지 않습니다(<see cref="CronExpression"/> XML 주석 참고).</item>
+/// <item><b>(NR-03b) NodeSharp.Runtime에서 이 파일로 이동</b> — 원래 RT-08에서 NodeSharp.Runtime 소속으로
+/// 만들어졌으나, InjectNode(Interval 트리거, NR-03b)가 이 클래스를 직접 소유해야 하는데 <c>nodes\*</c>
+/// 코어 노드 플러그인 프로젝트는 Contracts(+NR-03b부터 Util) 참조만 허용되고 Runtime은 참조할 수 없어
+/// (02번 문서 1번 탭 폴더 구조), Runtime 의존성이 전혀 없는 이 클래스를 실제로 필요로 하는 계층인
+/// NodeSharp.Util로 옮겼습니다. 동작·시그니처는 전혀 바뀌지 않았습니다(파일 위치와 namespace만 변경).
+/// </item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -52,7 +57,7 @@ public sealed class AsyncSchedulerAdapter : IScheduler
     /// <summary>
     /// 특정 <see cref="AsyncScheduler"/> 인스턴스를 감싸는 어댑터를 만듭니다. 테스트에서 싱글턴 대신
     /// 독립된 인스턴스를 넣어, 여러 테스트가 같은 예약 목록을 공유하지 않게 할 때 사용합니다
-    /// (<see cref="EventBusAdapter"/>와 동일한 이유).
+    /// (EventBusAdapter와 동일한 이유).
     /// </summary>
     public AsyncSchedulerAdapter(AsyncScheduler inner) => _inner = inner;
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using NodeSharp.Contracts.Enums;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
@@ -30,13 +31,16 @@ public static class InjectNodeType
     /// Inject 노드 타입 디스크립터입니다. <see cref="INodeTypeDescriptor.Factory"/>는
     /// <see cref="InjectNode.Id"/>가 <c>{ get; init; }</c>라 반사(<c>NodeIdBinder</c>) 없이도
     /// 객체 초기화 구문으로 직접 <see cref="NodeConfig.Id"/>/<see cref="NodeConfig.Name"/>을
-    /// 동기화합니다. <see cref="INodeTypeDescriptor.PropertySchema"/>에는 "payload" 필드 1개만
-    /// 있습니다(NR-03a 범위 — Trigger 종류 선택은 아직 Manual 하나뿐이라 선택 필드를 추가하지
-    /// 않음, NR-03b에서 Interval이 추가될 때 함께 확장 예정). "payload" 값은 노드 인스턴스가 직접
-    /// 읽지 않습니다 — <see cref="InjectNode.TriggerAsync"/>가 외부에서 명시적으로 받는 매개변수라,
-    /// 이 필드는 사용자가 캔버스에서 설정해둔 "기본 발행 값"을 문서화하는 용도이며 실제 자동
-    /// 배선(트리거 호출부가 이 값을 읽어 전달하는 것)은 향후 LK-02(Editor→Runner 클릭 전달) 또는
-    /// NR-03b(Interval 스케줄러) 쪽 책임입니다.
+    /// 동기화합니다. (NR-03a) <see cref="INodeTypeDescriptor.PropertySchema"/>에는 처음엔 "payload"
+    /// 필드 1개만 있었습니다(Trigger 종류 선택은 아직 Manual 하나뿐이라 선택 필드를 추가하지 않음).
+    /// (NR-03b) "trigger"(ComboBox: manual/interval)·"intervalSeconds"(Number) 2개 필드를 추가했고,
+    /// <see cref="Factory"/>가 이 3개 필드 값을 읽어 <see cref="InjectNode.TriggerMode"/>/
+    /// <see cref="InjectNode.IntervalSeconds"/>/<see cref="InjectNode.DefaultPayload"/>에 각각
+    /// 채웁니다 — "payload" 값을 노드 인스턴스가 실제로 읽어 자동 배선하는 책임이 이 Step에서 비로소
+    /// 실현됐습니다(NR-03a 시점엔 "향후 LK-02 또는 NR-03b 쪽 책임"으로 미뤄뒀던 부분). Manual 모드에서는
+    /// <see cref="InjectNode.TriggerAsync"/>가 외부에서 명시적으로 받는 payload 매개변수를 그대로 쓰고
+    /// (DefaultPayload는 쓰이지 않음), Interval 모드에서는 외부 호출자가 없어 DefaultPayload가 매
+    /// 간격마다 자동으로 발행하는 값이 됩니다.
     /// </summary>
     public static readonly INodeTypeDescriptor Descriptor = new InjectNodeDescriptor();
 
@@ -52,8 +56,14 @@ public static class InjectNodeType
 
         public int DefaultOutputs => 1;
 
-        public Func<NodeConfig, IFlowNode> Factory { get; } =
-            cfg => new InjectNode { Id = cfg.Id, Name = cfg.Name };
+        public Func<NodeConfig, IFlowNode> Factory { get; } = cfg => new InjectNode
+        {
+            Id = cfg.Id,
+            Name = cfg.Name,
+            TriggerMode = ReadString(cfg.Properties, "trigger", "manual"),
+            IntervalSeconds = ReadDouble(cfg.Properties, "intervalSeconds", 0),
+            DefaultPayload = cfg.Properties.TryGetValue("payload", out var payload) ? Unwrap(payload) : null,
+        };
 
         public IReadOnlyList<PropertyField> PropertySchema { get; } = new[]
         {
@@ -64,9 +74,90 @@ public static class InjectNodeType
                 Required: false,
                 DefaultValue: "",
                 HelpText: "노드가 트리거될 때 발행할 메시지 본문(msg.payload)입니다. 비워두면 빈 " +
-                           "문자열이 발행됩니다.",
+                           "문자열이 발행됩니다. Interval 모드에서는 매 간격마다 이 값이 그대로 발행됩니다.",
                 Example: "예: \"hello\" (고정 문자열), \"42\" (숫자는 지금은 문자열로 저장 — 타입 " +
                          "변환은 향후 TypedValue 지원 Step에서 추가 예정)"),
+            new PropertyField(
+                Key: "trigger",
+                Label: "Trigger",
+                Type: PropertyFieldType.ComboBox,
+                Required: false,
+                DefaultValue: "manual",
+                Options: new[] { "manual", "interval" },
+                HelpText: "언제 발행할지 선택합니다. manual은 (지금은 xUnit, 향후 LK-02가 붙으면 캔버스" +
+                           " 클릭이) TriggerAsync를 직접 호출할 때만 1회 발행하고, interval은 배포되는" +
+                           " 즉시 intervalSeconds 간격으로 자동 반복 발행합니다.",
+                Example: "예: \"manual\" (버튼 클릭 시에만), \"interval\" (배포 후 자동 반복 — Cron/" +
+                         "OnDeploy는 NR-03c·NR-03d에서 추가 예정)"),
+            new PropertyField(
+                Key: "intervalSeconds",
+                Label: "간격(초)",
+                Type: PropertyFieldType.Number,
+                Required: false,
+                DefaultValue: "5",
+                HelpText: "trigger가 \"interval\"일 때 자동 발행 간격(초)입니다. trigger가 " +
+                           "\"manual\"이면 이 값은 무시됩니다. 0 이하로 설정하면 자동 발행이 시작되지 " +
+                           "않습니다.",
+                Example: "예: 5 (5초마다), 60 (1분마다)"),
         };
+
+        /// <summary>
+        /// (NR-03b) <see cref="NodeConfig.Properties"/>에서 문자열 값을 안전하게 읽습니다.
+        /// NodeConfig.cs remarks가 경고한 대로, System.Text.Json으로 역직렬화된 값은 원본 CLR
+        /// <c>string</c>이 아니라 <see cref="JsonElement"/>로 채워질 수 있어 두 경우를 모두 처리합니다.
+        /// 키가 없거나 값이 비어 있으면 <paramref name="fallback"/>을 반환합니다.
+        /// </summary>
+        private static string ReadString(IReadOnlyDictionary<string, object?> properties, string key, string fallback)
+        {
+            if (!properties.TryGetValue(key, out var raw) || raw is null)
+            {
+                return fallback;
+            }
+
+            var text = Unwrap(raw)?.ToString();
+            return string.IsNullOrWhiteSpace(text) ? fallback : text;
+        }
+
+        /// <summary>
+        /// (NR-03b) <see cref="ReadString"/>과 동일한 이유로, <see cref="NodeConfig.Properties"/>에서
+        /// 숫자 값을 <see cref="JsonElement"/>/원본 CLR 타입 양쪽 모두에서 안전하게 읽습니다. 파싱에
+        /// 실패하면(값이 없거나 숫자가 아니면) <paramref name="fallback"/>을 반환합니다.
+        /// </summary>
+        private static double ReadDouble(IReadOnlyDictionary<string, object?> properties, string key, double fallback)
+        {
+            if (!properties.TryGetValue(key, out var raw) || raw is null)
+            {
+                return fallback;
+            }
+
+            if (raw is JsonElement je)
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.Number when je.TryGetDouble(out var n) => n,
+                    JsonValueKind.String when double.TryParse(je.GetString(), out var n) => n,
+                    _ => fallback,
+                };
+            }
+
+            return raw switch
+            {
+                double d => d,
+                int i => i,
+                string s when double.TryParse(s, out var n) => n,
+                _ => fallback,
+            };
+        }
+
+        /// <summary>(NR-03b) <see cref="JsonElement"/>로 채워진 값을 원본에 가까운 CLR 값(문자열)으로 풀어냅니다. JsonElement가 아니면 그대로 반환합니다.</summary>
+        private static object? Unwrap(object? raw)
+        {
+            if (raw is not JsonElement je)
+            {
+                return raw;
+            }
+
+            return je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString();
+        }
     }
 }

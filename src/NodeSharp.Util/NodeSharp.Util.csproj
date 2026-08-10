@@ -44,8 +44,19 @@
       포팅 대상인 AsyncScheduler(dev-csharp 스킬 API)에는 cron 표현식을 해석하는 기능이 원래 없다
       (반복 간격/1회성/매일 정해진 시각만 지원) — "초 분 시 일 월 요일" 6칸을 해석하는 최소 파서를
       새로 만들어 대응(현재는 `*`와 쉼표 목록만 지원, 범위·간격 문법은 범위 밖 — CT-03b의 BufFieldType
-      최소 목록 후 확장 선례와 동일한 처리). 실제 IScheduler 어댑터 구현은 NodeSharp.Runtime.csproj
-      RT-08 참고.
+      최소 목록 후 확장 선례와 동일한 처리). 실제 IScheduler 어댑터 구현은 (NR-03b부터) 이 프로젝트의
+      src\Messaging\AsyncSchedulerAdapter.cs 참고(원래 NodeSharp.Runtime 소속이었다가 이동, 아래 NR-03b
+      항목 참고).
+
+    Step: NR-03b (03번 개발 Step맵.html, Phase 7)
+    - src\Messaging\AsyncSchedulerAdapter.cs를 NodeSharp.Runtime에서 이 프로젝트로 이동(namespace도
+      NodeSharp.Runtime → NodeSharp.Util.Messaging으로 변경, 동작·시그니처는 동일) — InjectNode
+      (nodes\NodeSharp.Nodes.Inject)가 Interval 트리거에서 이 클래스를 직접 소유해야 하는데, 코어 노드
+      플러그인(nodes\*)은 원래 "Contracts만 참조" 원칙이었으나 Runtime은 참조할 수 없어 AskUserQuestion으로
+      "Contracts+Util까지 허용"으로 완화(02번 문서 1번 탭 폴더 구조도 함께 갱신) — Util은 Runtime에
+      의존하지 않는 순수 유틸리티 계층이라 상대적으로 안전한 확장으로 판단. 이 프로젝트의
+      ProjectReference는 변경 없음(원래도 Contracts만 참조, AsyncSchedulerAdapter도 Contracts.Interfaces.
+      IScheduler만 참조).
 
     Step: RT-11 (03번 개발 Step맵.html, Phase 2 — 설정 파일 스키마 마이그레이션)
     - src\Config\Migration\{MigrationRule,ConfigMigration}.cs 2개 추가 — 02번 문서 3번 탭 카드7

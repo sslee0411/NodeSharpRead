@@ -9,7 +9,8 @@ namespace NodeSharp.Util.Messaging;
 /// 없는 신규 도입 타입입니다 — <c>IScheduler.ScheduleCron</c>(Contracts, CT-04b)이 cron 문자열을 받도록
 /// 이미 정해져 있는데, 포팅 대상인 <c>lssLib.Messaging.AsyncScheduler</c>에는 cron 파서가 없어서(반복
 /// 간격/1회성/매일 정해진 시각만 지원) 이 계약을 만족시키려면 별도로 필요했습니다(자세한 경위는
-/// <c>NodeSharp.Runtime.AsyncSchedulerAdapter</c> XML 주석 참고).
+/// <see cref="AsyncSchedulerAdapter"/> XML 주석 참고 — NR-03b에서 NodeSharp.Runtime으로부터 이 프로젝트로
+/// 이동).
 /// 설계 근거: 02번 문서 6번 탭 카드5(<c>IScheduler.ScheduleCron</c>).
 /// </summary>
 /// <remarks>

@@ -6,8 +6,10 @@ namespace NodeSharp.Contracts.Interfaces;
 ///
 /// 주기적/예약 실행이 필요한 모든 곳(Inject 노드의 Interval 트리거, DeviceMapPoller 배치 폴링,
 /// RetentionSweeper 등)이 공통으로 의존하는 스케줄링 계약입니다. 구현체는
-/// <c>lssLib.Messaging.AsyncScheduler</c>를 포팅한 <c>AsyncSchedulerAdapter</c>(NodeSharp.Runtime)이며,
-/// "while-true 폴링 금지"(공통 규칙 ③)를 지키기 위해 이 인터페이스를 반드시 거칩니다.
+/// <c>lssLib.Messaging.AsyncScheduler</c>를 포팅한 <c>AsyncSchedulerAdapter</c>(NodeSharp.Util —
+/// NR-03b에서 NodeSharp.Runtime으로부터 이동, InjectNode 등 <c>nodes\*</c> 코어 노드 플러그인이
+/// Contracts+Util까지만 참조 가능해 Runtime 비의존 계층으로 옮김)이며, "while-true 폴링 금지"
+/// (공통 규칙 ③)를 지키기 위해 이 인터페이스를 반드시 거칩니다.
 /// 설계 근거: 02번 문서 6번 탭 카드 5.
 /// </summary>
 /// <remarks>

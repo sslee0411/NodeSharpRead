@@ -204,7 +204,7 @@ graph TB
 │       ├── Program.cs               ← flows.json 로드 → FlowEngine.DeployAsync
 │       ├── Core\FlowFileWatcher.cs  ← FileSystemWatcher로 .signal 감지 → 자동 재배포
 │       └── Core\StatusChannel.cs    ← NamedPipe/SignalR로 Editor에 status·debug 송신
-├── nodes\                          ← 코어 노드 플러그인 (개별 csproj, Contracts만 참조)
+├── nodes\                          ← 코어 노드 플러그인 (개별 csproj, Contracts+Util만 참조 — NR-03b, Util은 Runtime 비의존 순수 유틸리티라 허용)
 │   ├── NodeSharp.Nodes.Inject\
 │   ├── NodeSharp.Nodes.Debug\
 │   ├── NodeSharp.Nodes.Function\   ← Roslyn Scripting 실행
