@@ -636,6 +636,18 @@
       별칭 하나로 좁혀 충돌을 원천 차단(다른 파일에는 이 문제가 없음 — MainWindow.xaml.cs/
       InformationPanelView.xaml.cs는 NodeSharp.Editor.Core.Commands를 using하지 않아 애초에 이름이
       겹치지 않는다). tools/check-xmldoc.py 오류 0건, 중괄호 균형(180/180) 재확인 완료.
+    - ★ 버그 수정(v2.65) — 사용자가 "빌드 완료 이상없음"과 함께 "구조 설정"/"Information" 탭 헤더에
+      테마가 적용되지 않았다고 확인. 원인: WPF TabControl/TabItem 기본 템플릿이 TabControl.Background/
+      Foreground 속성을 무시하고 SystemColors 기반 밝은 회색 크롬을 그대로 쓰는 잘 알려진 동작 — 위
+      TitleBarButtonStyle이 Button 기본 크롬을 없앤 것과 같은 이유로, 여기도 속성 설정만으로는 반영되지
+      않고 ControlTemplate 자체를 새로 그려야 했다. MainWindow.xaml의 Window.Resources에
+      ThemedTabItemStyle(헤더 — 선택 시 ControlBackgroundBrush 배경+AccentBrush 밑줄+PrimaryTextBrush
+      글자색, 아니면 WindowBackgroundBrush 배경+SecondaryTextBrush 글자색, 호버 시 BorderBrush로
+      살짝 강조)/ThemedTabControlStyle(탭 스트립 Row는 WindowBackgroundBrush, 본문 Row는
+      ControlBackgroundBrush로 배경 통일, ItemContainerStyle로 ThemedTabItemStyle을 모든 TabItem에
+      자동 적용) 2개를 신규 추가하고, TabControl의 개별 Background/Foreground 속성 대신
+      Style="{StaticResource ThemedTabControlStyle}" 하나로 교체했다. 코드비하인드(.xaml.cs) 변경 없음
+      — 순수 XAML 스타일 추가. 전체 XML 정형성 재검증 완료.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

@@ -48,6 +48,13 @@
   늘리면 됨). 신규 InformationPanelView를 두 번째 탭에 배치하고, FlowCanvas.SelectionChanged
   이벤트를 OnCanvasSelectionChanged로 연결해(Loaded 핸들러에서 구독) 캔버스 선택이 바뀔 때마다 즉시
   갱신한다.
+  (EC-11 버그 수정, ★ 사용자 확인) 사용자가 Windows 빌드 후 "구조 설정"/"Information" 탭 헤더에
+  테마가 적용되지 않았다고 확인 — WPF TabControl/TabItem 기본 템플릿이 TabControl.Background/
+  Foreground 속성을 무시하고 SystemColors 크롬을 그대로 쓰는 잘 알려진 동작(위 TitleBarButtonStyle이
+  Button 기본 크롬을 없앤 것과 동일한 이유)이었다. Window.Resources에 ThemedTabItemStyle(헤더 —
+  선택 시 ControlBackgroundBrush+AccentBrush 밑줄, 아니면 WindowBackgroundBrush+SecondaryTextBrush,
+  호버 시 BorderBrush)/ThemedTabControlStyle(탭 스트립+본문 배경)을 새로 그려 TabControl.Style로
+  교체했다 — 단순 속성 설정이 아니라 ControlTemplate 전체를 새로 그려야 실제로 반영된다.
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -136,6 +143,66 @@
                                 <Setter TargetName="Bg" Property="Background" Value="#E81123" />
                             </Trigger>
                         </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- (EC-11 버그 수정, v2.65) WPF TabControl/TabItem 기본 템플릿은 SystemColors 기반의 밝은
+             회색 크롬을 그대로 쓰고 TabControl.Background/Foreground 속성을 무시한다(잘 알려진 WPF
+             동작 — 위 TitleBarButtonStyle이 Button 기본 크롬을 없앤 것과 같은 이유로 여기도 단순
+             속성 설정이 아니라 ControlTemplate 자체를 새로 그려야 한다). 우측 탭(구조 설정/
+             Information) 헤더·본문 배경·테두리를 전부 테마 브러시(DynamicResource)로 대체한다. -->
+        <Style x:Key="ThemedTabItemStyle" TargetType="TabItem">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bg"
+                                Background="{DynamicResource WindowBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}"
+                                BorderThickness="0,0,0,2"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource BorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ThemedTabControlStyle" TargetType="TabControl">
+            <Setter Property="Background" Value="{DynamicResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource ThemedTabItemStyle}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="{DynamicResource WindowBackgroundBrush}">
+                                <TabPanel IsItemsHost="True" />
+                            </Border>
+                            <Border Grid.Row="1" Background="{TemplateBinding Background}">
+                                <ContentPresenter ContentSource="SelectedContent" />
+                            </Border>
+                        </Grid>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -262,10 +329,11 @@
 
                 <!-- (EC-11) "구조 설정"(기존 StructureView)과 "Information"(신규, 선택 노드의 타입
                      설명·HelpText/Example·인스턴스 설명 표시)을 탭으로 공존시킨다 — 배치 확인
-                     AskUserQuestion에서 "StructureView 자리에 탭 추가" 옵션 채택. -->
+                     AskUserQuestion에서 "StructureView 자리에 탭 추가" 옵션 채택. (v2.65 버그 수정)
+                     Background/Foreground 직접 지정 대신 ThemedTabControlStyle(위 Window.Resources)을
+                     써야 탭 헤더까지 테마가 반영된다 — WPF 기본 템플릿은 그 두 속성을 무시한다. -->
                 <TabControl Grid.Column="2"
-                            Background="{DynamicResource ControlBackgroundBrush}"
-                            Foreground="{DynamicResource PrimaryTextBrush}">
+                            Style="{StaticResource ThemedTabControlStyle}">
                     <TabItem Header="구조 설정">
                         <views:StructureView />
                     </TabItem>
