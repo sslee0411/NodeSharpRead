@@ -181,6 +181,33 @@
     - tools/check-xmldoc.py 오류 0건, 신규/수정 5개 .cs 파일 전부 중괄호 균형 확인 완료 — 단, 이 세션은
       샌드박스에 .NET SDK가 없어(dotnet: command not found, dot.net 설치 403) dotnet build/test는 이번에도
       실행하지 못함(EC-04와 동일한 제약, 사용자 로컬 확인 필요).
+
+    Step: EC-10 (03번 개발 Step맵.html, Phase 6 — 캔버스 노드 그룹핑, Contracts 쪽 모델 추가분만)
+    - Editor 쪽 그룹핑 UI(다중 선택·박스 렌더링·접기)는 NodeSharp.Editor.csproj EC-10 블록 참고 —
+      이 프로젝트는 그 저장 형식이 필요로 하는 GroupDefinition 모델과 FlowDefinition.Groups 필드
+      추가만 담당한다.
+    - src\Models\GroupDefinition.cs 신규 — Id/Name/MemberNodeIds/Collapsed/Color 5개 필드(03번
+      Step맵 EC-10 desc가 이미 확정한 구성 그대로, CT-02b와 같은 위치에 신설). NR-17b Junction과
+      동일하게 IFlowNode를 구현하지 않고 FlowDeployer/FlowEngine이 읽지 않는 순수 표시 전용 모델 —
+      소속 탭 필드가 없어(MemberNodeIds가 가리키는 노드들의 FlowId로 간접 판단, Wire와 동일 원칙)
+      의도적으로 FlowId를 넣지 않았다.
+    - src\Models\FlowDefinition.cs 수정 — 기존 Disabled(선택 매개변수, 기본값 false) 뒤에
+      Groups(IReadOnlyList&lt;GroupDefinition&gt;?, 기본값 null)를 새 선택 매개변수로 추가. NodeConfig에
+      X/Y를 추가했던 EC-04와 동일한 판단(기존 파라미터 뒤에 선택 매개변수 추가 → 이미 이름 있는
+      인수로 FlowDefinition을 생성하던 기존 호출부(FlowDeployer.cs/FlowEngine.cs 예제/FlowCanvasView.xaml.cs/
+      테스트 전체 grep으로 확인)는 코드 변경 없이 그대로 컴파일 — 낮은 리스크 판단, AskUserQuestion
+      없이 진행). null을 "그룹 없음"과 동일하게 취급하도록 &lt;param&gt; 문서에 명시(Nodes/Wires처럼 항상
+      채워야 하는 필수 목록이 아니라, 옛 형식(EC-05 이전) flows.json에는 아예 이 필드가 없을 수
+      있으므로).
+    - test\NodeSharp.Tests\FlowDefinitionTests.cs에 테스트 2개(Groups 기본값 null 확인, Groups가
+      있는 FlowDefinition의 System.Text.Json 왕복에서 그룹 목록이 보존되는지) 추가.
+      test\NodeSharp.Tests\GroupDefinitionTests.cs 신규 — GroupDefinition 자체의 기본값·JSON 왕복·
+      with 식 갱신(캔버스에서 접기 버튼을 누를 때의 실제 패턴) 3개 테스트.
+    - tools/check-xmldoc.py 오류 0건, 신규 2개(GroupDefinition.cs/GroupDefinitionTests.cs)·수정 2개
+      (FlowDefinition.cs/FlowDefinitionTests.cs) 파일 전부 중괄호 균형 확인 완료 — 이 세션도 샌드박스에
+      .NET SDK가 없어(dotnet: command not found) dotnet build/test는 실행하지 못했다(사용자 로컬 확인
+      필요 — 이 프로젝트는 헤드리스라 원래는 이 샌드박스에서도 dotnet test가 가능한 유형이지만, 이번
+      세션엔 SDK 자체가 없어 예외적으로 실행하지 못함).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

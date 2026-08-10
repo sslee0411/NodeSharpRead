@@ -71,6 +71,19 @@ namespace NodeSharp.Editor.Views;
 /// Editor와 Runner는 별도 프로세스(ED-B0.6 결정)이므로 실제 배포 결과를 기다리지 않고, flows.json을
 /// 불러오거나 캔버스를 다시 그릴 때마다 이 뷰 자신의 <c>NodeTypeRegistry</c> 기준으로 매번 다시
 /// 판정합니다.
+/// (EC-10) <see cref="_selectedNodeIds"/>가 단일 선택에서 다중 선택(HashSet)으로 확장됐습니다 —
+/// 일반 클릭은 여전히 <see cref="SelectNode"/>(하나만 선택), Ctrl+클릭은
+/// <see cref="ToggleNodeSelection"/>(추가/제거)입니다. 2개 이상 선택한 채 Ctrl+G를 누르면
+/// (<c>MainWindow</c>) <see cref="GroupSelectedNodes"/>가 새 <see cref="GroupDefinition"/>을
+/// 만들어 <see cref="_groups"/>에 저장하고, Ctrl+Shift+G(<see cref="UngroupSelectedGroup"/>)가
+/// 선택된 노드가 속한 그룹을 해제합니다. <see cref="RedrawActiveTab"/>이 그룹마다
+/// <see cref="RenderGroup"/>을 호출해 펼친 그룹은 멤버 카드를 감싸는 테두리 박스+이름표
+/// (<see cref="RenderExpandedGroupBox"/>)로, 접힌 그룹은 멤버 카드 대신 박스 하나
+/// (<see cref="RenderCollapsedGroup"/>)로 그립니다 — 접힌 그룹의 멤버는 카드 자체를 그리지 않고
+/// 그 노드에 닿는 와이어도 함께 숨깁니다. <see cref="SaveFlowAsync"/>/<see cref="LoadFlowAsync"/>가
+/// <see cref="FlowDefinition.Groups"/>로 그룹을 함께 저장/복원합니다. 그룹 생성/접기는
+/// <see cref="_history"/>(EC-07 CommandHistory) 대상이 아닙니다(탭 관리와 같은 이유로 범위 밖 —
+/// 설계 근거: 03번 Step맵 EC-10 desc).
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -106,13 +119,17 @@ public partial class FlowCanvasView : UserControl
     private Line? _dragPreviewLine;
     private PortHandle? _hoveredInputPort;
 
-    // (EC-06) 카드 선택·복사/붙여넣기 상태. _nodeCards는 선택 시 테두리 강조를 위한 Border 참조
-    // 보관용(RenderNode가 채움, RedrawActiveTab이 다시 그릴 때마다 함께 비움). _selectedNodeId는 탭 전환마다
-    // 초기화되지만(그 탭에 없는 노드를 계속 가리키면 안 되므로) _clipboardNode는 탭을 넘나들며
-    // 계속 유지된다 — 다른 탭에 붙여넣는 것도 자연스러운 동작이라 판단(활성 탭 기준으로 FlowId를
-    // 다시 매기므로 항상 붙여넣는 시점의 탭에 정확히 들어간다).
+    // (EC-06, EC-10 확장) 카드 선택·복사/붙여넣기 상태. _nodeCards는 선택 시 테두리 강조를 위한
+    // Border 참조 보관용(RenderNode가 채움, RedrawActiveTab이 다시 그릴 때마다 함께 비움).
+    // _selectedNodeIds는 탭 전환·재렌더링마다 초기화되지만(그 탭에 없는 노드를 계속 가리키면 안
+    // 되므로) _clipboardNode는 탭을 넘나들며 계속 유지된다 — 다른 탭에 붙여넣는 것도 자연스러운
+    // 동작이라 판단(활성 탭 기준으로 FlowId를 다시 매기므로 항상 붙여넣는 시점의 탭에 정확히
+    // 들어간다). (EC-10) 단일 선택이던 _selectedNodeId를 HashSet 기반 다중 선택으로 확장 — 일반
+    // 클릭은 여전히 "이것 하나만 선택"(SelectNode)이고, Ctrl+클릭만 추가/제거를 토글한다
+    // (ToggleNodeSelection) — 그룹으로 묶을 노드 여러 개를 고르기 위한 확장이며, 카드 하나만
+    // 고르는 기존 EC-06 동작(선택→Ctrl+C 복사 등)은 그대로 유지된다.
     private readonly Dictionary<string, Border> _nodeCards = new();
-    private string? _selectedNodeId;
+    private readonly HashSet<string> _selectedNodeIds = new();
     private NodeConfig? _clipboardNode;
     private const double PasteOffset = 24;
 
@@ -120,6 +137,17 @@ public partial class FlowCanvasView : UserControl
     // 클래스 자체 주석 참고). 지금은 이 뷰만 쓰지만 IEditorCommand 인터페이스 자체는 ED-D13에서
     // 구조 트리 커맨드도 같은 스택을 공유하도록 미리 열어둔 설계(02번 문서 8번 탭 카드16).
     private readonly CommandHistory _history = new();
+
+    // (EC-10) 모든 Flow 탭의 그룹을 함께 담는 전역 딕셔너리 — _nodeConfigs/_wires와 동일한 패턴으로,
+    // GroupDefinition 자체에는 소속 탭 필드가 없어(클래스 자체 주석 참고) MemberNodeIds가 가리키는
+    // 노드들의 NodeConfig.FlowId로 소속 탭을 간접 판단한다(IsGroupInFlow). Undo/Redo(EC-07 CommandHistory)
+    // 대상에는 포함하지 않는다 — 탭 관리(EC-05)와 같은 이유로, 그룹 생성/접기는 캔버스 편집 커맨드
+    // (노드 추가·와이어 연결·속성 편집)와 성격이 달라 별도 취급이 필요하고 완료 기준에도 Undo 요구가
+    // 없어 지금은 범위 밖으로 둔다.
+    private readonly Dictionary<string, GroupDefinition> _groups = new();
+    private int _nextGroupSeq = 1;
+    private const double GroupPadding = 14;
+    private const double GroupHeaderHeight = 18;
 
     /// <summary>
     /// (EC-04) flows.json을 읽고 쓸 데이터 폴더 경로. Runner의 <c>Worker.cs</c>가 쓰는 것과 같은
@@ -174,12 +202,13 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-04, EC-05 확장) <see cref="DataDirectory"/>\flows.json을 읽어 저장된 Flow 탭 목록이 있으면
-    /// 기본 탭("f1", "Flow 1")을 지우고 그 목록으로 완전히 교체합니다. 모든 탭의 노드·와이어를
-    /// <see cref="_nodeConfigs"/>/<see cref="_wires"/>에 함께 채운 뒤, 노드 Id("n1", "n2"...)와 탭
-    /// Id("f1", "f2"...) 각각 가장 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>/
-    /// <see cref="_nextFlowTabSeq"/>를 재계산해(불러온 것과 겹치지 않도록), 첫 번째 탭으로
-    /// <see cref="SwitchToFlow"/>를 호출해 화면을 그립니다.
+    /// (EC-04, EC-05 확장, EC-10 확장) <see cref="DataDirectory"/>\flows.json을 읽어 저장된 Flow 탭
+    /// 목록이 있으면 기본 탭("f1", "Flow 1")을 지우고 그 목록으로 완전히 교체합니다. 모든 탭의
+    /// 노드·와이어·그룹을 <see cref="_nodeConfigs"/>/<see cref="_wires"/>/<see cref="_groups"/>에
+    /// 함께 채운 뒤, 노드 Id("n1", "n2"...)·탭 Id("f1", "f2"...)·그룹 Id("g1", "g2"...) 각각 가장
+    /// 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>/<see cref="_nextFlowTabSeq"/>/<see cref="_nextGroupSeq"/>를
+    /// 재계산해(불러온 것과 겹치지 않도록), 첫 번째 탭으로 <see cref="SwitchToFlow"/>를 호출해
+    /// 화면을 그립니다.
     /// </summary>
     private async Task LoadFlowAsync()
     {
@@ -192,6 +221,7 @@ public partial class FlowCanvasView : UserControl
         _flowTabs.Clear();
         _nodeConfigs.Clear();
         _wires.Clear();
+        _groups.Clear();
 
         foreach (var flow in flows)
         {
@@ -202,6 +232,16 @@ public partial class FlowCanvasView : UserControl
             }
 
             _wires.AddRange(flow.Wires);
+
+            // (EC-10) Groups는 선택 매개변수(기본값 null)라 옛 형식(EC-05 이전) flows.json에는
+            // 아예 없을 수 있음 — null이면 그룹이 없는 것과 동일하게 취급.
+            if (flow.Groups is { } groups)
+            {
+                foreach (var group in groups)
+                {
+                    _groups[group.Id] = group;
+                }
+            }
         }
 
         if (_flowTabs.Count == 0)
@@ -240,15 +280,31 @@ public partial class FlowCanvasView : UserControl
             _nextFlowTabSeq = maxTabSeq + 1;
         }
 
+        var maxGroupSeq = 0;
+        foreach (var group in _groups.Values)
+        {
+            if (group.Id.StartsWith("g", StringComparison.Ordinal) &&
+                int.TryParse(group.Id.AsSpan(1), out var seq) && seq > maxGroupSeq)
+            {
+                maxGroupSeq = seq;
+            }
+        }
+
+        if (maxGroupSeq > 0)
+        {
+            _nextGroupSeq = maxGroupSeq + 1;
+        }
+
         SwitchToFlow(_flowTabs[0].Id);
     }
 
     /// <summary>
-    /// (EC-04, EC-05 확장) 지금 메모리에 있는 모든 Flow 탭의 노드·와이어를 탭별로 각각
-    /// <c>FlowDefinition</c> 하나씩으로 모아(탭에 속한 노드만 <see cref="NodeConfig.FlowId"/>로 필터링,
-    /// 와이어는 양쪽 끝 노드가 모두 그 탭에 속할 때만 포함) 목록으로 만든 뒤
-    /// <see cref="DataDirectory"/>\flows.json에 원자적으로 저장합니다(<see cref="FlowStore.SaveAsync"/>).
-    /// <c>MainWindow</c>의 "파일 → 저장" 메뉴/Ctrl+S가 이 메서드를 호출합니다.
+    /// (EC-04, EC-05 확장, EC-10 확장) 지금 메모리에 있는 모든 Flow 탭의 노드·와이어·그룹을 탭별로
+    /// 각각 <c>FlowDefinition</c> 하나씩으로 모아(탭에 속한 노드만 <see cref="NodeConfig.FlowId"/>로
+    /// 필터링, 와이어는 양쪽 끝 노드가 모두 그 탭에 속할 때만, 그룹은 <see cref="IsGroupInFlow"/>로
+    /// 판단해 포함) 목록으로 만든 뒤 <see cref="DataDirectory"/>\flows.json에 원자적으로 저장합니다
+    /// (<see cref="FlowStore.SaveAsync"/>). <c>MainWindow</c>의 "파일 → 저장" 메뉴/Ctrl+S가 이
+    /// 메서드를 호출합니다.
     /// </summary>
     public async Task SaveFlowAsync()
     {
@@ -257,7 +313,8 @@ public partial class FlowCanvasView : UserControl
                 tab.Id,
                 tab.Name,
                 _nodeConfigs.Values.Where(n => n.FlowId == tab.Id).ToList(),
-                _wires.Where(w => IsWireInFlow(w, tab.Id)).ToList()))
+                _wires.Where(w => IsWireInFlow(w, tab.Id)).ToList(),
+                Groups: _groups.Values.Where(g => IsGroupInFlow(g, tab.Id)).ToList()))
             .ToList();
 
         await _flowStore.SaveAsync(flows, DataDirectory);
@@ -270,6 +327,15 @@ public partial class FlowCanvasView : UserControl
     private bool IsWireInFlow(Wire wire, string flowId) =>
         _nodeConfigs.TryGetValue(wire.SourceNodeId, out var source) && source.FlowId == flowId &&
         _nodeConfigs.TryGetValue(wire.TargetNodeId, out var target) && target.FlowId == flowId;
+
+    /// <summary>
+    /// (EC-10) <paramref name="group"/>의 모든 <see cref="GroupDefinition.MemberNodeIds"/>가
+    /// <paramref name="flowId"/> 탭에 속하는지 확인합니다(<see cref="GroupDefinition"/> 자체에는
+    /// 소속 탭 필드가 없어 멤버 노드로 간접 판단 — 클래스 자체 주석 참고). 멤버 중 하나라도 이
+    /// 탭에 없으면(다른 탭 소속이거나 노드가 이미 삭제됨) <c>false</c>를 반환합니다.
+    /// </summary>
+    private bool IsGroupInFlow(GroupDefinition group, string flowId) =>
+        group.MemberNodeIds.All(id => _nodeConfigs.TryGetValue(id, out var node) && node.FlowId == flowId);
 
     /// <summary>
     /// (EC-05) 새 Flow 탭을 만들고("f{n}", "Flow {n}") 곧바로 그 탭으로 전환합니다. 탭 스트립의
@@ -286,10 +352,10 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-05) <paramref name="flowId"/> 탭을 삭제합니다 — 이 탭에 속한 노드·와이어가 모두 함께
-    /// 삭제되므로 사용자에게 먼저 확인을 받습니다. 남은 탭이 1개뿐이면(완료 기준이 "탭 3개 이상을
-    /// 추가/전환/삭제해도"라 최소 1개는 항상 있어야 함) 삭제를 거부합니다. 삭제된 탭이 현재 활성
-    /// 탭이었으면 남은 탭 중 첫 번째로 전환합니다.
+    /// (EC-05, EC-10 확장) <paramref name="flowId"/> 탭을 삭제합니다 — 이 탭에 속한 노드·와이어·
+    /// 그룹이 모두 함께 삭제되므로 사용자에게 먼저 확인을 받습니다. 남은 탭이 1개뿐이면(완료 기준이
+    /// "탭 3개 이상을 추가/전환/삭제해도"라 최소 1개는 항상 있어야 함) 삭제를 거부합니다. 삭제된
+    /// 탭이 현재 활성 탭이었으면 남은 탭 중 첫 번째로 전환합니다.
     /// </summary>
     private void RemoveFlowTab(string flowId)
     {
@@ -327,6 +393,19 @@ public partial class FlowCanvasView : UserControl
         }
 
         _wires.RemoveAll(w => removedNodeIds.Contains(w.SourceNodeId) || removedNodeIds.Contains(w.TargetNodeId));
+
+        // (EC-10) 삭제된 노드를 하나라도 포함하던 그룹은 통째로 고아가 된다(그룹의 모든 멤버는
+        // 항상 같은 탭에 속한다는 전제 — 클래스 자체 주석 참고) — 남겨둬도 SaveFlowAsync가 어느
+        // 탭에도 포함시키지 않아 저장은 안 되지만, 메모리에 계속 남는 죽은 데이터라 정리한다.
+        var removedGroupIds = _groups
+            .Where(kv => kv.Value.MemberNodeIds.Any(removedNodeIds.Contains))
+            .Select(kv => kv.Key)
+            .ToList();
+        foreach (var groupId in removedGroupIds)
+        {
+            _groups.Remove(groupId);
+        }
+
         _flowTabs.Remove(tab);
 
         if (_activeFlowId == flowId)
@@ -351,14 +430,15 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-07, <see cref="SwitchToFlow"/>에서 분리) <c>NodeCanvas</c>의 시각 요소(카드·포트·와이어
-    /// 선)를 전부 지우고, 지금 활성 탭(<see cref="_activeFlowId"/>)에 속한 노드만 <see cref="RenderNode"/>로,
-    /// 양쪽 끝이 모두 그 탭에 속한 와이어만 <see cref="DrawWireLine"/>로 다시 그립니다. 데이터인
-    /// <see cref="_nodeConfigs"/>/<see cref="_wires"/>는 건드리지 않습니다 — 탭 전환(<see cref="SwitchToFlow"/>)뿐
-    /// 아니라 <see cref="CommandHistory"/>로 실행된 커맨드(노드 추가, 와이어 연결, 속성 편집)의
-    /// Do/Undo 양쪽에서도 데이터를 바꾼 뒤 이 메서드 하나만 호출하면 화면이 항상 데이터와 일치하도록
-    /// 맞출 수 있습니다(WPF 요소를 하나씩 추가/제거하는 대신 매번 새로 그리는 EC-05의 단순한 방식을
-    /// 그대로 재사용 — 캔버스 편집이 잦은 조작이 아니라 성능 부담이 적다는 같은 판단).
+    /// (EC-07, <see cref="SwitchToFlow"/>에서 분리, EC-10 확장) <c>NodeCanvas</c>의 시각 요소(카드·포트·
+    /// 와이어 선·그룹 박스)를 전부 지우고, 지금 활성 탭(<see cref="_activeFlowId"/>)에 속한 노드/와이어/
+    /// 그룹을 다시 그립니다. 데이터인 <see cref="_nodeConfigs"/>/<see cref="_wires"/>/<see cref="_groups"/>는
+    /// 건드리지 않습니다 — 탭 전환(<see cref="SwitchToFlow"/>)뿐 아니라 <see cref="CommandHistory"/>로
+    /// 실행된 커맨드(노드 추가, 와이어 연결, 속성 편집)의 Do/Undo, 그룹 생성/접기 양쪽에서도 데이터를
+    /// 바꾼 뒤 이 메서드 하나만 호출하면 화면이 항상 데이터와 일치하도록 맞출 수 있습니다(WPF 요소를
+    /// 하나씩 추가/제거하는 대신 매번 새로 그리는 EC-05의 단순한 방식을 그대로 재사용). (EC-10) 접힌
+    /// 그룹(<see cref="GroupDefinition.Collapsed"/>)의 소속 노드는 카드 자체를 그리지 않고(<see cref="RenderCollapsedGroup"/>이
+    /// 대신 박스 하나만 그림), 그 노드에 닿는 와이어도 함께 건너뜁니다.
     /// </summary>
     private void RedrawActiveTab()
     {
@@ -374,22 +454,39 @@ public partial class FlowCanvasView : UserControl
         // "선택됨"으로 표시할 수는 없으므로). _clipboardNode는 여기서 지우지 않는다(탭을 넘나들며
         // 붙여넣기가 계속 가능해야 하고, Undo/Redo로도 클립보드 내용이 사라질 이유가 없으므로).
         _nodeCards.Clear();
-        _selectedNodeId = null;
+        _selectedNodeIds.Clear();
 
         var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == _activeFlowId).ToList();
+        var tabGroups = _groups.Values.Where(g => IsGroupInFlow(g, _activeFlowId)).ToList();
+
+        // (EC-10) 접힌 그룹의 소속 노드 Id를 모아, 카드/와이어 렌더링 양쪽에서 건너뛴다.
+        var hiddenNodeIds = new HashSet<string>(
+            tabGroups.Where(g => g.Collapsed).SelectMany(g => g.MemberNodeIds));
+
         foreach (var node in tabNodes)
         {
+            if (hiddenNodeIds.Contains(node.Id))
+            {
+                continue;
+            }
+
             RenderNode(node);
         }
 
         foreach (var wire in _wires)
         {
-            if (IsWireInFlow(wire, _activeFlowId))
+            if (IsWireInFlow(wire, _activeFlowId) &&
+                !hiddenNodeIds.Contains(wire.SourceNodeId) && !hiddenNodeIds.Contains(wire.TargetNodeId))
             {
                 var source = new PortHandle(wire.SourceNodeId, wire.SourcePort, IsOutput: true);
                 var target = new PortHandle(wire.TargetNodeId, wire.TargetPort, IsOutput: false);
                 DrawWireLine(source, target);
             }
+        }
+
+        foreach (var group in tabGroups)
+        {
+            RenderGroup(group);
         }
 
         EmptyCanvasHint.Visibility = tabNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -590,7 +687,7 @@ public partial class FlowCanvasView : UserControl
         NodeCanvas.Children.Add(card);
         _nodeLabels[config.Id] = label;
         _nodeCards[config.Id] = card; // (EC-06) 선택 시 테두리 강조를 위해 Border 참조를 보관
-        ApplyCardBorder(config.Id, card, selected: false); // (EC-08) 최초 테두리도 선택/누락 상태에 맞춰 설정
+        ApplyCardBorder(config.Id, card); // (EC-08) 최초 테두리도 선택/누락 상태에 맞춰 설정
 
         // EC-02 범위: 지금은 모든 노드를 입력 1개·출력 1개로 고정한다(클래스 주석 참고 — Phase 7
         // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정, MissingNode의 실제
@@ -744,12 +841,14 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-03, EC-06 확장) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로
-    /// <see cref="OpenPropertyDialog"/>를 엽니다. (EC-06) 한 번 클릭이면 더 이상 무시하지 않고
-    /// <see cref="SelectNode"/>로 그 노드를 선택 상태로 만듭니다(Ctrl+C 복사 대상). 어느 쪽이든
-    /// <paramref name="e"/>.Handled를 <c>true</c>로 설정해, 이 클릭이 <see cref="NodeCanvas"/>의
-    /// 배경 클릭 핸들러(<see cref="OnCanvasBackgroundMouseDown"/>)로 버블링되어 방금 한 선택이
-    /// 곧바로 해제되는 것을 막습니다.
+    /// (EC-03, EC-06 확장, EC-10 확장) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의
+    /// Tag(NodeId)로 <see cref="OpenPropertyDialog"/>를 엽니다. 한 번 클릭이면 Ctrl(<see cref="ModifierKeys.Control"/>)이
+    /// 눌려 있는지로 갈립니다 — (EC-10) Ctrl+클릭은 <see cref="ToggleNodeSelection"/>으로 그 노드만
+    /// 선택 목록에 추가/제거(여러 노드를 모아 <see cref="GroupSelectedNodes"/>로 그룹 묶기), (EC-06)
+    /// Ctrl 없는 일반 클릭은 <see cref="SelectNode"/>로 "이 노드 하나만" 선택(다른 선택은 모두
+    /// 해제). 어느 경우든 <paramref name="e"/>.Handled를 <c>true</c>로 설정해, 이 클릭이
+    /// <see cref="NodeCanvas"/>의 배경 클릭 핸들러(<see cref="OnCanvasBackgroundMouseDown"/>)로
+    /// 버블링되어 방금 한 선택이 곧바로 해제되는 것을 막습니다.
     /// </summary>
     private void OnCardMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -762,6 +861,10 @@ public partial class FlowCanvasView : UserControl
         {
             OpenPropertyDialog(nodeId);
         }
+        else if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            ToggleNodeSelection(nodeId);
+        }
         else
         {
             SelectNode(nodeId);
@@ -771,38 +874,67 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-06, EC-08 확장) <paramref name="nodeId"/>를 선택 상태로 만들고(<c>null</c>이면 선택 해제)
-    /// <see cref="ApplyCardBorder"/>로 카드 테두리를 그 상태에 맞게 다시 칠합니다 — 이전에 선택돼
-    /// 있던 카드는 선택 해제 상태로(기본 <c>BorderBrush</c>, 단 알 수 없는 타입이면 <c>RedBrush</c>가
-    /// 우선), 새로 선택된 카드는 <c>AccentBrush</c>로 강조합니다. <see cref="_nodeCards"/>에 없는
-    /// Id(이미 지워졌거나 다른 탭 소속)가 들어오면 그 카드에 대한 강조만 건너뜁니다.
+    /// (EC-06, EC-08 확장, EC-10 확장) <paramref name="nodeId"/> 하나만 선택 상태로 만듭니다(다른
+    /// 선택은 모두 해제) — <c>null</c>이면 선택을 전부 해제합니다. <see cref="ApplyCardBorder"/>로
+    /// 영향받은 카드(이전에 선택돼 있던 것 + 새로 선택된 것)의 테두리를 그 상태에 맞게 다시
+    /// 칠합니다. <see cref="_nodeCards"/>에 없는 Id(이미 지워졌거나 다른 탭 소속)가 들어오면 그
+    /// 카드에 대한 강조만 건너뜁니다. 여러 노드를 함께 선택하려면(그룹 묶기용) Ctrl+클릭으로
+    /// <see cref="ToggleNodeSelection"/>을 대신 쓰십시오.
     /// </summary>
     private void SelectNode(string? nodeId)
     {
-        if (_selectedNodeId is { } previousId && _nodeCards.TryGetValue(previousId, out var previousCard))
+        var affectedIds = new HashSet<string>(_selectedNodeIds);
+        if (nodeId is not null)
         {
-            ApplyCardBorder(previousId, previousCard, selected: false);
+            affectedIds.Add(nodeId);
         }
 
-        _selectedNodeId = nodeId;
-
-        if (nodeId is not null && _nodeCards.TryGetValue(nodeId, out var card))
+        _selectedNodeIds.Clear();
+        if (nodeId is not null)
         {
-            ApplyCardBorder(nodeId, card, selected: true);
+            _selectedNodeIds.Add(nodeId);
+        }
+
+        foreach (var id in affectedIds)
+        {
+            if (_nodeCards.TryGetValue(id, out var card))
+            {
+                ApplyCardBorder(id, card);
+            }
         }
     }
 
     /// <summary>
-    /// (EC-08) <paramref name="card"/>의 테두리를 상태 우선순위(선택 &gt; 알 수 없는 타입 &gt; 기본)에
-    /// 따라 정합니다 — <see cref="RenderNode"/>(최초 렌더링)와 <see cref="SelectNode"/>(선택/해제)
-    /// 양쪽이 이 메서드 하나를 공유해 테두리 규칙이 한 곳에만 있도록 합니다. <paramref name="selected"/>가
-    /// <c>true</c>이면 무조건 <c>AccentBrush</c>/두께 2로 강조하고, 아니면 <paramref name="nodeId"/>의
-    /// <see cref="NodeConfig.Type"/>이 <see cref="_registry"/>에 없을 때(EC-08 "누락 노드") <c>RedBrush</c>/
-    /// 두께 2로, 그 외에는 기본 <c>BorderBrush</c>/두께 1로 되돌립니다.
+    /// (EC-10) <paramref name="nodeId"/>를 현재 선택 목록(<see cref="_selectedNodeIds"/>)에
+    /// 추가하거나(아직 없으면) 제거합니다(이미 있으면) — 다른 노드의 선택 상태는 건드리지 않습니다.
+    /// Ctrl+클릭(<see cref="OnCardMouseLeftButtonDown"/>)이 이 메서드를 호출해 여러 노드를 한 번에
+    /// 골라 <see cref="GroupSelectedNodes"/>/<see cref="UngroupSelectedGroup"/>의 대상으로 삼습니다.
     /// </summary>
-    private void ApplyCardBorder(string nodeId, Border card, bool selected)
+    private void ToggleNodeSelection(string nodeId)
     {
-        if (selected)
+        if (!_selectedNodeIds.Remove(nodeId))
+        {
+            _selectedNodeIds.Add(nodeId);
+        }
+
+        if (_nodeCards.TryGetValue(nodeId, out var card))
+        {
+            ApplyCardBorder(nodeId, card);
+        }
+    }
+
+    /// <summary>
+    /// (EC-08, EC-10 확장) <paramref name="card"/>의 테두리를 상태 우선순위(선택 &gt; 알 수 없는
+    /// 타입 &gt; 기본)에 따라 정합니다 — <see cref="RenderNode"/>(최초 렌더링)와
+    /// <see cref="SelectNode"/>/<see cref="ToggleNodeSelection"/>(선택 변경) 모두가 이 메서드
+    /// 하나를 공유해 테두리 규칙이 한 곳에만 있도록 합니다. <paramref name="nodeId"/>가
+    /// <see cref="_selectedNodeIds"/>에 있으면 무조건 <c>AccentBrush</c>/두께 2로 강조하고, 아니면
+    /// <see cref="NodeConfig.Type"/>이 <see cref="_registry"/>에 없을 때(EC-08 "누락 노드")
+    /// <c>RedBrush</c>/두께 2로, 그 외에는 기본 <c>BorderBrush</c>/두께 1로 되돌립니다.
+    /// </summary>
+    private void ApplyCardBorder(string nodeId, Border card)
+    {
+        if (_selectedNodeIds.Contains(nodeId))
         {
             card.BorderBrush = (Brush)FindResource("AccentBrush");
             card.BorderThickness = new Thickness(2);
@@ -823,7 +955,7 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-06) <see cref="NodeCanvas"/>의 빈 배경(카드·포트가 아닌 영역)을 클릭하면 선택을
+    /// (EC-06) <see cref="NodeCanvas"/>의 빈 배경(카드·포트가 아닌 영역)을 클릭하면 선택을 모두
     /// 해제합니다. 카드 클릭(<see cref="OnCardMouseLeftButtonDown"/>)과 포트 클릭
     /// (<see cref="OnOutputPortMouseDown"/>)은 각자 <c>e.Handled = true</c>로 이 핸들러까지
     /// 버블링되지 않도록 이미 막고 있으므로, 이 핸들러는 정말 빈 배경을 눌렀을 때만 실행됩니다.
@@ -831,16 +963,23 @@ public partial class FlowCanvasView : UserControl
     private void OnCanvasBackgroundMouseDown(object sender, MouseButtonEventArgs e) => SelectNode(null);
 
     /// <summary>
-    /// (EC-06) 지금 선택된 노드(<see cref="_selectedNodeId"/>)의 <see cref="NodeConfig"/>를 내부
+    /// (EC-06, EC-10 확장) 지금 정확히 노드 하나만 선택돼 있으면 그 <see cref="NodeConfig"/>를 내부
     /// 클립보드(<see cref="_clipboardNode"/>)에 복사합니다. <see cref="NodeConfig.Properties"/>는
     /// 참조 타입(Dictionary)이라 그대로 담으면 원본과 클립보드가 같은 인스턴스를 공유하게 되므로,
     /// 새 Dictionary로 복제해 독립시킵니다(<see cref="NodeConfig"/> 자체 XML 문서의 "record 동등성
-    /// 주의"와 같은 이유). 선택된 노드가 없으면 아무 것도 하지 않습니다 — <c>MainWindow</c>의
-    /// Ctrl+C/"편집 → 복사"가 이 메서드를 호출합니다.
+    /// 주의"와 같은 이유). 선택된 노드가 없거나(EC-06 원래 동작) 2개 이상 선택돼 있으면(EC-10으로
+    /// 새로 가능해진 다중 선택 — 복사 대상이 모호해 여러 노드 복사는 이번 Step 범위에 넣지 않음)
+    /// 아무 것도 하지 않습니다 — <c>MainWindow</c>의 Ctrl+C/"편집 → 복사"가 이 메서드를 호출합니다.
     /// </summary>
     public void CopySelectedNode()
     {
-        if (_selectedNodeId is not { } nodeId || !_nodeConfigs.TryGetValue(nodeId, out var config))
+        if (_selectedNodeIds.Count != 1)
+        {
+            return;
+        }
+
+        var nodeId = _selectedNodeIds.First();
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config))
         {
             return;
         }
@@ -927,6 +1066,230 @@ public partial class FlowCanvasView : UserControl
 
     /// <summary>(EC-07) <c>MainWindow</c>가 "편집 → 다시 실행"/Ctrl+Y의 활성화 여부를 판단하는 데 씁니다.</summary>
     public bool CanRedo => _history.CanRedo;
+
+    /// <summary>
+    /// (EC-10) 지금 Ctrl+클릭으로 선택된 노드 2개 이상을(<see cref="_selectedNodeIds"/>) 새
+    /// <see cref="GroupDefinition"/>으로 묶습니다("g{n}" Id, "Group {n}" 이름 자동 발급). 완료
+    /// 기준의 검증 시나리오는 노드 3개지만, 그룹 자체는 2개부터도 의미가 있어 최소 인원을 2개로
+    /// 판단했습니다(낮은 리스크). 선택이 1개 이하면 아무 것도 하지 않습니다(그룹의 의미가 없음).
+    /// 그룹을 만든 뒤에는 개별 노드 선택을 해제합니다(그룹 박스가 새로 생겼으니 낱개 카드 선택
+    /// 상태를 유지할 이유가 없음). <c>MainWindow</c>의 Ctrl+G/"편집 → 그룹으로 묶기"가 이 메서드를
+    /// 호출합니다.
+    /// </summary>
+    public void GroupSelectedNodes()
+    {
+        if (_selectedNodeIds.Count < 2)
+        {
+            return;
+        }
+
+        var id = $"g{_nextGroupSeq}";
+        var group = new GroupDefinition(
+            Id: id,
+            Name: $"Group {_nextGroupSeq}",
+            MemberNodeIds: _selectedNodeIds.ToList());
+        _nextGroupSeq++;
+
+        _groups[id] = group;
+        SelectNode(null);
+        RedrawActiveTab();
+    }
+
+    /// <summary>
+    /// (EC-10) 지금 선택된 노드가 속한 그룹을 전부 찾아 해제합니다 — 그룹 자체를 직접 선택하는
+    /// UI가 따로 없어(캔버스에는 노드 선택만 있음), "이 그룹에 속한 노드 하나를 골라 Ctrl+Shift+G"를
+    /// 트리거로 재사용하는 가장 단순한 방법을 택했습니다(완료 기준에는 없지만, 그룹을 만들기만
+    /// 하고 되돌릴 방법이 없으면 실사용이 어려워 Node-RED의 Ctrl+Shift+G 관례를 따라 낮은 리스크로
+    /// 함께 추가). 그룹 자체는 삭제되지만 소속 노드·와이어는 그대로 남습니다(캔버스 표시 전용
+    /// 요소를 해제하는 것뿐, 데이터 손실 없음). 선택된 노드가 없거나 어떤 그룹에도 속하지 않으면
+    /// 아무 것도 하지 않습니다 — <c>MainWindow</c>의 Ctrl+Shift+G/"편집 → 그룹 해제"가 이 메서드를
+    /// 호출합니다.
+    /// </summary>
+    public void UngroupSelectedGroup()
+    {
+        if (_selectedNodeIds.Count == 0)
+        {
+            return;
+        }
+
+        var groupIdsToRemove = _groups.Values
+            .Where(g => g.MemberNodeIds.Any(_selectedNodeIds.Contains))
+            .Select(g => g.Id)
+            .ToList();
+
+        if (groupIdsToRemove.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var groupId in groupIdsToRemove)
+        {
+            _groups.Remove(groupId);
+        }
+
+        RedrawActiveTab();
+    }
+
+    /// <summary>
+    /// (EC-10) <paramref name="group"/>을 <see cref="GroupDefinition.Collapsed"/> 여부에 따라
+    /// <see cref="RenderExpandedGroupBox"/> 또는 <see cref="RenderCollapsedGroup"/>으로 그립니다 —
+    /// <see cref="RedrawActiveTab"/>이 노드·와이어를 다 그린 뒤 각 그룹마다 이 메서드를 호출합니다.
+    /// </summary>
+    private void RenderGroup(GroupDefinition group)
+    {
+        if (group.Collapsed)
+        {
+            RenderCollapsedGroup(group);
+        }
+        else
+        {
+            RenderExpandedGroupBox(group);
+        }
+    }
+
+    /// <summary>
+    /// (EC-10) 펼쳐진 그룹을 소속 노드 카드들을 감싸는 사각형 박스로 그립니다 — 이미 그려진
+    /// <see cref="_nodeVisuals"/>(멤버 카드들의 위치·크기)의 최소/최대 좌표에
+    /// <see cref="GroupPadding"/>만큼 여백을 둔 바운딩 박스를 계산하고, 위쪽에
+    /// <see cref="GroupHeaderHeight"/>만큼 이름 표시 공간을 더 둡니다. 박스는 채우기 없이 테두리만
+    /// 그려(카드를 가리지 않도록) 카드보다 뒤(<c>ZIndex -3</c>, 와이어의 -1보다도 더 뒤)에 배치하고,
+    /// 이름+접기 글리프(<see cref="BuildGroupHeader"/>)는 카드보다 앞(<c>ZIndex 2</c>)에 둬 항상
+    /// 클릭 가능하게 합니다. 이 탭에 실제로 그려진 멤버가 하나도 없으면(다른 탭 소속이거나 노드가
+    /// 삭제됨 — <see cref="IsGroupInFlow"/>가 이미 걸러내므로 이론상 발생하지 않지만 방어적으로)
+    /// 아무 것도 그리지 않습니다.
+    /// </summary>
+    private void RenderExpandedGroupBox(GroupDefinition group)
+    {
+        var memberVisuals = group.MemberNodeIds
+            .Select(id => _nodeVisuals.TryGetValue(id, out var visual) ? visual : null)
+            .Where(visual => visual is not null)
+            .Select(visual => visual!)
+            .ToList();
+
+        if (memberVisuals.Count == 0)
+        {
+            return;
+        }
+
+        var left = memberVisuals.Min(v => v.Left) - GroupPadding;
+        var top = memberVisuals.Min(v => v.Top) - GroupPadding - GroupHeaderHeight;
+        var right = memberVisuals.Max(v => v.Left + v.Width) + GroupPadding;
+        var bottom = memberVisuals.Max(v => v.Top + v.Height) + GroupPadding;
+
+        var box = new Border
+        {
+            Width = Math.Max(0, right - left),
+            Height = Math.Max(0, bottom - top),
+            Background = Brushes.Transparent,
+            BorderBrush = (Brush)FindResource("AccentBrush"),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(6)
+        };
+        Canvas.SetLeft(box, left);
+        Canvas.SetTop(box, top);
+        Panel.SetZIndex(box, -3);
+        NodeCanvas.Children.Add(box);
+
+        var header = BuildGroupHeader(group, collapsed: false);
+        Canvas.SetLeft(header, left + 6);
+        Canvas.SetTop(header, top + 1);
+        Panel.SetZIndex(header, 2);
+        NodeCanvas.Children.Add(header);
+    }
+
+    /// <summary>
+    /// (EC-10) 접힌 그룹을 소속 노드 카드 대신 박스 하나로 축약 표시합니다(완료 기준 "접으면 박스
+    /// 하나로 축약 표시"). 멤버 노드는 <see cref="RedrawActiveTab"/>이 이미 카드로 그리지 않았으므로
+    /// (<c>hiddenNodeIds</c>) <see cref="_nodeVisuals"/>에 위치 정보가 없습니다 — 대신 멤버들의
+    /// <see cref="NodeConfig.X"/>/<see cref="NodeConfig.Y"/> 평균(centroid)을 박스 중심으로 씁니다
+    /// (그룹 자체에 별도 좌표 필드가 없어 택한 가장 단순한 방법 — 펼쳤을 때의 정확한 배치를 별도로
+    /// 기억하려면 <see cref="GroupDefinition"/>에 좌표 필드가 더 필요하지만, 완료 기준은 "저장 후
+    /// 재로드해도 접힘 상태가 유지되고 박스 하나로 축약 표시"까지만 요구해 이 수준으로 충분하다고
+    /// 판단). 박스를 클릭하면 <see cref="OnGroupHeaderClick"/>이 펼칩니다.
+    /// </summary>
+    private void RenderCollapsedGroup(GroupDefinition group)
+    {
+        var members = group.MemberNodeIds
+            .Select(id => _nodeConfigs.TryGetValue(id, out var node) ? node : null)
+            .Where(node => node is not null)
+            .Select(node => node!)
+            .ToList();
+
+        if (members.Count == 0)
+        {
+            return;
+        }
+
+        var centerX = members.Average(n => n.X);
+        var centerY = members.Average(n => n.Y);
+        const double width = NodeCardWidth + 40;
+        const double height = NodeCardHeight;
+
+        var box = new Border
+        {
+            Width = width,
+            Height = height,
+            Background = (Brush)FindResource("ControlBackgroundBrush"),
+            BorderBrush = (Brush)FindResource("AccentBrush"),
+            BorderThickness = new Thickness(2),
+            CornerRadius = new CornerRadius(6),
+            Cursor = Cursors.Hand,
+            Tag = group.Id,
+            Child = BuildGroupHeader(group, collapsed: true)
+        };
+        box.MouseLeftButtonDown += OnGroupHeaderClick;
+
+        Canvas.SetLeft(box, centerX - width / 2);
+        Canvas.SetTop(box, centerY - height / 2);
+        NodeCanvas.Children.Add(box);
+    }
+
+    /// <summary>
+    /// (EC-10) 그룹 이름·접기 글리프(펼침 "▼"/접힘 "▶")·소속 노드 개수를 담은
+    /// <see cref="TextBlock"/>을 만듭니다. <paramref name="collapsed"/>가 <c>false</c>면(펼친 상태)
+    /// 이 텍스트 자체에 <see cref="OnGroupHeaderClick"/>을 연결합니다 — 접힌 상태의 클릭은
+    /// <see cref="RenderCollapsedGroup"/>이 바깥 박스에 이미 연결해뒀으므로, 여기서 또 연결하면
+    /// 클릭 한 번에 두 번 실행되는 것을 피하기 위해 조건부로만 연결합니다.
+    /// </summary>
+    private TextBlock BuildGroupHeader(GroupDefinition group, bool collapsed)
+    {
+        var glyph = collapsed ? "▶" : "▼";
+        var header = new TextBlock
+        {
+            Text = $"{glyph} {group.Name} ({group.MemberNodeIds.Count})",
+            FontSize = 10,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            HorizontalAlignment = collapsed ? HorizontalAlignment.Center : HorizontalAlignment.Left,
+            VerticalAlignment = collapsed ? VerticalAlignment.Center : VerticalAlignment.Top,
+            Cursor = Cursors.Hand,
+            Tag = group.Id
+        };
+
+        if (!collapsed)
+        {
+            header.MouseLeftButtonDown += OnGroupHeaderClick;
+        }
+
+        return header;
+    }
+
+    /// <summary>
+    /// (EC-10) 그룹 헤더(펼친 상태) 또는 접힌 박스를 클릭하면 그 그룹의
+    /// <see cref="GroupDefinition.Collapsed"/>를 반전시켜(<c>with</c> 식으로 새 인스턴스 교체 —
+    /// <see cref="GroupDefinition"/>이 불변 record) <see cref="RedrawActiveTab"/>으로 다시 그립니다.
+    /// <paramref name="e"/>.Handled를 <c>true</c>로 설정해 <see cref="OnCanvasBackgroundMouseDown"/>으로
+    /// 버블링되지 않게 막습니다(카드 클릭과 동일한 이유).
+    /// </summary>
+    private void OnGroupHeaderClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string groupId } && _groups.TryGetValue(groupId, out var group))
+        {
+            _groups[groupId] = group with { Collapsed = !group.Collapsed };
+            RedrawActiveTab();
+        }
+
+        e.Handled = true;
+    }
 
     /// <summary>
     /// Class명 : 노드 추가 커맨드

@@ -27,6 +27,11 @@ namespace NodeSharp.Editor;
 /// <c>FlowCanvas.Redo()</c>를 호출합니다. 이 둘은 <see cref="OnUndoCanExecute"/>/
 /// <see cref="OnRedoCanExecute"/>(CommandBinding.CanExecute)로 <c>FlowCanvas.CanUndo</c>/
 /// <c>CanRedo</c>를 확인해, 되돌리거나 다시 실행할 것이 없으면 메뉴가 자동으로 비활성화됩니다.
+/// (EC-10) 같은 패턴으로 "편집 → 그룹으로 묶기"/Ctrl+G가 공유하는 <see cref="OnGroupNodesClick"/>과
+/// "편집 → 그룹 해제"/Ctrl+Shift+G가 공유하는 <see cref="OnUngroupNodesClick"/>이 추가됐습니다 —
+/// 각각 <c>FlowCanvas.GroupSelectedNodes()</c>/<c>FlowCanvas.UngroupSelectedGroup()</c>를
+/// 호출합니다. WPF ApplicationCommands에는 대응하는 표준 명령이 없어 <see cref="EditorCommands"/>에
+/// 직접 선언한 <see cref="RoutedCommand"/> 2개(GroupNodes/UngroupNodes)를 대신 씁니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -143,6 +148,22 @@ public partial class MainWindow : Window
     /// 메뉴가 자동으로 회색 비활성화됩니다.
     /// </summary>
     private void OnRedoCanExecute(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = FlowCanvas.CanRedo;
+
+    /// <summary>
+    /// (EC-10) "편집 → 그룹으로 묶기" 메뉴 Click과 Ctrl+G(<see cref="EditorCommands.GroupNodes"/>의
+    /// <c>CommandBinding.Executed</c>)가 공유하는 핸들러입니다. <c>FlowCanvas.GroupSelectedNodes()</c>를
+    /// 호출해 지금 Ctrl+클릭으로 선택된 노드들을 새 그룹으로 묶습니다(2개 미만이면 아무 동작도
+    /// 하지 않습니다).
+    /// </summary>
+    private void OnGroupNodesClick(object sender, RoutedEventArgs e) => FlowCanvas.GroupSelectedNodes();
+
+    /// <summary>
+    /// (EC-10) "편집 → 그룹 해제" 메뉴 Click과 Ctrl+Shift+G(<see cref="EditorCommands.UngroupNodes"/>의
+    /// <c>CommandBinding.Executed</c>)가 공유하는 핸들러입니다. <c>FlowCanvas.UngroupSelectedGroup()</c>를
+    /// 호출해 지금 선택된 노드가 속한 그룹을 해제합니다(선택이 없거나 어떤 그룹에도 속하지 않으면
+    /// 아무 동작도 하지 않습니다).
+    /// </summary>
+    private void OnUngroupNodesClick(object sender, RoutedEventArgs e) => FlowCanvas.UngroupSelectedGroup();
 
     /// <summary>
     /// (ED-B3) 창 상태가 바뀔 때마다 최대화/복원 버튼 아이콘을 맞는 모양으로 바꾸고, 최대화 상태일

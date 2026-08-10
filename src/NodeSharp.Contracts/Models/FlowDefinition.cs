@@ -18,6 +18,7 @@ namespace NodeSharp.Contracts.Models;
 /// <param name="Nodes">이 Flow 탭에 배치된 모든 노드의 설정 목록.</param>
 /// <param name="Wires">이 Flow 탭 안의 노드들을 잇는 모든 연결선 목록.</param>
 /// <param name="Disabled">이 Flow 탭 전체가 비활성화되어 있는지. <c>true</c>면 배포 시 이 탭에 속한 노드는 하나도 생성되지 않습니다(노드 단위 <see cref="NodeConfig.Disabled"/>와는 범위가 다릅니다).</param>
+/// <param name="Groups">(EC-10) 이 Flow 탭 안의 캔버스 그룹(Group) 목록. <c>null</c>이면 그룹이 하나도 없는 것과 동일하게 취급합니다 — 순수 표시 전용 정보라 <c>FlowDeployer</c>/<c>FlowEngine</c>은 이 값을 읽지 않습니다.</param>
 /// <example>
 /// <code>
 /// // Inject → Function → Alarm 3개 노드가 순서대로 연결된 Flow 탭 하나를 구성하는 예
@@ -39,6 +40,18 @@ namespace NodeSharp.Contracts.Models;
 ///
 /// // 비활성화된 두 번째 탭 — Disabled=true면 배포 시 n4/n5는 하나도 생성되지 않는다
 /// var line2 = line1 with { Id = "flow-2", Name = "2호기 라인(점검 중)", Disabled = true };
+///
+/// // (EC-10) inject/func 2개 노드를 "전처리" 그룹으로 묶은 세 번째 탭 — Groups는 순수 표시 전용이라
+/// // Runner의 FlowDeployer/FlowEngine은 이 값을 읽지 않는다
+/// var line3 = line1 with
+/// {
+///     Id = "flow-3",
+///     Name = "3호기 라인",
+///     Groups = new List&lt;GroupDefinition&gt;
+///     {
+///         new(Id: "g1", Name: "전처리", MemberNodeIds: new List&lt;string&gt; { "n1", "n2" }),
+///     },
+/// };
 /// </code>
 /// </example>
 public sealed record FlowDefinition(
@@ -46,4 +59,5 @@ public sealed record FlowDefinition(
     string Name,
     IReadOnlyList<NodeConfig> Nodes,
     IReadOnlyList<Wire> Wires,
-    bool Disabled = false);
+    bool Disabled = false,
+    IReadOnlyList<GroupDefinition>? Groups = null);

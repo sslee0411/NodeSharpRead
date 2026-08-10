@@ -112,4 +112,45 @@ public class FlowDefinitionTests
         Assert.Equal("f2", restored[1].Id);
         Assert.True(restored[1].Disabled);
     }
+
+    [Fact]
+    public void Groups_기본값은_null이다()
+    {
+        // (EC-10 신설) Groups는 선택 매개변수(기본값 null)라 기존 호출부(EC-01b~EC-05, 위 테스트들
+        // 포함)가 전부 코드 변경 없이 그대로 컴파일된다는 것도 이 테스트가 함께 보증한다.
+        var flow = new FlowDefinition("flow-1", "1호기 라인", new List<NodeConfig>(), new List<Wire>());
+
+        Assert.Null(flow.Groups);
+    }
+
+    [Fact]
+    public void SystemTextJson_왕복_시_Groups_목록이_통째로_보존된다()
+    {
+        // (EC-10 신설) Nodes/Wires와 동일하게 Groups도 List<GroupDefinition>이라 System.Text.Json이
+        // JsonElement가 아니라 실제 GroupDefinition 객체로 복원한다.
+        var original = new FlowDefinition(
+            Id: "flow-1", Name: "1호기 라인",
+            Nodes: new List<NodeConfig>
+            {
+                new("n1", "inject", "시작", "flow-1", new Dictionary<string, object?>()),
+                new("n2", "function", "변환", "flow-1", new Dictionary<string, object?>()),
+                new("n3", "debug", "출력", "flow-1", new Dictionary<string, object?>()),
+            },
+            Wires: new List<Wire>(),
+            Groups: new List<GroupDefinition>
+            {
+                new(Id: "g1", Name: "전처리", MemberNodeIds: new List<string> { "n1", "n2" }, Collapsed: true),
+            });
+
+        var json = JsonSerializer.Serialize(original);
+        var restored = JsonSerializer.Deserialize<FlowDefinition>(json);
+
+        Assert.NotNull(restored);
+        Assert.NotNull(restored!.Groups);
+        Assert.Single(restored.Groups!);
+        Assert.Equal("g1", restored.Groups![0].Id);
+        Assert.Equal("전처리", restored.Groups![0].Name);
+        Assert.Equal(2, restored.Groups![0].MemberNodeIds.Count);
+        Assert.True(restored.Groups![0].Collapsed);
+    }
 }
