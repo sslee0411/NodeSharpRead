@@ -20,6 +20,12 @@ public class InterfacesTests
         public (string SourceNodeId, int OutputPort, Msg Msg)? LastRoute { get; private set; }
         public (string Fill, string Shape, string Text)? LastStatus { get; private set; }
 
+        // (NR-04) INodeContext.Flow/Global 신규 멤버 — 이 파일은 인터페이스 자체(Contracts)만
+        // 다루는 최소 스텁 취지라, Runtime의 ContextScope를 끌어오지 않고 Dictionary 기반의
+        // 자체 IContextScope 스텁(StubContextScope)으로 채운다.
+        public IContextScope Flow { get; } = new StubContextScope();
+        public IContextScope Global { get; } = new StubContextScope();
+
         public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct)
         {
             LastRoute = (sourceNodeId, outputPort, msg);
@@ -27,6 +33,18 @@ public class InterfacesTests
         }
 
         public void SetStatus(string fill, string shape, string text) => LastStatus = (fill, shape, text);
+    }
+
+    /// <summary>(NR-04) <see cref="IContextScope"/> 최소 스텁 — 실제 Context 저장소 없이 Dictionary 하나로 Get/Set/Keys를 그대로 구현.</summary>
+    private sealed class StubContextScope : IContextScope
+    {
+        private readonly Dictionary<string, object?> _data = new();
+
+        public T? Get<T>(string key) => _data.TryGetValue(key, out var v) && v is T t ? t : default;
+
+        public void Set(string key, object? value) => _data[key] = value;
+
+        public IEnumerable<string> Keys() => _data.Keys;
     }
 
     /// <summary>테스트 전용 <see cref="IFlowNode"/> 스텁 — 입력을 0번 출력 포트로 그대로 전달하는 패스스루 노드.</summary>

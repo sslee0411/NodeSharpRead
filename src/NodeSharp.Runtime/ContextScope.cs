@@ -13,7 +13,9 @@ namespace NodeSharp.Runtime;
 /// <c>NodeContext</c>(<c>RT-09b</c> 이후, 06번 탭 카드1 정식 통합판)가 <c>Local</c>(node)/<c>Flow</c>/
 /// <c>Global</c>/<c>Env</c> 4개를 각각 다른 scope 이름으로 만들어 씁니다 — 이 Step(<c>RT-09a</c>)에서는
 /// <c>Flow</c>/<c>Global</c> 2단계만 직접 검증합니다(<c>Local</c>은 <c>RT-09b</c> 범위).
-/// 설계 근거: 02번 문서 6번 탭 카드 1.
+/// 설계 근거: 02번 문서 6번 탭 카드 1. (NR-04) <see cref="IContextScope"/>를 구현해 <c>nodes\*</c>
+/// 코어 노드 플러그인이 <c>INodeContext.Flow</c>/<c>Global</c>을 통해 이 구조체를 인터페이스로만
+/// 다룰 수 있게 함(Runtime 직접 참조 없이).
 /// </summary>
 /// <example>
 /// <code>
@@ -28,7 +30,7 @@ namespace NodeSharp.Runtime;
 /// int? globalCounter = globalScope.Get&lt;int&gt;("counter"); // 100
 /// </code>
 /// </example>
-public readonly struct ContextScope
+public readonly struct ContextScope : IContextScope
 {
     private readonly IContextStore _store;
     private readonly string _scope;

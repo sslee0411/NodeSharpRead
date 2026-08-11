@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Tests", "test\Nod
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Nodes.Inject", "nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj", "{86F45D4D-6898-4074-8117-6F000679388B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Nodes.Switch", "nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj", "{335CE767-F77F-45FE-B459-9A6E4D37DBD7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -63,6 +65,10 @@ Global
 		{86F45D4D-6898-4074-8117-6F000679388B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{86F45D4D-6898-4074-8117-6F000679388B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{86F45D4D-6898-4074-8117-6F000679388B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{335CE767-F77F-45FE-B459-9A6E4D37DBD7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{335CE767-F77F-45FE-B459-9A6E4D37DBD7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{335CE767-F77F-45FE-B459-9A6E4D37DBD7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{335CE767-F77F-45FE-B459-9A6E4D37DBD7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -53,6 +53,11 @@ public class InjectNodeTests
         public Task RouteAsync(string sourceNodeId, int outputPort, Msg msg, CancellationToken ct) =>
             _engine.RouteAsync(sourceNodeId, outputPort, msg, ct);
         public void SetStatus(string fill, string shape, string text) { }
+
+        // (NR-04) INodeContext.Flow/Global 신규 멤버 — 이 파일은 이미 NodeSharp.Runtime을 참조하므로
+        // 실제 구현체 ContextScope+InMemoryContextStore를 그대로 재사용(별도 스텁 불필요).
+        public IContextScope Flow { get; } = new ContextScope(new InMemoryContextStore(), "flow", "test");
+        public IContextScope Global { get; } = new ContextScope(new InMemoryContextStore(), "global", string.Empty);
     }
 
     private static FlowEngine BuildEngine(out NodeTypeRegistry registry)

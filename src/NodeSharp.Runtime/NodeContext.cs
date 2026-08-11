@@ -57,11 +57,11 @@ public sealed class NodeContext : INodeContext
     /// <summary>이 노드 하나만의 변수 스코프입니다(scope="node", scopeId=nodeId) — 다른 노드와 절대 섞이지 않습니다.</summary>
     public ContextScope Local { get; }
 
-    /// <summary>이 노드가 속한 탭(Flow) 전체가 공유하는 변수 스코프입니다(scope="flow", scopeId=flowId).</summary>
-    public ContextScope Flow { get; }
+    /// <summary>이 노드가 속한 탭(Flow) 전체가 공유하는 변수 스코프입니다(scope="flow", scopeId=flowId). (NR-04) <see cref="IContextScope"/>로 타입 변경 — <see cref="INodeContext.Flow"/> 인터페이스 멤버를 그대로 구현.</summary>
+    public IContextScope Flow { get; }
 
-    /// <summary>모든 탭·노드가 함께 공유하는 전역 변수 스코프입니다(scope="global", scopeId="").</summary>
-    public ContextScope Global { get; }
+    /// <summary>모든 탭·노드가 함께 공유하는 전역 변수 스코프입니다(scope="global", scopeId=""). (NR-04) <see cref="IContextScope"/>로 타입 변경 — <see cref="INodeContext.Global"/> 인터페이스 멤버를 그대로 구현.</summary>
+    public IContextScope Global { get; }
 
     /// <summary>
     /// Subflow 인스턴스 환경변수 스코프입니다(scope="env", scopeId=nodeId, 9번 탭 EnvSchema 연동은

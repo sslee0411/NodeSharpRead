@@ -17,6 +17,10 @@
       nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj ProjectReference 추가.
     - ★ 확인(2026-08-10): 사용자가 "업데이트 해주고, 다음단계 진행해줘"로 확인 — NR-03a 완료 반영
       (03번 Step맵 NR-03a "⏳ 대기" → "✅ 완료").
+
+    Step: NR-04 (03번 개발 Step맵.html, Phase 7)
+    - SwitchNode(Switch 노드의 첫 구현체)를 실제 FlowEngine 배포·라우팅 경로로 검증하기 위해
+      nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -60,6 +64,9 @@
     <!-- NR-03a(03번 개발 Step맵.html) — InjectNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
          배포·라우팅 경로로 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj" />
+    <!-- NR-04(03번 개발 Step맵.html) — SwitchNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
+         배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj" />
   </ItemGroup>
 
 </Project>
