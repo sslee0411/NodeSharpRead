@@ -19,9 +19,20 @@ namespace NodeSharp.Nodes.Inject;
 /// <list type="bullet">
 /// <item><b>(NR-03a) Trigger 종류는 처음엔 Manual 하나만</b>: 카드7 원본 스케치는 <c>InjectTrigger</c>
 /// (Manual/Interval/Cron/OnDeploy) 선택을 전제하지만, NR-03a는 "수동 트리거"만 다루는 Step이라 이
-/// 클래스도 처음엔 Manual 동작(호출될 때마다 1회 발행)만 구현했습니다. Interval은 <b>NR-03b</b>가
-/// 아래 항목대로 추가했고, Cron은 NR-03d에서 마저 확장될 예정입니다("OnDeploy"는 바로 아래 NR-03c
-/// 항목대로 별도 트리거 종류가 아니라 <see cref="Once"/> 독립 플래그로 재설계됨).</item>
+/// 클래스도 처음엔 Manual 동작(호출될 때마다 1회 발행)만 구현했습니다. Interval은 <b>NR-03b</b>가,
+/// Cron은 <b>NR-03d</b>가 아래 항목대로 추가했습니다("OnDeploy"는 바로 아래 NR-03c 항목대로 별도
+/// 트리거 종류가 아니라 <see cref="Once"/> 독립 플래그로 재설계됨).</item>
+/// <item><b>(NR-03d) Cron 트리거 추가</b>: <see cref="TriggerMode"/>가 <c>"cron"</c>이고
+/// <see cref="CronExpressionText"/>가 비어 있지 않으면, <see cref="SetupRepeatingTriggerIfNeeded"/>가
+/// <see cref="Scheduler"/>의 <c>ScheduleCron</c>으로 등록합니다(<see cref="IScheduler.ScheduleCron"/>이
+/// 내부적으로 <c>NodeSharp.Util.Messaging.CronExpression.Parse</c>를 호출 — 착수 전 그 파서가 "초 분 시
+/// 일 월 요일" 6필드만 받고 이 Step의 완료 기준 예시인 5필드 <c>"* * * * *"</c>는 예외를 던진다는 것을
+/// 발견해, 실제 Node-RED가 쓰는 cronosjs 라이브러리(5~7필드 허용)를 근거로 AskUserQuestion 후 5필드도
+/// 허용하도록 확장함 — CronExpression.cs NR-03d 항목 참고). 잘못된 cron 표현식은 <c>FormatException</c>이
+/// <see cref="OnStartAsync"/> 밖으로 그대로 전파되고, <c>FlowEngine.DeployAsync</c>(RT-02b)의 노드별
+/// 예외 격리가 이를 잡아 <c>FailedNodeIds</c>에 기록합니다 — 배포 UI가 아직 없어(WPF 환경 미구성)
+/// 별도 "검증 오류 표시" 화면 대신 이 기존 메커니즘으로 완료 기준의 "검증 오류로 표시"를 만족시킵니다.
+/// </item>
 /// <item><b>(NR-03c) OnStart(once) 추가 — 별도 트리거 종류가 아니라 독립 플래그</b>: 03번 Step맵
 /// NR-03c는 "기동 시(OnStart) 트리거"를 <see cref="TriggerMode"/>의 또 다른 선택지처럼 서술하지만,
 /// 착수 전 실제 Node-RED 소스(20-inject.js)를 확인한 결과 원본은 <c>once</c>(체크박스)+
@@ -91,7 +102,15 @@ public sealed class InjectNode : IFlowNode
     public object? DefaultPayload { get; init; }
 
     /// <summary>
-    /// (NR-03b) Interval 트리거에 사용할 <see cref="IScheduler"/>입니다. 지정하지 않으면
+    /// (NR-03d) <see cref="TriggerMode"/>가 <c>"cron"</c>일 때 사용할 cron 표현식입니다. 5필드(표준
+    /// cron "분 시 일 월 요일", 초는 0으로 간주) 또는 6필드("초 분 시 일 월 요일") 모두 지원합니다
+    /// (<c>NodeSharp.Util.Messaging.CronExpression.Parse</c> NR-03d 항목 참고). 비어 있으면
+    /// <see cref="OnStartAsync"/>가 cron 예약을 시작하지 않습니다.
+    /// </summary>
+    public string CronExpressionText { get; init; } = string.Empty;
+
+    /// <summary>
+    /// (NR-03b) Interval·(NR-03d) Cron 트리거에 사용할 <see cref="IScheduler"/>입니다. 지정하지 않으면
     /// <see cref="OnStartAsync"/>가 기본값으로 앱 전체가 공유하는 <c>AsyncSchedulerAdapter</c>
     /// (<c>AsyncScheduler.Instance</c>를 감싼 인스턴스)를 직접 생성합니다. 테스트에서는
     /// <c>AsyncSchedulerAdapterTests</c>와 동일한 원칙으로 독립된 <c>AsyncScheduler</c> 인스턴스를 감싼
@@ -129,13 +148,13 @@ public sealed class InjectNode : IFlowNode
 
     /// <summary>
     /// 입력 포트가 없어 초기화할 연결·구독은 없습니다. (NR-03c) <see cref="Once"/>가 <c>true</c>이면
-    /// <see cref="OnceDelaySeconds"/> 후 1회 발행한 다음 <see cref="SetupIntervalIfNeeded"/>를 호출하고
-    /// (Node-RED 원본의 <c>once → repeaterSetup()</c> 순서와 동일), 그렇지 않으면 바로
-    /// <see cref="SetupIntervalIfNeeded"/>만 호출합니다. (NR-03b) <see cref="TriggerMode"/>가
-    /// <c>"interval"</c>이고 <see cref="IntervalSeconds"/>가 0보다 크면, <see cref="Scheduler"/>에
-    /// 이 노드 자신의 <see cref="Id"/>를 ownerId로 삼아 주기 발행을 등록합니다(<see cref="IScheduler"/>
-    /// XML 문서 예제와 동일한 패턴). 콜백은 <see cref="TriggerAsync"/>를 그대로 재사용합니다 — 매뉴얼
-    /// 트리거와 인터벌 트리거가 같은 진입점을 공유합니다(위 클래스 remarks 참고).
+    /// <see cref="OnceDelaySeconds"/> 후 1회 발행한 다음 <see cref="SetupRepeatingTriggerIfNeeded"/>를
+    /// 호출하고(Node-RED 원본의 <c>once → repeaterSetup()</c> 순서와 동일), 그렇지 않으면 바로
+    /// <see cref="SetupRepeatingTriggerIfNeeded"/>만 호출합니다. (NR-03b/NR-03d) <see cref="TriggerMode"/>가
+    /// <c>"interval"</c> 또는 <c>"cron"</c>이면, <see cref="Scheduler"/>에 이 노드 자신의 <see cref="Id"/>를
+    /// ownerId로 삼아 반복 발행을 등록합니다(<see cref="IScheduler"/> XML 문서 예제와 동일한 패턴). 콜백은
+    /// <see cref="TriggerAsync"/>를 그대로 재사용합니다 — 모든 트리거 종류가 같은 진입점을 공유합니다
+    /// (위 클래스 remarks 참고).
     /// </summary>
     public Task OnStartAsync(INodeContext ctx, CancellationToken ct)
     {
@@ -146,7 +165,7 @@ public sealed class InjectNode : IFlowNode
         }
         else
         {
-            SetupIntervalIfNeeded(ctx);
+            SetupRepeatingTriggerIfNeeded(ctx);
         }
 
         return Task.CompletedTask;
@@ -154,9 +173,9 @@ public sealed class InjectNode : IFlowNode
 
     /// <summary>
     /// (NR-03c) <see cref="OnceDelaySeconds"/>만큼 기다렸다가 1회 발행하고, 이어서
-    /// <see cref="SetupIntervalIfNeeded"/>로 Interval 트리거(설정돼 있다면)도 시작합니다. 대기 중에
-    /// <paramref name="ct"/>가 취소되면(<see cref="OnCloseAsync"/>가 노드를 닫음) 발행하지 않고 조용히
-    /// 종료합니다 — Node-RED 원본의 <c>clearTimeout(this.onceTimeout)</c>과 동일한 취지.
+    /// <see cref="SetupRepeatingTriggerIfNeeded"/>로 Interval/Cron 트리거(설정돼 있다면)도 시작합니다.
+    /// 대기 중에 <paramref name="ct"/>가 취소되면(<see cref="OnCloseAsync"/>가 노드를 닫음) 발행하지
+    /// 않고 조용히 종료합니다 — Node-RED 원본의 <c>clearTimeout(this.onceTimeout)</c>과 동일한 취지.
     /// </summary>
     private async Task FireOnceThenSetupIntervalAsync(INodeContext ctx, CancellationToken ct)
     {
@@ -170,21 +189,29 @@ public sealed class InjectNode : IFlowNode
         }
 
         await TriggerAsync(DefaultPayload, ctx, CancellationToken.None);
-        SetupIntervalIfNeeded(ctx);
+        SetupRepeatingTriggerIfNeeded(ctx);
     }
 
     /// <summary>
     /// (NR-03b) <see cref="TriggerMode"/>가 <c>"interval"</c>이고 <see cref="IntervalSeconds"/>가
-    /// 0보다 크면 <see cref="Scheduler"/>에 주기 발행을 등록합니다. NR-03c부터는
-    /// <see cref="OnStartAsync"/>(즉시 호출)와 <see cref="FireOnceThenSetupIntervalAsync"/>(1회 발행
-    /// 이후 호출) 양쪽에서 공유하는 사설 헬퍼입니다.
+    /// 0보다 크면 <see cref="Scheduler"/>에 주기 발행을 등록합니다. (NR-03d) <see cref="TriggerMode"/>가
+    /// <c>"cron"</c>이고 <see cref="CronExpressionText"/>가 비어 있지 않으면 <c>ScheduleCron</c>으로
+    /// 등록합니다(잘못된 표현식이면 <c>FormatException</c>이 이 메서드 밖으로 그대로 전파 — 위 클래스
+    /// remarks NR-03d 항목 참고). <see cref="OnStartAsync"/>(즉시 호출)와
+    /// <see cref="FireOnceThenSetupIntervalAsync"/>(1회 발행 이후 호출) 양쪽에서 공유하는 사설 헬퍼입니다.
     /// </summary>
-    private void SetupIntervalIfNeeded(INodeContext ctx)
+    private void SetupRepeatingTriggerIfNeeded(INodeContext ctx)
     {
         if (TriggerMode == "interval" && IntervalSeconds > 0)
         {
             _activeScheduler = Scheduler ?? new AsyncSchedulerAdapter();
             _activeScheduler.SchedulePeriodic(Id, TimeSpan.FromSeconds(IntervalSeconds),
+                () => TriggerAsync(DefaultPayload, ctx, CancellationToken.None));
+        }
+        else if (TriggerMode == "cron" && !string.IsNullOrWhiteSpace(CronExpressionText))
+        {
+            _activeScheduler = Scheduler ?? new AsyncSchedulerAdapter();
+            _activeScheduler.ScheduleCron(Id, CronExpressionText,
                 () => TriggerAsync(DefaultPayload, ctx, CancellationToken.None));
         }
     }

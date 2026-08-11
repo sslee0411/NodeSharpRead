@@ -76,13 +76,15 @@ public class InjectNodeTests
         Assert.Equal(0, registry.Descriptors["inject"].DefaultInputs);
         Assert.Equal(1, registry.Descriptors["inject"].DefaultOutputs);
         // (NR-03b) PropertySchema가 "payload" 1개 → "payload"/"trigger"/"intervalSeconds" 3개로 늘어남.
-        // (NR-03c) "once"/"onceDelay" 2개가 더 늘어 총 5개(InjectNodeType.cs PropertySchema 참고).
-        Assert.Equal(5, registry.Descriptors["inject"].PropertySchema.Count);
+        // (NR-03c) "once"/"onceDelay" 2개가 더 늘어 5개. (NR-03d) "cronExpression" 1개가 더 늘어 총
+        // 6개(InjectNodeType.cs PropertySchema 참고, 실제 선언 순서 그대로 확인).
+        Assert.Equal(6, registry.Descriptors["inject"].PropertySchema.Count);
         Assert.Equal("payload", registry.Descriptors["inject"].PropertySchema[0].Key);
         Assert.Equal("trigger", registry.Descriptors["inject"].PropertySchema[1].Key);
         Assert.Equal("intervalSeconds", registry.Descriptors["inject"].PropertySchema[2].Key);
-        Assert.Equal("once", registry.Descriptors["inject"].PropertySchema[3].Key);
-        Assert.Equal("onceDelay", registry.Descriptors["inject"].PropertySchema[4].Key);
+        Assert.Equal("cronExpression", registry.Descriptors["inject"].PropertySchema[3].Key);
+        Assert.Equal("once", registry.Descriptors["inject"].PropertySchema[4].Key);
+        Assert.Equal("onceDelay", registry.Descriptors["inject"].PropertySchema[5].Key);
     }
 
     [Fact]
@@ -375,5 +377,100 @@ public class InjectNodeTests
         await Task.Delay(1200);   // onceDelay가 지났어도 취소됐으니 발행되면 안 됨
 
         Assert.Empty(ReceiverNode.Received);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_cronExpression_속성을_읽어_InjectNode에_채운다()
+    {
+        var cfg = new NodeConfig(
+            "n1", "inject", "cron 트리거", "f1",
+            new Dictionary<string, object?> { ["trigger"] = "cron", ["cronExpression"] = "* * * * *" });
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.Equal("cron", node.TriggerMode);
+        Assert.Equal("* * * * *", node.CronExpressionText);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_cronExpression_속성이_없으면_빈_문자열을_쓴다()
+    {
+        var cfg = new NodeConfig("n1", "inject", "수동 트리거", "f1", new Dictionary<string, object?>());
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.Equal(string.Empty, node.CronExpressionText);
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__Cron_모드는_표현식에_맞는_시각마다_발행한다()
+    {
+        // AsyncSchedulerAdapterTests.ScheduleCron은_조건에_맞는_순간에만_콜백을_호출한다()와 동일한
+        // 원칙 — "*"(모든 초에 일치)로 어댑터의 1초 폴링 특성상 1.2초 정도면 최소 1번은 호출돼야 한다.
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            TriggerMode = "cron",
+            CronExpressionText = "* * * * * *",   // 6필드, 매초 일치
+            DefaultPayload = "tick",
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(1200);
+        await injectNode.OnCloseAsync(ctx);
+
+        Assert.True(ReceiverNode.Received.Count >= 1,
+            $"1.2초 동안 매초 일치하는 cron이 한 번도 호출되지 않음(발행 {ReceiverNode.Received.Count}회)");
+    }
+
+    [Fact]
+    public async Task OnCloseAsync는_Cron_예약도_함께_해제한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            TriggerMode = "cron",
+            CronExpressionText = "* * * * * *",
+            DefaultPayload = "tick",
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(1200);
+        await injectNode.OnCloseAsync(ctx);
+        var countAtClose = ReceiverNode.Received.Count;
+        await Task.Delay(1200);
+
+        Assert.Equal(countAtClose, ReceiverNode.Received.Count);   // Close 이후로는 더 이상 늘지 않음
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__잘못된_cron_표현식은_배포_시_이_노드만_실패_처리된다()
+    {
+        // "잘못된 표현식은 검증 오류로 표시되는지 확인" — WPF 편집 UI가 아직 없어(개발 지침 참고),
+        // FlowEngine.DeployAsync(RT-02b)의 기존 노드별 예외 격리 메커니즘으로 대신 검증한다: 이 노드만
+        // FailedNodeIds에 기록되고 나머지 배포·다른 노드 동작에는 영향이 없어야 한다.
+        var engine = BuildEngine(out _);
+        var injectCfg = new NodeConfig(
+            "n1", "inject", "잘못된 cron", "f1",
+            new Dictionary<string, object?> { ["trigger"] = "cron", ["cronExpression"] = "이건 cron이 아님" });
+        var receiverCfg = new NodeConfig("n2", "receiver", "수신", "f1", new Dictionary<string, object?>());
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "잘못된 cron 테스트",
+            Nodes: new[] { injectCfg, receiverCfg },
+            Wires: Array.Empty<Wire>());
+
+        var ex = await Record.ExceptionAsync(() => engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None));
+
+        Assert.Null(ex);   // 배포 자체는 예외 없이 성공(RT-02b 원칙 — 노드 하나의 문제가 전체를 막지 않음)
+        Assert.Contains("n1", engine.FailedNodeIds);
+        Assert.True(engine.Nodes.ContainsKey("n2"));   // n2(receiver)는 영향받지 않고 정상 배포됨
     }
 }

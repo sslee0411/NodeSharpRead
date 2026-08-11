@@ -43,7 +43,9 @@ public static class InjectNodeType
     /// 간격마다 자동으로 발행하는 값이 됩니다. (NR-03c) "once"(Checkbox)·"onceDelay"(Number) 2개 필드를
     /// 추가로 더했습니다 — Node-RED 원본처럼 <see cref="InjectNode.TriggerMode"/>와 독립적인 플래그라
     /// "trigger" ComboBox의 선택지가 아니라 별도 필드입니다(자세한 설계 판단 경위는
-    /// <see cref="InjectNode"/> 클래스 remarks의 NR-03c 항목 참고).
+    /// <see cref="InjectNode"/> 클래스 remarks의 NR-03c 항목 참고). (NR-03d) "trigger"에 "cron" 선택지를
+    /// 추가하고 "cronExpression"(Text) 필드를 신설 — <see cref="Factory"/>가 읽어
+    /// <see cref="InjectNode.CronExpressionText"/>에 채웁니다.
     /// </summary>
     public static readonly INodeTypeDescriptor Descriptor = new InjectNodeDescriptor();
 
@@ -68,6 +70,7 @@ public static class InjectNodeType
             DefaultPayload = cfg.Properties.TryGetValue("payload", out var payload) ? Unwrap(payload) : null,
             Once = ReadBool(cfg.Properties, "once", false),
             OnceDelaySeconds = ReadDouble(cfg.Properties, "onceDelay", 0.1),
+            CronExpressionText = ReadString(cfg.Properties, "cronExpression", string.Empty),
         };
 
         public IReadOnlyList<PropertyField> PropertySchema { get; } = new[]
@@ -88,13 +91,13 @@ public static class InjectNodeType
                 Type: PropertyFieldType.ComboBox,
                 Required: false,
                 DefaultValue: "manual",
-                Options: new[] { "manual", "interval" },
+                Options: new[] { "manual", "interval", "cron" },
                 HelpText: "언제 발행할지 선택합니다. manual은 (지금은 xUnit, 향후 LK-02가 붙으면 캔버스" +
                            " 클릭이) TriggerAsync를 직접 호출할 때만 1회 발행하고, interval은 배포되는" +
-                           " 즉시 intervalSeconds 간격으로 자동 반복 발행합니다. 아래 once와는 독립적으로" +
-                           " 함께 켤 수 있습니다.",
-                Example: "예: \"manual\" (버튼 클릭 시에만), \"interval\" (배포 후 자동 반복 — Cron은 " +
-                         "NR-03d에서 추가 예정)"),
+                           " 즉시 intervalSeconds 간격으로 자동 반복 발행하며, cron은 cronExpression에" +
+                           " 맞는 시각마다 발행합니다. 아래 once와는 독립적으로 함께 켤 수 있습니다.",
+                Example: "예: \"manual\" (버튼 클릭 시에만), \"interval\" (배포 후 자동 반복), \"cron\" " +
+                         "(cronExpression에 맞는 시각마다)"),
             new PropertyField(
                 Key: "intervalSeconds",
                 Label: "간격(초)",
@@ -102,9 +105,23 @@ public static class InjectNodeType
                 Required: false,
                 DefaultValue: "5",
                 HelpText: "trigger가 \"interval\"일 때 자동 발행 간격(초)입니다. trigger가 " +
-                           "\"manual\"이면 이 값은 무시됩니다. 0 이하로 설정하면 자동 발행이 시작되지 " +
-                           "않습니다.",
+                           "\"manual\"/\"cron\"이면 이 값은 무시됩니다. 0 이하로 설정하면 자동 발행이 " +
+                           "시작되지 않습니다.",
                 Example: "예: 5 (5초마다), 60 (1분마다)"),
+            new PropertyField(
+                Key: "cronExpression",
+                Label: "Cron 표현식",
+                Type: PropertyFieldType.Text,
+                Required: false,
+                DefaultValue: "",
+                HelpText: "trigger가 \"cron\"일 때 사용할 cron 표현식입니다. 표준 cron과 같은 5필드" +
+                           "(\"분 시 일 월 요일\", 초는 0으로 간주) 또는 초 필드를 맨 앞에 붙인 6필드" +
+                           "(\"초 분 시 일 월 요일\")를 지원합니다. 각 칸은 *(모든 값) 또는 쉼표로 구분한" +
+                           " 숫자 목록만 지원하고, 범위(1-5)·간격(*/15) 문법은 아직 지원하지 않습니다." +
+                           " trigger가 \"manual\"/\"interval\"이면 이 값은 무시됩니다. 잘못된 표현식을" +
+                           " 넣으면 배포 시 이 노드만 실패 처리됩니다(FailedNodeIds에 기록).",
+                Example: "예: \"* * * * *\" (매분 0초마다, 5필드), \"0 0 9 * * 1\" (매주 월요일 9시" +
+                         " 정각, 6필드), \"0 0,15,30,45 * * *\" (매시 0/15/30/45분)"),
             new PropertyField(
                 Key: "once",
                 Label: "배포 시 1회 발행",

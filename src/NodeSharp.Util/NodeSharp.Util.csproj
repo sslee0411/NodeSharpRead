@@ -82,6 +82,21 @@
       작성 — 실제 "v1 레거시 wires 인덱스 배열" 예시 JSON을 등록된 규칙으로 v2로 변환한 뒤
       FlowDefinition으로 역직렬화해 FlowEngine.DeployAsync까지 성공하는 것을 확인(완료 기준 "정상
       배포까지 이어지는지" 직접 검증) 포함 총 9건.
+
+    Step: NR-03d (03번 개발 Step맵.html, Phase 7 — Inject cron 트리거)
+    - src\Messaging\CronExpression.cs 수정 — Parse가 기존 6필드("초 분 시 일 월 요일")뿐 아니라 5필드
+      ("분 시 일 월 요일", 초는 "0"으로 간주해 6필드로 정규화)도 받도록 확장. 착수 전 개발 지침 8번에
+      따라 실제 Node-RED가 쓰는 cronosjs 라이브러리를 조사한 결과 5~7필드를 모두 허용하고(5필드면 초
+      기본값 0) 03번 Step맵 NR-03d 완료 기준의 예시도 5필드 "* * * * *"인데, 이 파일의 기존 Parse는
+      6필드만 받아 그 예시조차 FormatException을 던지는 공백을 발견 — AskUserQuestion으로 "5필드도
+      허용하도록 확장(추천)" vs "Step맵 예시를 6필드로 정정" 제시, 사용자가 "확장"을 선택. 기존 6필드
+      호출부(RT-08 테스트 등)는 그대로 동작(하위 호환) — 5필드 입력만 새로 허용.
+    - test\NodeSharp.Tests\CronExpressionTests.cs 수정 — 기존 "필드가_6개가_아니면_FormatException을_
+      던진다()" 테스트가 5필드 문자열("0 0 * * *")로 예외를 기대했는데 이제 5필드가 유효해져 깨지는
+      회귀를 구현과 동시에 미리 발견·수정(v2.74에서 NR-03b 때 겪었던 것과 같은 유형의 실수를 이번엔
+      사전 예방) — 4필드/7필드로 교체하고 이름도 "필드가_5개도_6개도_아니면..."으로 갱신. 신규 테스트
+      2건 추가 — 5필드 "* * * * *"가 6필드 "0 * * * * *"와 동일하게 동작하는지(완료 기준 직접 검증),
+      5필드 요일 지정도 정상 동작하는지.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
