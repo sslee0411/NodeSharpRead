@@ -20,7 +20,21 @@ namespace NodeSharp.Nodes.Inject;
 /// <item><b>(NR-03a) Trigger 종류는 처음엔 Manual 하나만</b>: 카드7 원본 스케치는 <c>InjectTrigger</c>
 /// (Manual/Interval/Cron/OnDeploy) 선택을 전제하지만, NR-03a는 "수동 트리거"만 다루는 Step이라 이
 /// 클래스도 처음엔 Manual 동작(호출될 때마다 1회 발행)만 구현했습니다. Interval은 <b>NR-03b</b>가
-/// 아래 항목대로 추가했고, Cron/OnDeploy는 각각 NR-03c/NR-03d에서 마저 확장될 예정입니다.</item>
+/// 아래 항목대로 추가했고, Cron은 NR-03d에서 마저 확장될 예정입니다("OnDeploy"는 바로 아래 NR-03c
+/// 항목대로 별도 트리거 종류가 아니라 <see cref="Once"/> 독립 플래그로 재설계됨).</item>
+/// <item><b>(NR-03c) OnStart(once) 추가 — 별도 트리거 종류가 아니라 독립 플래그</b>: 03번 Step맵
+/// NR-03c는 "기동 시(OnStart) 트리거"를 <see cref="TriggerMode"/>의 또 다른 선택지처럼 서술하지만,
+/// 착수 전 실제 Node-RED 소스(20-inject.js)를 확인한 결과 원본은 <c>once</c>(체크박스)+
+/// <c>onceDelay</c>(기본 0.1초)를 <c>repeat</c>/<c>crontab</c>과 <b>독립적인</b> 플래그로 둬 "배포 시
+/// onceDelay 후 1회 발행 → 그 다음에 repeat/cron 설정이 있으면 그것도 이어서 시작"하는 구조였습니다
+/// (즉 OnStart+Interval을 동시에 켤 수 있음, <c>node.once</c>가 켜지면 <c>setTimeout</c>으로 1회 발행한
+/// 뒤 <c>repeaterSetup()</c>을 호출해 반복도 함께 시작). AskUserQuestion으로 "Node-RED와 동일하게"(추천)
+/// vs "Step맵 문구대로 TriggerMode의 3번째 배타적 선택지" 2가지를 제시, 원본 선례를 근거로 사용자가
+/// "Node-RED와 동일하게"를 선택 — <see cref="Once"/>/<see cref="OnceDelaySeconds"/> 독립 속성으로
+/// 구현했습니다. 재배포 시에도 다시 1회만 발행되는 것은 별도 가드 없이 자연스럽게 보장됩니다 —
+/// <c>FlowEngine.DeployAsync</c>(RT-03)가 재배포마다 새 <see cref="InjectNode"/> 인스턴스를 만들고 그
+/// 인스턴스의 <see cref="OnStartAsync"/>를 새로 호출하므로, 인스턴스마다 <see cref="Once"/> 발행은
+/// 정확히 1회입니다.</item>
 /// <item><b>(NR-03b) Interval 트리거 추가</b>: <see cref="TriggerMode"/>가 <c>"interval"</c>이고
 /// <see cref="IntervalSeconds"/>가 0보다 크면, <see cref="OnStartAsync"/>가 <see cref="Scheduler"/>
 /// (<see cref="IScheduler"/>)의 <c>SchedulePeriodic</c>으로 자기 자신의 <see cref="Id"/>를 ownerId 삼아
@@ -86,6 +100,20 @@ public sealed class InjectNode : IFlowNode
     public IScheduler? Scheduler { get; set; }
 
     /// <summary>
+    /// (NR-03c) 기동(배포) 시 1회 자동 발행할지 여부 — Node-RED 원본의 <c>once</c> 필드와 동일하게
+    /// <see cref="TriggerMode"/>와 독립적인 플래그입니다. <c>true</c>면 <see cref="OnStartAsync"/>가
+    /// <see cref="OnceDelaySeconds"/> 후 1회 발행하고, 그 다음 <see cref="TriggerMode"/>가
+    /// <c>"interval"</c>이면 그 반복도 이어서 시작합니다(둘 다 켤 수 있음).
+    /// </summary>
+    public bool Once { get; init; }
+
+    /// <summary>
+    /// (NR-03c) <see cref="Once"/>가 <c>true</c>일 때 배포 후 1회 발행까지 기다리는 지연 시간(초)입니다.
+    /// Node-RED 원본의 <c>onceDelay</c>(기본 0.1초)와 동일한 기본값을 씁니다.
+    /// </summary>
+    public double OnceDelaySeconds { get; init; } = 0.1;
+
+    /// <summary>
     /// (NR-03b) <see cref="OnStartAsync"/>에서 실제로 사용한 스케줄러 인스턴스 — <see cref="OnCloseAsync"/>
     /// 가 <c>Unschedule</c>을 호출할 대상을 기억해두기 위한 사설 필드입니다(Interval 모드가 아니면
     /// <c>null</c>로 남습니다).
@@ -93,7 +121,17 @@ public sealed class InjectNode : IFlowNode
     private IScheduler? _activeScheduler;
 
     /// <summary>
-    /// 입력 포트가 없어 초기화할 연결·구독은 없습니다. (NR-03b) <see cref="TriggerMode"/>가
+    /// (NR-03c) <see cref="Once"/> 지연 발행을 취소할 수 있게 기억해두는 사설 필드 — Node-RED 원본의
+    /// <c>this.onceTimeout</c>/<c>clearTimeout</c>과 같은 역할입니다(<see cref="OnCloseAsync"/>가
+    /// <see cref="Once"/> 발행 전에 노드가 닫히면 대기 중인 지연을 취소).
+    /// </summary>
+    private CancellationTokenSource? _onceCts;
+
+    /// <summary>
+    /// 입력 포트가 없어 초기화할 연결·구독은 없습니다. (NR-03c) <see cref="Once"/>가 <c>true</c>이면
+    /// <see cref="OnceDelaySeconds"/> 후 1회 발행한 다음 <see cref="SetupIntervalIfNeeded"/>를 호출하고
+    /// (Node-RED 원본의 <c>once → repeaterSetup()</c> 순서와 동일), 그렇지 않으면 바로
+    /// <see cref="SetupIntervalIfNeeded"/>만 호출합니다. (NR-03b) <see cref="TriggerMode"/>가
     /// <c>"interval"</c>이고 <see cref="IntervalSeconds"/>가 0보다 크면, <see cref="Scheduler"/>에
     /// 이 노드 자신의 <see cref="Id"/>를 ownerId로 삼아 주기 발행을 등록합니다(<see cref="IScheduler"/>
     /// XML 문서 예제와 동일한 패턴). 콜백은 <see cref="TriggerAsync"/>를 그대로 재사용합니다 — 매뉴얼
@@ -101,14 +139,54 @@ public sealed class InjectNode : IFlowNode
     /// </summary>
     public Task OnStartAsync(INodeContext ctx, CancellationToken ct)
     {
+        if (Once)
+        {
+            _onceCts = new CancellationTokenSource();
+            _ = FireOnceThenSetupIntervalAsync(ctx, _onceCts.Token);
+        }
+        else
+        {
+            SetupIntervalIfNeeded(ctx);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// (NR-03c) <see cref="OnceDelaySeconds"/>만큼 기다렸다가 1회 발행하고, 이어서
+    /// <see cref="SetupIntervalIfNeeded"/>로 Interval 트리거(설정돼 있다면)도 시작합니다. 대기 중에
+    /// <paramref name="ct"/>가 취소되면(<see cref="OnCloseAsync"/>가 노드를 닫음) 발행하지 않고 조용히
+    /// 종료합니다 — Node-RED 원본의 <c>clearTimeout(this.onceTimeout)</c>과 동일한 취지.
+    /// </summary>
+    private async Task FireOnceThenSetupIntervalAsync(INodeContext ctx, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(OnceDelaySeconds), ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        await TriggerAsync(DefaultPayload, ctx, CancellationToken.None);
+        SetupIntervalIfNeeded(ctx);
+    }
+
+    /// <summary>
+    /// (NR-03b) <see cref="TriggerMode"/>가 <c>"interval"</c>이고 <see cref="IntervalSeconds"/>가
+    /// 0보다 크면 <see cref="Scheduler"/>에 주기 발행을 등록합니다. NR-03c부터는
+    /// <see cref="OnStartAsync"/>(즉시 호출)와 <see cref="FireOnceThenSetupIntervalAsync"/>(1회 발행
+    /// 이후 호출) 양쪽에서 공유하는 사설 헬퍼입니다.
+    /// </summary>
+    private void SetupIntervalIfNeeded(INodeContext ctx)
+    {
         if (TriggerMode == "interval" && IntervalSeconds > 0)
         {
             _activeScheduler = Scheduler ?? new AsyncSchedulerAdapter();
             _activeScheduler.SchedulePeriodic(Id, TimeSpan.FromSeconds(IntervalSeconds),
                 () => TriggerAsync(DefaultPayload, ctx, CancellationToken.None));
         }
-
-        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -118,12 +196,16 @@ public sealed class InjectNode : IFlowNode
     public Task OnInputAsync(Msg msg, INodeContext ctx, CancellationToken ct) => Task.CompletedTask;
 
     /// <summary>
-    /// (NR-03b) <see cref="OnStartAsync"/>가 Interval 예약을 등록했다면 반드시 <c>Unschedule(Id)</c>로
-    /// 해제합니다(공통 규칙 ②·③ — 해제하지 않으면 재배포마다 같은 예약이 중복 등록됨). Manual 모드라
-    /// 예약이 없었다면(<c>_activeScheduler</c>가 <c>null</c>) 아무 일도 하지 않습니다.
+    /// (NR-03c) 대기 중인 <see cref="Once"/> 지연 발행이 있으면 취소합니다. (NR-03b)
+    /// <see cref="OnStartAsync"/>가 Interval 예약을 등록했다면 반드시 <c>Unschedule(Id)</c>로
+    /// 해제합니다(공통 규칙 ②·③ — 해제하지 않으면 재배포마다 같은 예약이 중복 등록됨). 둘 다
+    /// 없었다면(Manual 모드) 아무 일도 하지 않습니다.
     /// </summary>
     public Task OnCloseAsync(INodeContext ctx)
     {
+        _onceCts?.Cancel();
+        _onceCts?.Dispose();
+        _onceCts = null;
         _activeScheduler?.Unschedule(Id);
         _activeScheduler = null;
         return Task.CompletedTask;

@@ -57,6 +57,8 @@
       의존하지 않는 순수 유틸리티 계층이라 상대적으로 안전한 확장으로 판단. 이 프로젝트의
       ProjectReference는 변경 없음(원래도 Contracts만 참조, AsyncSchedulerAdapter도 Contracts.Interfaces.
       IScheduler만 참조).
+    - ★ 확인(2026-08-10): 사용자가 Windows dotnet test 재실행 후 "완료"로 확인(중간에 InjectNodeTests.cs의
+      낡은 단정문 1건 발견·수정 — nodes\NodeSharp.Nodes.Inject.csproj NR-03b 항목 참고) — NR-03b 완료 반영.
 
     Step: RT-11 (03번 개발 Step맵.html, Phase 2 — 설정 파일 스키마 마이그레이션)
     - src\Config\Migration\{MigrationRule,ConfigMigration}.cs 2개 추가 — 02번 문서 3번 탭 카드7

@@ -40,7 +40,10 @@ public static class InjectNodeType
     /// 실현됐습니다(NR-03a 시점엔 "향후 LK-02 또는 NR-03b 쪽 책임"으로 미뤄뒀던 부분). Manual 모드에서는
     /// <see cref="InjectNode.TriggerAsync"/>가 외부에서 명시적으로 받는 payload 매개변수를 그대로 쓰고
     /// (DefaultPayload는 쓰이지 않음), Interval 모드에서는 외부 호출자가 없어 DefaultPayload가 매
-    /// 간격마다 자동으로 발행하는 값이 됩니다.
+    /// 간격마다 자동으로 발행하는 값이 됩니다. (NR-03c) "once"(Checkbox)·"onceDelay"(Number) 2개 필드를
+    /// 추가로 더했습니다 — Node-RED 원본처럼 <see cref="InjectNode.TriggerMode"/>와 독립적인 플래그라
+    /// "trigger" ComboBox의 선택지가 아니라 별도 필드입니다(자세한 설계 판단 경위는
+    /// <see cref="InjectNode"/> 클래스 remarks의 NR-03c 항목 참고).
     /// </summary>
     public static readonly INodeTypeDescriptor Descriptor = new InjectNodeDescriptor();
 
@@ -63,6 +66,8 @@ public static class InjectNodeType
             TriggerMode = ReadString(cfg.Properties, "trigger", "manual"),
             IntervalSeconds = ReadDouble(cfg.Properties, "intervalSeconds", 0),
             DefaultPayload = cfg.Properties.TryGetValue("payload", out var payload) ? Unwrap(payload) : null,
+            Once = ReadBool(cfg.Properties, "once", false),
+            OnceDelaySeconds = ReadDouble(cfg.Properties, "onceDelay", 0.1),
         };
 
         public IReadOnlyList<PropertyField> PropertySchema { get; } = new[]
@@ -86,9 +91,10 @@ public static class InjectNodeType
                 Options: new[] { "manual", "interval" },
                 HelpText: "언제 발행할지 선택합니다. manual은 (지금은 xUnit, 향후 LK-02가 붙으면 캔버스" +
                            " 클릭이) TriggerAsync를 직접 호출할 때만 1회 발행하고, interval은 배포되는" +
-                           " 즉시 intervalSeconds 간격으로 자동 반복 발행합니다.",
-                Example: "예: \"manual\" (버튼 클릭 시에만), \"interval\" (배포 후 자동 반복 — Cron/" +
-                         "OnDeploy는 NR-03c·NR-03d에서 추가 예정)"),
+                           " 즉시 intervalSeconds 간격으로 자동 반복 발행합니다. 아래 once와는 독립적으로" +
+                           " 함께 켤 수 있습니다.",
+                Example: "예: \"manual\" (버튼 클릭 시에만), \"interval\" (배포 후 자동 반복 — Cron은 " +
+                         "NR-03d에서 추가 예정)"),
             new PropertyField(
                 Key: "intervalSeconds",
                 Label: "간격(초)",
@@ -99,6 +105,27 @@ public static class InjectNodeType
                            "\"manual\"이면 이 값은 무시됩니다. 0 이하로 설정하면 자동 발행이 시작되지 " +
                            "않습니다.",
                 Example: "예: 5 (5초마다), 60 (1분마다)"),
+            new PropertyField(
+                Key: "once",
+                Label: "배포 시 1회 발행",
+                Type: PropertyFieldType.Checkbox,
+                Required: false,
+                DefaultValue: "false",
+                HelpText: "켜면 배포(기동) 시 onceDelay만큼 기다렸다가 1회 발행합니다. trigger가 " +
+                           "\"interval\"이면 그 반복도 이어서 함께 시작됩니다(Node-RED 원본과 동일하게 " +
+                           "trigger와 독립적으로 켤 수 있음 — 예: once + interval을 함께 켜면 배포 즉시 " +
+                           "1회 발행 후 계속 반복 발행).",
+                Example: "예: true (배포하자마자 한 번 발행), false (기본값 — 배포 시엔 아무것도 " +
+                         "발행하지 않음)"),
+            new PropertyField(
+                Key: "onceDelay",
+                Label: "1회 발행 지연(초)",
+                Type: PropertyFieldType.Number,
+                Required: false,
+                DefaultValue: "0.1",
+                HelpText: "once가 켜져 있을 때, 배포 시점부터 1회 발행까지 기다리는 시간(초)입니다. " +
+                           "once가 꺼져 있으면 이 값은 무시됩니다.",
+                Example: "예: 0.1 (기본값, Node-RED와 동일), 2 (배포 2초 후 발행)"),
         };
 
         /// <summary>
@@ -145,6 +172,38 @@ public static class InjectNodeType
                 double d => d,
                 int i => i,
                 string s when double.TryParse(s, out var n) => n,
+                _ => fallback,
+            };
+        }
+
+        /// <summary>
+        /// (NR-03c) <see cref="ReadString"/>/<see cref="ReadDouble"/>과 동일한 이유로,
+        /// <see cref="NodeConfig.Properties"/>에서 불리언 값을 <see cref="JsonElement"/>/원본 CLR 타입
+        /// 양쪽 모두에서 안전하게 읽습니다. 파싱에 실패하면(값이 없거나 불리언이 아니면)
+        /// <paramref name="fallback"/>을 반환합니다.
+        /// </summary>
+        private static bool ReadBool(IReadOnlyDictionary<string, object?> properties, string key, bool fallback)
+        {
+            if (!properties.TryGetValue(key, out var raw) || raw is null)
+            {
+                return fallback;
+            }
+
+            if (raw is JsonElement je)
+            {
+                return je.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    JsonValueKind.String when bool.TryParse(je.GetString(), out var b) => b,
+                    _ => fallback,
+                };
+            }
+
+            return raw switch
+            {
+                bool b => b,
+                string s when bool.TryParse(s, out var b) => b,
                 _ => fallback,
             };
         }

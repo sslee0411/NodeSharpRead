@@ -266,6 +266,8 @@
       쓰이지 않고(NodeContext에 Scheduler 배선은 아직 없음, RT-09b 주석 참고) 순수히 NodeSharp.Util의
       AsyncScheduler만 감싸므로 Runtime에 남겨둘 이유가 없었다. 이 프로젝트의 ProjectReference/코드는
       변경 없음(Util은 이미 참조 중).
+    - ★ 확인(2026-08-10): 사용자가 Windows dotnet test 재실행 후 "완료"로 확인(중간에 InjectNodeTests.cs의
+      낡은 단정문 1건 발견·수정 — nodes\NodeSharp.Nodes.Inject.csproj NR-03b 항목 참고) — NR-03b 완료 반영.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

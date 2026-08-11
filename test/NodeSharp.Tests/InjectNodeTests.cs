@@ -75,12 +75,14 @@ public class InjectNodeTests
         Assert.Equal("input", registry.Descriptors["inject"].Category);
         Assert.Equal(0, registry.Descriptors["inject"].DefaultInputs);
         Assert.Equal(1, registry.Descriptors["inject"].DefaultOutputs);
-        // (NR-03b) PropertySchema가 "payload" 1개 → "payload"/"trigger"/"intervalSeconds" 3개로 늘어남 —
-        // Interval 모드 관련 필드 2개 추가로 인한 변경(InjectNodeType.cs PropertySchema 참고).
-        Assert.Equal(3, registry.Descriptors["inject"].PropertySchema.Count);
+        // (NR-03b) PropertySchema가 "payload" 1개 → "payload"/"trigger"/"intervalSeconds" 3개로 늘어남.
+        // (NR-03c) "once"/"onceDelay" 2개가 더 늘어 총 5개(InjectNodeType.cs PropertySchema 참고).
+        Assert.Equal(5, registry.Descriptors["inject"].PropertySchema.Count);
         Assert.Equal("payload", registry.Descriptors["inject"].PropertySchema[0].Key);
         Assert.Equal("trigger", registry.Descriptors["inject"].PropertySchema[1].Key);
         Assert.Equal("intervalSeconds", registry.Descriptors["inject"].PropertySchema[2].Key);
+        Assert.Equal("once", registry.Descriptors["inject"].PropertySchema[3].Key);
+        Assert.Equal("onceDelay", registry.Descriptors["inject"].PropertySchema[4].Key);
     }
 
     [Fact]
@@ -254,5 +256,124 @@ public class InjectNodeTests
 
         Assert.Empty(ReceiverNode.Received);
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_once_onceDelay_속성을_읽어_InjectNode에_채운다()
+    {
+        var cfg = new NodeConfig(
+            "n1", "inject", "기동 시 트리거", "f1",
+            new Dictionary<string, object?> { ["once"] = true, ["onceDelay"] = 2.0 });
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.True(node.Once);
+        Assert.Equal(2.0, node.OnceDelaySeconds);
+    }
+
+    [Fact]
+    public void InjectNodeType_Factory는_once_속성이_없으면_false와_기본_지연_0_1초를_쓴다()
+    {
+        var cfg = new NodeConfig("n1", "inject", "수동 트리거", "f1", new Dictionary<string, object?>());
+
+        var node = Assert.IsType<InjectNode>(InjectNodeType.Descriptor.Factory(cfg));
+
+        Assert.False(node.Once);
+        Assert.Equal(0.1, node.OnceDelaySeconds);
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__Once가_true면_배포_후_onceDelay_뒤에_정확히_1회만_발행한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            Once = true,
+            OnceDelaySeconds = 0.02,
+            DefaultPayload = "boot",
+            // TriggerMode는 기본값 "manual" — interval을 켜지 않았으므로 once 1회 이후 반복되지 않아야 함.
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(20);   // onceDelay 전 — 아직 발행되면 안 됨
+        Assert.Empty(ReceiverNode.Received);
+
+        await Task.Delay(80);   // onceDelay 이후 충분히 대기
+        await injectNode.OnCloseAsync(ctx);
+
+        Assert.Single(ReceiverNode.Received);
+        Assert.Equal("boot", ReceiverNode.Received[0]);
+    }
+
+    [Fact]
+    public async Task 완료_기준_직접_검증__재배포_시에도_Once는_인스턴스마다_정확히_1회만_발행한다()
+    {
+        // "재배포 시에도 다시 1회만 발행되는지" — 새 InjectNode 인스턴스를 2번 만들어 각각
+        // OnStartAsync/OnCloseAsync 주기를 거치는 것으로 재배포를 재현(FlowEngine.DeployAsync가
+        // 재배포마다 새 인스턴스를 만드는 것과 동일한 전제, RT-03 주석 참고).
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+
+        var firstDeploy = new InjectNode { Id = "n1", Once = true, OnceDelaySeconds = 0.02, DefaultPayload = "1차" };
+        await firstDeploy.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(60);
+        await firstDeploy.OnCloseAsync(ctx);
+
+        var secondDeploy = new InjectNode { Id = "n1", Once = true, OnceDelaySeconds = 0.02, DefaultPayload = "2차" };
+        await secondDeploy.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(60);
+        await secondDeploy.OnCloseAsync(ctx);
+
+        Assert.Equal(new object?[] { "1차", "2차" }, ReceiverNode.Received);
+    }
+
+    [Fact]
+    public async Task Once와_Interval을_동시에_켜면_1회_발행_후_반복도_이어서_시작한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            Once = true,
+            OnceDelaySeconds = 0.02,
+            TriggerMode = "interval",
+            IntervalSeconds = 0.02,
+            DefaultPayload = "auto",
+            Scheduler = new AsyncSchedulerAdapter(new AsyncScheduler()),
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await Task.Delay(180);   // once 1회 + interval 반복 여러 회가 일어날 시간
+        await injectNode.OnCloseAsync(ctx);
+
+        Assert.True(ReceiverNode.Received.Count >= 2,
+            $"once 1회 + interval 반복이 함께 동작해야 하는데 {ReceiverNode.Received.Count}번만 발행됨");
+    }
+
+    [Fact]
+    public async Task OnCloseAsync가_onceDelay_경과_전에_호출되면_대기_중인_1회_발행을_취소한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildWireOnlyEngine();
+        var ctx = new TestNodeContext(engine);
+        var injectNode = new InjectNode
+        {
+            Id = "n1",
+            Once = true,
+            OnceDelaySeconds = 1.0,   // 충분히 긴 지연 — 아래에서 delay가 지나기 전에 Close
+            DefaultPayload = "boot",
+        };
+
+        await injectNode.OnStartAsync(ctx, CancellationToken.None);
+        await injectNode.OnCloseAsync(ctx);   // onceDelay(1초)가 지나기 전에 즉시 닫음
+        await Task.Delay(1200);   // onceDelay가 지났어도 취소됐으니 발행되면 안 됨
+
+        Assert.Empty(ReceiverNode.Received);
     }
 }
