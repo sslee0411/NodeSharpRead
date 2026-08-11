@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using NodeSharp.Nodes.Inject;
+using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
 
 namespace NodeSharp.Editor.Views;
@@ -29,10 +31,18 @@ public partial class PaletteView : UserControl
     private readonly List<PaletteNodeCardViewModel> _allCards = new();
     private Point _dragStartPoint;
 
-    /// <summary>XAML 컨트롤을 초기화하고, 현재 등록된 노드 타입으로 팔레트를 채웁니다(지금은 보통 0개).</summary>
+    /// <summary>
+    /// XAML 컨트롤을 초기화하고, 현재 등록된 노드 타입으로 팔레트를 채웁니다.
+    /// (EC-01c) 이전에는 <see cref="_registry"/>를 만들기만 하고 아무 노드 타입도 스캔해 넣지 않아
+    /// 팔레트가 Phase 7 이후에도 계속 비어 있던 공백이 있었습니다 — 여기서 코어 노드 플러그인
+    /// 어셈블리를 직접 스캔해 채웁니다. 새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 한 줄씩
+    /// 추가해야 팔레트에 나타납니다.
+    /// </summary>
     public PaletteView()
     {
         InitializeComponent();
+        _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
+        _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         RefreshAllCards();
         ApplyFilter(string.Empty);
     }

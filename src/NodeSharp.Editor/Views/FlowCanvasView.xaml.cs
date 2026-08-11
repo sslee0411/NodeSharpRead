@@ -6,6 +6,8 @@ using System.Windows.Shapes;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
+using NodeSharp.Nodes.Inject;
+using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
 // (EC-11 버그 수정, v2.64) NodeSharp.Contracts.Interfaces에도 별도 용도의 IEditorCommand가 이미
 // 선언돼 있어(ED-D13이 미리 열어둔 "구조 트리 커맨드 공유" 설계, 이 파일의 AddNodeCommand 등이 구현
@@ -221,6 +223,10 @@ public partial class FlowCanvasView : UserControl
     public FlowCanvasView()
     {
         InitializeComponent();
+        // (EC-01c) 이 뷰의 _registry는 팔레트와 별개 인스턴스라 독립적으로 채워야 한다 — 안 채우면
+        // PropertySchema 조회(EC-03)·MissingNode 판정(EC-08)이 "등록 안 된 타입"으로 계속 오판한다.
+        _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
+        _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         RenderFlowTabStrip();
         Loaded += OnLoaded;
     }

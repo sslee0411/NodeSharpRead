@@ -704,6 +704,45 @@
       실행되는지"까지만 확인, 실제 검색·탭 전환·하이라이트 시연은 NR-09에서 재확인하기로 함.
       "다음단계 진행해줘" 요청 없이 "빌드 확인 결과만 업데이트해줘"로 확인만 요청해 다음 Step은
       착수하지 않음(v2.60의 EC-08 확인 때와 동일한 패턴).
+
+    Step: EC-01c (03번 개발 Step맵.html, Phase 6 — 팔레트/캔버스, 노드 플러그인 어셈블리 로드, ★ 사용자
+    질문("어느 단계에서 내가 직접 UI 환경에서 테스트 가능한가?")으로 발견해 신설)
+    - 착수 전 조사(리서치 서브에이전트) — NR-04(Switch)까지 완료된 시점에 "지금 빌드하면 팔레트에
+      Inject/Switch가 실제로 뜨는가?"를 확인한 결과, 뜨지 않는다는 것을 발견. 원인: PaletteView.xaml.cs
+      27행이 자체 NodeTypeRegistry를 만들지만 ScanAssembly/LoadPlugins를 아무도 호출하지 않고,
+      FlowCanvasView.xaml.cs 119행도 팔레트와 별개인 자기 자신의 NodeTypeRegistry를 똑같이 스캔 없이
+      만들어 씀(PropertySchema 조회·MissingNode(EC-08) 판정용). 이 두 NodeTypeRegistry는 지금까지 이
+      프로젝트(NodeSharp.Editor)가 nodes\NodeSharp.Nodes.Inject/nodes\NodeSharp.Nodes.Switch를
+      ProjectReference로 참조조차 하지 않아 항상 비어 있었다 — EC-01a desc의 "Phase 7에서 채워짐"이라는
+      문구가 전제한 자동 연결이 실제로는 어느 Step에도 배선되지 않은 채 남아있던 공백. 이 공백은 지금
+      Phase 7의 모든 노드(Inject/Switch뿐 아니라 앞으로 추가될 Function/Debug 등)에 공통으로 적용되므로
+      Phase 6(팔레트/캔버스) 쪽 Step으로 EC-01b/EC-02 사이에 신설(EC-01a/b가 "팔레트 채우기"의 앞쪽
+      절반을 이미 완료해뒀으므로 그 바로 다음이 자연스러운 위치).
+    - 범위는 Editor 프로세스(팔레트 표시 + 속성 다이얼로그 + MissingNode 판정)까지만 — 실제로 배포된
+      플로우에서 msg가 흘러 포트별로 라우팅되는 것을 캔버스에서 실시간으로 보는 것은 Runner 프로세스가
+      같은 방식으로 플러그인을 로드해야 하고 SignalR로 그 결과를 Editor에 스트리밍해야 하는 별개
+      문제라 LK-02(SignalR 모니터링 스트림, ⏳ 대기) 범위로 그대로 남겨둠(사용자 확인 — "지금 먼저
+      배선 수정" 선택 시 이 범위로 한정해 제시, 확인받고 진행).
+    - NodeSharp.Editor.csproj 수정 — ProjectReference 2개 추가: nodes\NodeSharp.Nodes.Inject,
+      nodes\NodeSharp.Nodes.Switch(아래 ItemGroup 참고). 앞으로 Phase 7에 새 노드 타입이 추가될
+      때마다(Function/Debug 등) 이 ItemGroup과 PaletteView.xaml.cs/FlowCanvasView.xaml.cs의
+      ScanAssembly 호출 목록에도 한 줄씩 함께 추가해야 팔레트에 나타난다 — 각 신규 노드 Step의
+      착수 전 조사 항목으로 이어서 챙길 것.
+    - src\NodeSharp.Editor\Views\PaletteView.xaml.cs 수정 — using NodeSharp.Nodes.Inject/
+      NodeSharp.Nodes.Switch 추가, 생성자에서 RefreshAllCards() 호출 전에
+      _registry.ScanAssembly(typeof(InjectNodeType).Assembly)/ScanAssembly(typeof(SwitchNodeType).Assembly)
+      2줄 추가.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 수정 — 동일하게 using 2개 추가, 생성자에서
+      RenderFlowTabStrip() 호출 전에 같은 ScanAssembly 2줄 추가(이 뷰는 팔레트와 별개 인스턴스라
+      독립적으로 채워야 함 — 안 채우면 PropertySchema 조회(EC-03)·MissingNode 판정(EC-08)이 여전히
+      "등록 안 된 타입"으로 오판).
+    - tools/check-xmldoc.py 오류 0건, 수정 3개 파일 중괄호 균형 확인 완료 — 이 세션도 샌드박스에
+      .NET SDK가 없어(dotnet: command not found) dotnet build/test는 실행하지 못했다(WPF 프로젝트라
+      이 샌드박스에서는 애초에 컴파일 자체가 불가능한 유형, ED-B0부터 동일한 제약).
+    - 완료 기준(신설): Windows에서 빌드·실행 시 팔레트에 "inject"/"switch" 카드 2개가 실제로 나타나고,
+      드래그해 캔버스에 놓으면 각 타입의 실제 입출력 포트 개수·PropertySchema가 반영된 속성 다이얼로그가
+      열리며, EC-08 MissingNode 빨간 배지가 이 두 타입에는 더 이상 표시되지 않는지 확인 — 사용자 로컬
+      확인 필요, 확인 전까지 03번 Step맵 EC-01c는 ⏳ 대기 유지.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -721,6 +760,10 @@
     <ProjectReference Include="..\NodeSharp.Registry\NodeSharp.Registry.csproj" />
     <ProjectReference Include="..\NodeSharp.Util\NodeSharp.Util.csproj" />
     <ProjectReference Include="..\NodeSharp.UI.Themes\NodeSharp.UI.Themes.csproj" />
+    <!-- EC-01c: 팔레트/캔버스가 실제 노드 플러그인을 ScanAssembly로 찾아 등록하려면 그 어셈블리를
+         참조해야 한다. 새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 추가할 것. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj" />
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj" />
   </ItemGroup>
 
 </Project>
