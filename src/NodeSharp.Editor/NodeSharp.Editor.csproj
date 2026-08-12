@@ -743,6 +743,13 @@
       드래그해 캔버스에 놓으면 각 타입의 실제 입출력 포트 개수·PropertySchema가 반영된 속성 다이얼로그가
       열리며, EC-08 MissingNode 빨간 배지가 이 두 타입에는 더 이상 표시되지 않는지 확인 — 사용자 로컬
       확인 필요, 확인 전까지 03번 Step맵 EC-01c는 ⏳ 대기 유지.
+    - ★ 확인(2026-08-11): 사용자가 "빌드 확인 다음단계 진행해줘"로 확인 — EC-01c(팔레트/캔버스 노드
+      플러그인 어셈블리 로드) 완료 반영(03번 Step맵 "⏳ 대기" → "✅ 완료").
+
+    Step: FN-01 (03번 개발 Step맵.html, Phase 7 — Function 노드 NCalc 표현식 실행기)
+    - EC-01c가 이미 "새 노드 타입 프로젝트가 추가될 때마다 이 ItemGroup과 PaletteView.xaml.cs/
+      FlowCanvasView.xaml.cs의 ScanAssembly 호출 목록에도 한 줄씩 함께 추가"하라고 남겨둔 선례를
+      그대로 따름 — NodeSharp.Nodes.Function ProjectReference 1개 추가(아래 ItemGroup 참고).
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -764,6 +771,7 @@
          참조해야 한다. 새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 추가할 것. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Inject\NodeSharp.Nodes.Inject.csproj" />
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj" />
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Function\NodeSharp.Nodes.Function.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
@@ -36,13 +37,14 @@ public partial class PaletteView : UserControl
     /// (EC-01c) 이전에는 <see cref="_registry"/>를 만들기만 하고 아무 노드 타입도 스캔해 넣지 않아
     /// 팔레트가 Phase 7 이후에도 계속 비어 있던 공백이 있었습니다 — 여기서 코어 노드 플러그인
     /// 어셈블리를 직접 스캔해 채웁니다. 새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 한 줄씩
-    /// 추가해야 팔레트에 나타납니다.
+    /// 추가해야 팔레트에 나타납니다. (FN-01) FunctionNodeType 추가.
     /// </summary>
     public PaletteView()
     {
         InitializeComponent();
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
+        _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         RefreshAllCards();
         ApplyFilter(string.Empty);
     }

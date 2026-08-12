@@ -6,6 +6,7 @@ using System.Windows.Shapes;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
+using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
@@ -225,8 +226,10 @@ public partial class FlowCanvasView : UserControl
         InitializeComponent();
         // (EC-01c) 이 뷰의 _registry는 팔레트와 별개 인스턴스라 독립적으로 채워야 한다 — 안 채우면
         // PropertySchema 조회(EC-03)·MissingNode 판정(EC-08)이 "등록 안 된 타입"으로 계속 오판한다.
+        // (FN-01) FunctionNodeType 추가.
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
+        _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         RenderFlowTabStrip();
         Loaded += OnLoaded;
     }

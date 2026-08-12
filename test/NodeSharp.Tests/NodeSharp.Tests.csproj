@@ -21,6 +21,11 @@
     Step: NR-04 (03번 개발 Step맵.html, Phase 7)
     - SwitchNode(Switch 노드의 첫 구현체)를 실제 FlowEngine 배포·라우팅 경로로 검증하기 위해
       nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj ProjectReference 추가.
+
+    Step: FN-01 (03번 개발 Step맵.html, Phase 7)
+    - FunctionNode(Function 노드의 첫 구현체, NCalc 표현식 모드)를 실제 FlowEngine 배포·라우팅
+      경로로 검증하기 위해 nodes\NodeSharp.Nodes.Function\NodeSharp.Nodes.Function.csproj
+      ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -67,6 +72,9 @@
     <!-- NR-04(03번 개발 Step맵.html) — SwitchNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
          배포·라우팅 경로로 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Switch\NodeSharp.Nodes.Switch.csproj" />
+    <!-- FN-01(03번 개발 Step맵.html) — FunctionNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
+         배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Function\NodeSharp.Nodes.Function.csproj" />
   </ItemGroup>
 
 </Project>

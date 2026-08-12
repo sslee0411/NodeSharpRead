@@ -120,6 +120,14 @@ public sealed class Msg : DynamicObject
     }
 
     /// <summary>
+    /// (FN-01) 이 메시지에 저장된 모든 필드 이름을 열거합니다 — <c>_msgid</c>/<c>_hopCount</c> 같은
+    /// 내부 필드도 그대로 포함됩니다(별도로 걸러내지 않음). Node-RED의 <c>Object.keys(msg)</c>에
+    /// 대응하며, <c>NCalcFunctionExecutor</c>(nodes\NodeSharp.Nodes.Function)가 msg의 모든 필드를
+    /// 표현식 변수로 한 번에 주입할 때 사용합니다(02번 문서 5번 탭 카드6).
+    /// </summary>
+    public IEnumerable<string> Keys => _data.Keys;
+
+    /// <summary>
     /// 타입 안전 접근자 — <paramref name="key"/> 필드가 존재하고 실제로 <typeparamref name="T"/>
     /// 타입이면 그 값을, 그렇지 않으면(필드 없음 또는 타입 불일치) <c>default(T)</c>를 반환합니다.
     /// 값이 없는 것과 타입이 다른 것을 구분해야 한다면 <see cref="TryGet{T}"/>를 사용하세요.

@@ -60,6 +60,8 @@
       SimpleExpressionEvaluatorTests}.cs 신규 — NodeSharp.Tests.csproj에 이 프로젝트 참조 추가.
       tools/check-xmldoc.py 오류 0건, 신규 파일 전부 중괄호 균형 확인 완료 — 이 세션도 샌드박스에
       .NET SDK가 없어 dotnet build/test는 사용자 로컬 확인 필요.
+    - ★ 확인(2026-08-11): 사용자가 "빌드 확인 다음단계 진행해줘"로 확인 — NR-04(Switch 노드) 완료
+      반영(03번 Step맵 "⏳ 대기" → "✅ 완료").
   -->
 
   <PropertyGroup>
