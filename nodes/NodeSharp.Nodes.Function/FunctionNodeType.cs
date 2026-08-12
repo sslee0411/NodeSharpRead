@@ -12,7 +12,7 @@ namespace NodeSharp.Nodes.Function;
 /// <see cref="FunctionNode"/>의 <see cref="INodeTypeDescriptor"/>를 노출합니다. Inject/Switch와
 /// 동일한 관례(직접 구현, Registry 빌더 미사용 — 이유는 <c>InjectNodeType</c> XML 문서 참고)로
 /// <see cref="INodeTypeDescriptor"/>를 record로 바로 만족시킵니다.
-/// 설계 근거: 02번 문서 5번 탭 카드8, 03번 개발 Step맵 FN-01.
+/// 설계 근거: 02번 문서 5번 탭 카드8, 03번 개발 Step맵 FN-01·FN-02.
 /// </summary>
 public static class FunctionNodeType
 {
@@ -56,9 +56,10 @@ public static class FunctionNodeType
                 Options: new[] { "expression", "csharp" },
                 HelpText: "\"expression\"은 NCalc 한 줄 수식 모드입니다 — 코드를 몰라도 되고, 문법" +
                            " 오류가 있어도 컴파일 없이 즉시 노드 에러(상태 점 빨강)로만 표시되며" +
-                           " Runner는 계속 동작합니다. \"csharp\"은 Roslyn C# 코드 모드로, FN-02가" +
-                           " 아직 구현되지 않아 지금 선택하면 배포 시 이 노드만 실패 처리됩니다.",
-                Example: "예: \"expression\" (기본값, 현장 엔지니어용), \"csharp\" (FN-02 완료 후 사용 가능)"),
+                           " Runner는 계속 동작합니다. \"csharp\"은 Roslyn C# 코드 모드로, 반복문·조건문" +
+                           " 등 완전한 C# 문법을 쓸 수 있는 대신 최초 배포 시 컴파일이 필요하고, 문법" +
+                           " 오류가 있으면 배포 단계에서 이 노드만 실패 처리됩니다(다른 노드는 정상 배포).",
+                Example: "예: \"expression\" (기본값, 현장 엔지니어용), \"csharp\" (복잡한 로직이 필요한 고급 사용자용)"),
             new PropertyField(
                 Key: "code",
                 Label: "표현식 / 코드",
@@ -68,9 +69,11 @@ public static class FunctionNodeType
                 HelpText: "mode가 \"expression\"이면 NCalc 수식 한 줄입니다 — msg의 모든 필드" +
                            "(payload, topic, 사용자 정의 필드)를 변수처럼 그대로 쓸 수 있고, 계산" +
                            " 결과는 자동으로 msg.payload에 저장됩니다(별도 return 문 불필요). mode가" +
-                           " \"csharp\"이면 FN-02 완료 전까지는 사용할 수 없습니다.",
-                Example: "예: \"(pressure1 - pressure2) * 0.0689\", \"if(val > 0, val, 0)\", " +
-                         "\"(fahrenheit - 32) * 5 / 9\""),
+                           " \"csharp\"이면 완전한 C# 코드입니다 — msg.payload/msg.topic처럼 소문자로" +
+                           " 그대로 읽고 쓸 수 있고, 마지막에 반드시 return msg;로 다음 노드에 전달할" +
+                           " 메시지를 돌려줘야 합니다(return null;이면 이 메시지는 버려짐, 필터링 용도).",
+                Example: "예(expression): \"(pressure1 - pressure2) * 0.0689\", \"if(val > 0, val, 0)\". " +
+                         "예(csharp): \"msg.payload = (double)msg.payload * 2; return msg;\""),
         };
 
         /// <summary>

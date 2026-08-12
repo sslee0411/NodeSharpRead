@@ -12,7 +12,7 @@ namespace NodeSharp.Nodes.Function;
 /// <see cref="Mode"/>(<see cref="FunctionMode"/>)에 따라 <see cref="IFunctionExecutor"/> 구현체를
 /// 선택해 위임합니다 — "표현식이냐 코드냐" 분기를 이 클래스가 직접 하지 않고 전략 패턴으로
 /// 뽑아낸 이유는 <see cref="IFunctionExecutor"/> XML 문서를 참고하십시오.
-/// 설계 근거: 02번 문서 5번 탭 카드5, 03번 개발 Step맵 Phase 7 FN-01.
+/// 설계 근거: 02번 문서 5번 탭 카드5, 03번 개발 Step맵 Phase 7 FN-01·FN-02.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -37,11 +37,12 @@ namespace NodeSharp.Nodes.Function;
 /// 격리하는 것이 원본 설계와 일치해 B안을 채택했습니다(인터페이스 변경 없음·<c>FlowEngine</c> 비수정·
 /// 기존 완성 메커니즘 재사용이라는 낮은 리스크로 판단, AskUserQuestion 생략). 완전한 <c>NodeErrorEvent</c>
 /// 발행 + Catch 노드 라우팅(A안 성격)은 향후 <c>NR-01a</c> 착수 시 별도로 재검토될 사안으로 남습니다.</item>
-/// <item><b>(FN-01) <see cref="FunctionMode.CSharp"/> 처리</b>: <c>RoslynFunctionExecutor</c>가 아직
-/// 없어(FN-02, ⏳ 대기) <see cref="OnStartAsync"/>가 <c>NotSupportedException</c>을 던집니다. 이는
+/// <item><b>(FN-02) <see cref="FunctionMode.CSharp"/> 처리</b>: <see cref="OnStartAsync"/>가
+/// <c>RoslynFunctionExecutor</c>를 만들어 <see cref="Code"/>를 컴파일합니다. 문법 오류가 있으면
+/// <c>Microsoft.CodeAnalysis.Scripting.CompilationErrorException</c>이 여기서 그대로 던져지며, 이는
 /// <c>FlowEngine.DeployAsync</c>(RT-02b)의 기존 노드별 예외 격리가 잡아 <c>FailedNodeIds</c>에
-/// 기록합니다 — Inject 노드의 잘못된 cron 표현식(NR-03d)과 동일한 기존 메커니즘 재사용이라 새 인프라가
-/// 필요 없습니다.</item>
+/// 기록합니다 — FN-01 시점의 <c>NotSupportedException</c>과 Inject 노드의 잘못된 cron 표현식(NR-03d)이
+/// 쓰던 것과 동일한 기존 메커니즘 재사용이라 새 인프라가 필요 없습니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -73,7 +74,7 @@ public sealed class FunctionNode : IFlowNode
     /// <summary>실행 모드 — 기본값은 코드를 몰라도 되는 <see cref="FunctionMode.Expression"/>입니다.</summary>
     public FunctionMode Mode { get; init; } = FunctionMode.Expression;
 
-    /// <summary><see cref="Mode"/>가 <see cref="FunctionMode.Expression"/>이면 NCalc 표현식 문자열, <see cref="FunctionMode.CSharp"/>이면(FN-02 이후) C# 코드 문자열입니다.</summary>
+    /// <summary><see cref="Mode"/>가 <see cref="FunctionMode.Expression"/>이면 NCalc 표현식 문자열, <see cref="FunctionMode.CSharp"/>이면 C# 코드 문자열입니다.</summary>
     public string Code { get; init; } = string.Empty;
 
     /// <summary>
@@ -85,17 +86,16 @@ public sealed class FunctionNode : IFlowNode
     /// <summary>
     /// <see cref="Mode"/>에 따라 <see cref="Executor"/>가 비어 있으면 기본 구현체를 만들고(테스트가
     /// 미리 주입했다면 그대로 유지), <see cref="IFunctionExecutor.Prepare"/>를 1회 호출해 <see cref="Code"/>를
-    /// 준비시킵니다. <see cref="FunctionMode.CSharp"/>은 위 클래스 remarks 항목대로 아직 지원하지 않아
-    /// 예외를 던집니다.
+    /// 준비시킵니다. <see cref="FunctionMode.CSharp"/>은 <c>RoslynFunctionExecutor</c>가 이 시점에
+    /// <see cref="Code"/>를 컴파일합니다 — 문법 오류가 있으면 위 클래스 remarks의 FN-02 항목대로
+    /// 여기서 예외가 던져집니다.
     /// </summary>
     public Task OnStartAsync(INodeContext ctx, CancellationToken ct)
     {
         Executor ??= Mode switch
         {
             FunctionMode.Expression => new NCalcFunctionExecutor(),
-            FunctionMode.CSharp => throw new NotSupportedException(
-                "csharp 모드는 아직 지원하지 않습니다(FN-02 대기 — RoslynFunctionExecutor 미구현). " +
-                "expression 모드를 사용하세요."),
+            FunctionMode.CSharp => new RoslynFunctionExecutor(),
             _ => throw new NotSupportedException($"알 수 없는 FunctionMode: {Mode}"),
         };
         Executor.Prepare(Code);

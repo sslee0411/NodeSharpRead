@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using NodeSharp.Contracts.Enums;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
@@ -35,9 +36,10 @@ namespace NodeSharp.Editor.Views;
 /// (EC-02) 각 카드에 입력/출력 포트(<see cref="Ellipse"/>)를 추가하고, 출력 포트를 누른 채
 /// 입력 포트 위에서 놓으면 <see cref="Wire"/>가 생성되는 드래그 상호작용을 구현했습니다 — WPF
 /// 표준 드래그 앤 드롭(팔레트 배치용)과는 별개로 <see cref="Mouse.Capture(System.Windows.IInputElement)"/>
-/// 기반의 자체 메커니즘을 씁니다. 지금은 <c>NodeTypeRegistry</c>에 등록된 실제 노드 타입이 없어
-/// (Phase 7 이전) 모든 카드를 입력 1개·출력 1개로 고정합니다 — 노드 타입별 실제 포트 개수
-/// (<c>INodeTypeDescriptor.DefaultInputs</c>/<c>DefaultOutputs</c>) 반영은 Phase 7 이후로 미룹니다.
+/// 기반의 자체 메커니즘을 씁니다. 이 시점엔 <c>NodeTypeRegistry</c>에 등록된 실제 노드 타입이 없어
+/// (Phase 7 이전) 모든 카드를 입력 1개·출력 1개로 고정했었습니다 — 노드 타입별 실제 포트 개수
+/// (<c>INodeTypeDescriptor.DefaultInputs</c>/<c>DefaultOutputs</c>) 반영은 EC-15에서 실제로 이뤄집니다
+/// (아래 EC-15 항목 참고).
 /// (EC-03) 카드를 더블클릭하면 <see cref="NodePropertyDialog"/>가 뜹니다(<see cref="OpenPropertyDialog"/>) —
 /// 이 뷰가 직접 만든 <c>NodeTypeRegistry</c>(팔레트와 별개 인스턴스, EC-01a와 동일한 패턴)에서
 /// 해당 타입의 PropertySchema를 찾아 넘기고, "완료"로 닫히면 <see cref="_nodeConfigs"/>와 카드에
@@ -110,10 +112,37 @@ namespace NodeSharp.Editor.Views;
 /// TabControl의 세 번째 탭)의 검색어 변경 이벤트를 이 메서드에 연결합니다. 결과를 클릭하면
 /// <see cref="NavigateToNode"/>(공개)가 해당 Flow 탭으로 전환하고(접힌 그룹 소속이면 먼저 펼치고)
 /// <see cref="SelectNode"/>로 선택 상태를 줘 하이라이트합니다.
+/// (EC-13, ★ 사용자 요청 — "지금 있는 노드와 앞으로 추가될 노드들의 색상과 모양을 변경할 수
+/// 있도록") <see cref="RenderNode"/>가 카드를 그릴 때 <see cref="Views.NodeCategoryStyle.Resolve"/>로
+/// <c>INodeTypeDescriptor.Category</c>에 맞는 테두리 색상·모서리 모양(<c>CornerRadius</c>)을
+/// 적용합니다 — 사용자가 노드 인스턴스마다 개별 색상을 고르는 방식이 아니라 Node-RED처럼
+/// 카테고리(종류)별로 자동 적용되는 방식입니다(사용자가 AskUserQuestion에서 이 방식을 선택). 선택/
+/// 누락(EC-08/EC-10) 상태의 강조 테두리가 항상 우선하고, 그 외의 "기본" 상태일 때만 카테고리 색상이
+/// 보입니다(<see cref="ApplyCardBorder"/> 참고). 이 카테고리 색상은 캔버스에 배치된 카드뿐 아니라
+/// 향후 팔레트 카드(<see cref="Views.PaletteView"/>)에도 동일 카탈로그를 적용할 수 있도록
+/// <see cref="Views.NodeCategoryStyle"/>를 Editor 공용 클래스로 분리해뒀습니다.
+/// (EC-14, ★ 사용자 요청 — "드래그앤그롭할때 해당노드의 모양을 따라서 위치 이동 할 수 있도록
+/// 점선 모양의 가이드로 변경") 팔레트에서 <c>NodeCanvas</c>로 드래그하는 동안(<see cref="OnCanvasDragEnter"/>/
+/// <see cref="OnCanvasDragOver"/>) 실제 놓일 위치·크기·카테고리 모양을 그대로 반영한 점선 테두리
+/// <see cref="Rectangle"/>(<see cref="_dragPreview"/>)이 마우스를 따라 움직입니다 — 이전에는 WPF
+/// 표준 드래그 커서만 보였습니다. <see cref="OnCanvasDragLeave"/>/<see cref="OnCanvasDrop"/> 양쪽
+/// 모두에서 미리보기를 지웁니다(Drop은 DragLeave를 거치지 않고 바로 발생하는 WPF 표준 동작이라
+/// 둘 다 처리해야 항상 지워짐).
+/// (EC-15, ★ 사용자 요청 — "노드 출력시 무조건 1개가 아닌 2개 이상의 출력 노드가 발생하는데 그것도
+/// UI적으로 쉽게 적용") <see cref="RenderNode"/>가 더 이상 입력/출력 포트를 1개로 고정하지 않고,
+/// <c>INodeTypeDescriptor.DefaultInputs</c>/<c>DefaultOutputs</c>와 <see cref="NodeConfig.Properties"/>의
+/// <c>"outputs"</c> 값(있으면 우선)을 반영합니다(EC-02 클래스 주석이 "Phase 7 이후로 미룬다"고 이미
+/// 예고해뒀던 부분 — 이제 실제로 반영). <c>"outputs"</c>는 <see cref="OpenPropertyDialog"/>가 모든
+/// 노드 타입에 공통으로 추가하는 "출력 포트 개수" 필드입니다(각 노드 타입의 PropertySchema를
+/// 수정하지 않아도 전부 적용되는 범용 필드, 사용자가 이 방식을 선택). 어떤 메시지가 몇 번째
+/// 포트로 나가는지는 여전히 각 노드 자신의 로직(예: Switch의 규칙 매칭)에 달려 있습니다 — 이
+/// Step은 "포트를 몇 개 둘지"를 UI로 쉽게 조정하는 것까지만 다룹니다. 누락 노드(EC-08)는 실제
+/// 타입 정보가 없어 입력/출력 모두 0개로 그립니다(RT-02a MissingNode 개념과 일치, 이 역시 EC-02가
+/// "Phase 7 이후"로 미뤄뒀던 부분).
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
-    // EC-02 시점엔 모든 카드를 이 고정 크기·고정 포트 개수(입력1/출력1)로 그린다(위 클래스 주석 참고).
+    // 모든 카드는 이 고정 크기로 그린다 — 포트 개수는 더 이상 고정이 아니다(EC-15, 위 클래스 주석 참고).
     private const double NodeCardWidth = 120;
     private const double NodeCardHeight = 40;
     private const double PortRadius = 5;
@@ -144,6 +173,10 @@ public partial class FlowCanvasView : UserControl
     private PortHandle? _dragSourcePort;
     private Line? _dragPreviewLine;
     private PortHandle? _hoveredInputPort;
+
+    // (EC-14) 팔레트 → 캔버스 드래그 중에만 값이 있는 점선 미리보기 도형 — DragEnter에서 만들고
+    // DragOver마다 위치만 옮기며, DragLeave/Drop에서 반드시 지운다(RemoveDragPreview).
+    private Rectangle? _dragPreview;
 
     // (EC-06, EC-10 확장) 카드 선택·복사/붙여넣기 상태. _nodeCards는 선택 시 테두리 강조를 위한
     // Border 참조 보관용(RenderNode가 채움, RedrawActiveTab이 다시 그릴 때마다 함께 비움).
@@ -664,6 +697,8 @@ public partial class FlowCanvasView : UserControl
     /// </summary>
     private void OnCanvasDrop(object sender, DragEventArgs e)
     {
+        RemoveDragPreview(); // (EC-14) Drop은 DragLeave 없이 곧바로 발생하는 WPF 표준 동작이라 여기서도 지워야 한다.
+
         if (!e.Data.GetDataPresent(DataFormats.StringFormat))
         {
             return;
@@ -689,6 +724,71 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
+    /// (EC-14) 팔레트 카드 드래그가 <c>NodeCanvas</c> 안으로 들어오면, 실제 놓일 때와 같은 크기·
+    /// 카테고리 모양(<see cref="NodeCategoryStyle"/>)의 점선 <see cref="Rectangle"/>을 만들어 현재
+    /// 마우스 위치에 놓습니다. 드래그 데이터가 문자열(TypeName)이 아니면(예: 다른 앱에서 온 드래그)
+    /// 아무 것도 하지 않습니다 — <see cref="OnCanvasDrop"/>과 동일한 데이터 형식 검사입니다.
+    /// </summary>
+    private void OnCanvasDragEnter(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.StringFormat) ||
+            e.Data.GetData(DataFormats.StringFormat) is not string typeName || typeName.Length == 0)
+        {
+            return;
+        }
+
+        var category = _registry.Descriptors.TryGetValue(typeName, out var descriptor) ? descriptor.Category : null;
+        var (borderBrush, cornerRadius) = NodeCategoryStyle.Resolve(category);
+
+        _dragPreview = new Rectangle
+        {
+            Width = NodeCardWidth,
+            Height = NodeCardHeight,
+            RadiusX = cornerRadius,
+            RadiusY = cornerRadius,
+            Stroke = borderBrush ?? (Brush)FindResource("AccentBrush"), // 카탈로그에 없는 Category는 강조색으로 대체(완전 투명보다 눈에 띄어야 가이드 역할을 함)
+            StrokeThickness = 2,
+            StrokeDashArray = new DoubleCollection { 4, 2 },
+            Fill = Brushes.Transparent,
+            IsHitTestVisible = false, // 이 도형이 Drop 이벤트를 가로채지 않도록(NodeCanvas 자체가 받아야 함)
+        };
+
+        Panel.SetZIndex(_dragPreview, 100); // 다른 카드/와이어보다 항상 위에 보이도록
+        NodeCanvas.Children.Add(_dragPreview);
+        MoveDragPreviewTo(e.GetPosition(NodeCanvas));
+    }
+
+    /// <summary>(EC-14) 드래그가 캔버스 위에 머무는 동안 계속 발생 — 점선 미리보기 위치를 현재 마우스 좌표로 갱신합니다(드래그 시작 시 미리보기가 만들어지지 않았으면 아무 것도 하지 않음).</summary>
+    private void OnCanvasDragOver(object sender, DragEventArgs e) => MoveDragPreviewTo(e.GetPosition(NodeCanvas));
+
+    /// <summary>(EC-14) 드래그가 캔버스를 벗어나면(놓지 않고 다른 곳으로 이동) 점선 미리보기를 지웁니다.</summary>
+    private void OnCanvasDragLeave(object sender, DragEventArgs e) => RemoveDragPreview();
+
+    /// <summary><see cref="_dragPreview"/>가 있으면 <paramref name="center"/>가 카드 중심이 되도록 좌상단 좌표를 다시 계산해 옮깁니다(<see cref="RenderNode"/>의 <c>left</c>/<c>top</c> 계산과 동일한 규칙).</summary>
+    private void MoveDragPreviewTo(Point center)
+    {
+        if (_dragPreview is null)
+        {
+            return;
+        }
+
+        Canvas.SetLeft(_dragPreview, Math.Max(0, center.X - NodeCardWidth / 2));
+        Canvas.SetTop(_dragPreview, Math.Max(0, center.Y - NodeCardHeight / 2));
+    }
+
+    /// <summary><see cref="_dragPreview"/>가 있으면 캔버스에서 제거하고 <c>null</c>로 되돌립니다. 이미 없으면 아무 것도 하지 않습니다(<see cref="OnCanvasDragLeave"/>/<see cref="OnCanvasDrop"/> 양쪽에서 안전하게 호출 가능).</summary>
+    private void RemoveDragPreview()
+    {
+        if (_dragPreview is null)
+        {
+            return;
+        }
+
+        NodeCanvas.Children.Remove(_dragPreview);
+        _dragPreview = null;
+    }
+
+    /// <summary>
     /// (EC-01b~EC-02, EC-08 확장) <paramref name="config"/>를 나타내는 작은 카드(Border+TextBlock)를
     /// <see cref="NodeConfig.X"/>/<see cref="NodeConfig.Y"/> 중심으로 <c>NodeCanvas</c>에 추가하고,
     /// 좌우에 입력/출력 포트 Ellipse를 붙입니다(<see cref="AddPortEllipse"/>). 카드 크기가 고정이라
@@ -700,7 +800,10 @@ public partial class FlowCanvasView : UserControl
     /// Editor는 Runner와 별도 프로세스라 실제 배포 결과 대신 이 뷰의 자체 <c>NodeTypeRegistry</c>로
     /// "타입을 찾을 수 없음"을 독립적으로 판단합니다) 제목을 "⚠ {Type}"으로, 부제목을 "missing type"으로
     /// 바꿔 표시하고(12번 탭 카드2 목업 <c>mock-node err</c>와 동일한 문구), 테두리는
-    /// <see cref="ApplyCardBorder"/>가 <c>RedBrush</c>로 강조합니다.
+    /// <see cref="ApplyCardBorder"/>가 <c>RedBrush</c>로 강조합니다. (EC-13) 알 수 없는 타입이 아니면
+    /// 테두리 모서리 모양이 <see cref="NodeCategoryStyle"/>을 따릅니다. (EC-15) 입력/출력 포트 개수도
+    /// 더 이상 고정이 아니라 실제 타입의 기본값·"outputs" 설정을 반영합니다(자세한 내용은 각각 위
+    /// 클래스 주석의 EC-13/EC-15 항목 참고).
     /// </summary>
     private void RenderNode(NodeConfig config)
     {
@@ -709,7 +812,8 @@ public partial class FlowCanvasView : UserControl
 
         // (EC-08) Editor 자체 레지스트리 기준의 "타입 없음" 판정 — RT-02a의 MissingNode와 같은 개념을
         // Runner 배포 결과를 기다리지 않고 Editor 쪽에서 독립적으로 판단한다(위 클래스 주석 참고).
-        var isMissing = !_registry.Descriptors.ContainsKey(config.Type);
+        var hasDescriptor = _registry.Descriptors.TryGetValue(config.Type, out var descriptor);
+        var isMissing = !hasDescriptor;
 
         var label = new TextBlock
         {
@@ -765,12 +869,16 @@ public partial class FlowCanvasView : UserControl
             cardContent = overlay;
         }
 
+        // (EC-13) 카테고리별 모서리 모양 — 알 수 없는 타입(isMissing)이면 카테고리 자체가 없어
+        // NodeCategoryStyle.Resolve(null)이 기존 기본값(4)을 그대로 돌려준다.
+        var (_, categoryCornerRadius) = NodeCategoryStyle.Resolve(hasDescriptor ? descriptor!.Category : null);
+
         var card = new Border
         {
             Width = NodeCardWidth,
             Height = NodeCardHeight,
             Background = (Brush)FindResource("ControlBackgroundBrush"),
-            CornerRadius = new CornerRadius(4),
+            CornerRadius = new CornerRadius(categoryCornerRadius),
             Cursor = Cursors.Arrow,
             Tag = config.Id,
             Child = cardContent
@@ -782,13 +890,14 @@ public partial class FlowCanvasView : UserControl
         NodeCanvas.Children.Add(card);
         _nodeLabels[config.Id] = label;
         _nodeCards[config.Id] = card; // (EC-06) 선택 시 테두리 강조를 위해 Border 참조를 보관
-        ApplyCardBorder(config.Id, card); // (EC-08) 최초 테두리도 선택/누락 상태에 맞춰 설정
+        ApplyCardBorder(config.Id, card); // (EC-08) 최초 테두리도 선택/누락/카테고리(EC-13) 상태에 맞춰 설정
 
-        // EC-02 범위: 지금은 모든 노드를 입력 1개·출력 1개로 고정한다(클래스 주석 참고 — Phase 7
-        // 이후 실제 노드 타입의 DefaultInputs/DefaultOutputs를 반영할 예정, MissingNode의 실제
-        // 포트 0개(위 클래스 주석) 반영도 같은 Phase 7 이후 범위).
-        const int inputs = 1;
-        const int outputs = 1;
+        // (EC-15) 알 수 없는 타입(isMissing)은 실제 포트 정보가 없어 0개(RT-02a MissingNode와 동일
+        // 개념). 등록된 타입이면 DefaultInputs/DefaultOutputs가 기본값이고, config.Properties의
+        // "outputs"(OpenPropertyDialog가 모든 타입에 공통으로 추가하는 필드, 위 클래스 주석 EC-15
+        // 참고)가 있으면 그 값이 출력 포트 개수를 덮어쓴다 — 값이 없거나 1 미만이면 기본값을 그대로 쓴다.
+        var inputs = isMissing ? 0 : descriptor!.DefaultInputs;
+        var outputs = isMissing ? 0 : ReadOutputsCount(config, descriptor!.DefaultOutputs);
 
         var visual = new PlacedNodeVisual(config.Id, left, top, NodeCardWidth, NodeCardHeight, inputs, outputs);
         _nodeVisuals[config.Id] = visual;
@@ -802,6 +911,24 @@ public partial class FlowCanvasView : UserControl
         {
             AddPortEllipse(new PortHandle(config.Id, i, IsOutput: true), visual.GetOutputPortPosition(i));
         }
+    }
+
+    /// <summary>
+    /// (EC-15) <paramref name="config"/>.Properties["outputs"]를 정수로 읽어 반환합니다 — 값이
+    /// 없거나 정수로 파싱할 수 없거나 1보다 작으면 <paramref name="defaultOutputs"/>(해당 노드
+    /// 타입의 <c>INodeTypeDescriptor.DefaultOutputs</c>)를 그대로 반환합니다.
+    /// <see cref="NodePropertyDialog"/>가 저장한 값은 문자열이고, flows.json에서 막 불러온 직후에는
+    /// <see cref="System.Text.Json.JsonElement"/>일 수 있어(<see cref="NodeConfig"/> 자체 문서의
+    /// "Properties 역직렬화 주의" 참고) 둘 다 <c>ToString()</c>으로 통일해 파싱합니다.
+    /// </summary>
+    private static int ReadOutputsCount(NodeConfig config, int defaultOutputs)
+    {
+        if (!config.Properties.TryGetValue("outputs", out var raw) || raw is null)
+        {
+            return defaultOutputs;
+        }
+
+        return int.TryParse(raw.ToString(), out var parsed) && parsed >= 1 ? parsed : defaultOutputs;
     }
 
     /// <summary>
@@ -1023,13 +1150,14 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-08, EC-10 확장) <paramref name="card"/>의 테두리를 상태 우선순위(선택 &gt; 알 수 없는
-    /// 타입 &gt; 기본)에 따라 정합니다 — <see cref="RenderNode"/>(최초 렌더링)와
+    /// (EC-08, EC-10, EC-13 확장) <paramref name="card"/>의 테두리를 상태 우선순위(선택 &gt; 알 수
+    /// 없는 타입 &gt; 카테고리 기본색)에 따라 정합니다 — <see cref="RenderNode"/>(최초 렌더링)와
     /// <see cref="SelectNode"/>/<see cref="ToggleNodeSelection"/>(선택 변경) 모두가 이 메서드
     /// 하나를 공유해 테두리 규칙이 한 곳에만 있도록 합니다. <paramref name="nodeId"/>가
     /// <see cref="_selectedNodeIds"/>에 있으면 무조건 <c>AccentBrush</c>/두께 2로 강조하고, 아니면
     /// <see cref="NodeConfig.Type"/>이 <see cref="_registry"/>에 없을 때(EC-08 "누락 노드")
-    /// <c>RedBrush</c>/두께 2로, 그 외에는 기본 <c>BorderBrush</c>/두께 1로 되돌립니다.
+    /// <c>RedBrush</c>/두께 2로, 그 외에는(EC-13) <see cref="NodeCategoryStyle.Resolve"/>가 돌려주는
+    /// 카테고리 색상(카탈로그에 없는 Category면 기존 <c>BorderBrush</c>)/두께 1로 되돌립니다.
     /// </summary>
     private void ApplyCardBorder(string nodeId, Border card)
     {
@@ -1040,17 +1168,23 @@ public partial class FlowCanvasView : UserControl
             return;
         }
 
-        var isMissing = _nodeConfigs.TryGetValue(nodeId, out var config) && !_registry.Descriptors.ContainsKey(config.Type);
-        if (isMissing)
+        // (버그 수정) "var hasDescriptor = A && B;" 형태로 두 TryGetValue 결과를 bool 변수 하나에
+        // 캐시해두면, 그 bool 값과 out 변수(descriptor)의 확정 할당 여부 사이의 연결을 컴파일러가
+        // 더 이상 추적하지 못해 아래 else 블록에서 CS0165(할당되지 않은 지역 변수 사용)가 발생한다
+        // — 사용자가 Visual Studio 빌드에서 이 오류를 실제로 보고해 발견. 조건을 부정해 먼저
+        // return하는 가드 절 형태로 바꾸면, 이 지점을 통과했다는 것 자체가 두 TryGetValue가 모두
+        // 성공했다는 뜻이 되어 컴파일러가 descriptor의 확정 할당을 정확히 추론할 수 있다.
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config) ||
+            !_registry.Descriptors.TryGetValue(config.Type, out var descriptor))
         {
             card.BorderBrush = (Brush)FindResource("RedBrush");
             card.BorderThickness = new Thickness(2);
+            return;
         }
-        else
-        {
-            card.BorderBrush = (Brush)FindResource("BorderBrush");
-            card.BorderThickness = new Thickness(1);
-        }
+
+        var (categoryBrush, _) = NodeCategoryStyle.Resolve(descriptor.Category);
+        card.BorderBrush = categoryBrush ?? (Brush)FindResource("BorderBrush");
+        card.BorderThickness = new Thickness(1);
     }
 
     /// <summary>
@@ -1118,12 +1252,13 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-03, EC-07 확장) <paramref name="nodeId"/>의 현재 <see cref="NodeConfig"/>와,
+    /// (EC-03, EC-07, EC-15 확장) <paramref name="nodeId"/>의 현재 <see cref="NodeConfig"/>와,
     /// <see cref="_registry"/>에 등록된 해당 타입의 PropertySchema(없으면 빈 목록 — Phase 7
-    /// 이전엔 항상 이 경우)로 <see cref="NodePropertyDialog"/>를 모달로 띄웁니다. "완료"로 닫히면
-    /// 편집 전/후 <see cref="NodeConfig"/> 스냅샷을 <see cref="EditNodePropertiesCommand"/>로 감싸
-    /// <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수 있음) — 화면 갱신(카드 이름 표시 등)은
-    /// 커맨드가 호출하는 <see cref="RedrawActiveTab"/>이 처리합니다.
+    /// 이전엔 항상 이 경우)에 (EC-15) "출력 포트 개수" 필드(<see cref="BuildOutputsField"/>)를 덧붙여
+    /// <see cref="NodePropertyDialog"/>를 모달로 띄웁니다. "완료"로 닫히면 편집 전/후
+    /// <see cref="NodeConfig"/> 스냅샷을 <see cref="EditNodePropertiesCommand"/>로 감싸
+    /// <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수 있음) — 화면 갱신(카드 이름 표시·포트
+    /// 개수 등)은 커맨드가 호출하는 <see cref="RedrawActiveTab"/>이 처리합니다.
     /// </summary>
     private void OpenPropertyDialog(string nodeId)
     {
@@ -1132,8 +1267,8 @@ public partial class FlowCanvasView : UserControl
             return;
         }
 
-        var schema = _registry.Descriptors.TryGetValue(config.Type, out var descriptor)
-            ? descriptor.PropertySchema
+        IReadOnlyList<PropertyField> schema = _registry.Descriptors.TryGetValue(config.Type, out var descriptor)
+            ? descriptor.PropertySchema.Append(BuildOutputsField(descriptor.DefaultOutputs)).ToList()
             : Array.Empty<PropertyField>();
 
         var dialog = new NodePropertyDialog(config, schema)
@@ -1146,6 +1281,27 @@ public partial class FlowCanvasView : UserControl
             _history.Execute(new EditNodePropertiesCommand(this, nodeId, before: config, after: updated));
         }
     }
+
+    /// <summary>
+    /// (EC-15) 어떤 노드 타입에든 공통으로 붙는 "출력 포트 개수" 필드를 만듭니다 — 각 노드 타입의
+    /// <c>PropertySchema</c>를 하나하나 수정하지 않고도 모든 타입에 동일하게 적용되는 범용 필드입니다
+    /// (사용자 요청 "2개 이상의 출력 노드가 발생하는데 그것도 UI적으로 쉽게 적용" — AskUserQuestion에서
+    /// "모든 노드 타입에 범용 필드" 방식을 선택). 값은 <see cref="NodeConfig.Properties"/>의
+    /// <c>"outputs"</c> 키에 저장되고, <see cref="RenderNode"/>의 <see cref="ReadOutputsCount"/>가
+    /// 이 값을 읽어 실제 출력 포트 개수로 씁니다.
+    /// </summary>
+    private static PropertyField BuildOutputsField(int defaultOutputs) => new(
+        Key: "outputs",
+        Label: "출력 포트 개수",
+        Type: PropertyFieldType.Number,
+        Required: false,
+        DefaultValue: defaultOutputs.ToString(),
+        HelpText: "이 노드가 캔버스에서 갖는 출력 포트 개수입니다. 늘리면 카드 오른쪽에 포트가 그만큼 " +
+                   "추가돼 다른 노드와 와이어로 연결할 수 있습니다 — 다만 어떤 메시지가 몇 번째 포트로 " +
+                   "나가는지는 이 필드가 아니라 노드 자신의 동작에 달려 있습니다(예: Switch는 규칙별로 " +
+                   "자동 배분, 그 외 노드는 기본적으로 0번 포트만 사용하므로 직접 그 노드의 코드/설계가 " +
+                   "여러 포트를 지원해야 나머지 포트가 실제로 쓰입니다).",
+        Example: $"예: \"{defaultOutputs}\"(이 노드 타입의 기본값), \"2\", \"3\"");
 
     /// <summary>
     /// (EC-07) Ctrl+Z(<c>MainWindow</c>의 <c>ApplicationCommands.Undo</c>)로 <see cref="_history"/>의

@@ -4,8 +4,10 @@
     NodeSharp.Nodes.Function
     ====================
     Function 노드(사용자가 입력한 표현식/코드로 msg를 계산·변환하는 범용 처리 노드) 코어 플러그인.
-    NodeSharp.Nodes.Inject/Switch와 동일하게 개별 csproj로 분리하되, 이 프로젝트는 NCalc 표현식
-    실행만 다뤄 NodeSharp.Util을 쓸 일이 없어 Contracts만 참조한다(02번 문서 1번 탭 폴더 구조).
+    NodeSharp.Nodes.Inject/Switch와 동일하게 개별 csproj로 분리한다. FN-01 시점엔 NCalc 표현식만
+    다뤄 Contracts만 참조했으나, FN-02(Roslyn C# 코드 실행기)부터 참조 화이트리스트에 NodeSharp.Util
+    어셈블리가 필요해 ProjectReference를 추가했다(02번 문서 1번 탭 폴더 구조, v1.31 참조 화이트리스트
+    설계).
 
     Step: FN-01 (03번 개발 Step맵.html, Phase 7 — Function 노드 NCalc 표현식 실행기)
     - 착수 전 설계 문서(02번 문서 5번 탭 카드5~7) 재검토로 코드 작성 전에 반드시 풀어야 할 공백을
@@ -46,6 +48,44 @@
     - test\NodeSharp.Tests\{FunctionNodeTests,NCalcFunctionExecutorTests}.cs 신규 — NodeSharp.Tests.csproj에
       이 프로젝트 참조 추가. tools/check-xmldoc.py 오류 0건, 신규 파일 전부 중괄호 균형 확인 완료 — 이
       세션도 샌드박스에 .NET SDK가 없어 dotnet build/test는 사용자 로컬 확인 필요(NCalc NuGet 복원 포함).
+
+    Step: FN-02 (03번 개발 Step맵.html, Phase 7 — Function 노드 Roslyn C# 코드 실행기 + 컴파일 캐시)
+    - 착수 전 02번 문서 5번 탭 카드7 재검토로 두 가지 공백을 발견: ① 스니펫이 참조하는
+      FunctionGlobals 타입이 정식 선언 없이 typeof(FunctionGlobals)로만 쓰이고 있었음(NodeRef·
+      PlcConnectionConfig와 동일 유형) → FunctionGlobals.cs 신규(공개 멤버 dynamic msg 1개, 소문자인
+      이유는 파일 내 XML 문서 참고). ② v1.31 참조 화이트리스트 스니펫이 요구하는
+      NodeSharp.Util.Extensions.ScaleExtensions가 아직 LL-08a/LL-11a(⏳ 대기)로 포팅 전이라 그
+      네임스페이스에 타입이 하나도 없음 — 그 상태로 고정 임포트에 넣으면 CS0246으로 모든 Function
+      노드 컴파일이 깨지는 것을 확인해, NodeSharp.Util 어셈블리 참조만 지금 추가하고
+      NodeSharp.Util.Extensions 임포트는 LL-08a/LL-11a 완료 후로 미룸(저위험 판단, AskUserQuestion
+      생략 — RoslynFunctionExecutor.cs XML 문서 "발견한 공백" 항목에 근거 기록).
+    - RoslynFunctionExecutor.cs 신규 — 카드7 스니펫 그대로의 컴파일 캐시(ConcurrentDictionary
+      <string, ScriptRunner<object>>) 구조에 참조 화이트리스트(AllowedReferences/AllowedImports 2개
+      고정 배열)를 얹은 형태. 컴파일 오류(CompilationErrorException)는 Prepare(=FunctionNode.
+      OnStartAsync) 시점에 던져지며, FN-01과 동일하게 FlowEngine.DeployAsync(RT-02b)의 노드별 예외
+      격리가 잡아 FailedNodeIds에 기록(새 인프라 불필요).
+    - FunctionNode.cs 수정 — OnStartAsync의 FunctionMode.CSharp 분기가 NotSupportedException 대신
+      new RoslynFunctionExecutor()를 반환하도록 변경(클래스 remarks의 FN-02 항목도 함께 갱신).
+    - FunctionNodeType.cs 수정 — "mode"/"code" PropertySchema의 HelpText/Example을 "FN-02 완료 후
+      사용 가능" 안내 문구에서 실제 사용법(csharp 모드 예시 코드 포함)으로 갱신.
+    - Microsoft.CodeAnalysis.CSharp.Scripting 5.6.0 패키지 참조(WebSearch+nuget.org 패키지 페이지로
+      net8.0 타겟 호환 확인, 2026-08 세션) — RoslynFunctionExecutor.cs가 유일한 사용처.
+      NodeSharp.Util ProjectReference 신규 추가(위 참조 화이트리스트 공백 대응, 파일 상단 안내 참고).
+    - test\NodeSharp.Tests\RoslynFunctionExecutorTests.cs 신규, FunctionNodeTests.cs의 옛
+      "CSharp 모드는 NotSupportedException" 테스트 2건을 실제 컴파일·실행·FailedNodeIds 기록을
+      검증하는 테스트로 교체. tools/check-xmldoc.py 오류 0건, 신규/수정 파일 전부 중괄호 균형 확인
+      완료 — 이 세션도 샌드박스에 .NET SDK가 없어 dotnet build/test(Roslyn NuGet 복원 포함)는 사용자
+      로컬 확인 필요.
+    - ★ 버그 수정(2026-08-12, 사용자가 실제 xUnit 테스트 실행 결과로 보고): FunctionNodeTests의
+      "OnInputAsync는_CSharp_모드_정상_코드면_결과를_다음_노드로_전달한다"가 CS0656
+      (Microsoft.CSharp.RuntimeBinder.CSharpArgumentInfo.Create 멤버가 필요한 컴파일러가 없음)으로
+      실패 — FunctionGlobals.msg가 dynamic이라 사용자 코드의 msg.payload = ... 같은 동적 멤버 접근을
+      컴파일하려면 Roslyn이 Microsoft.CSharp.RuntimeBinder 호출 코드를 생성해야 하는데,
+      RoslynFunctionExecutor.AllowedReferences에 Microsoft.CSharp 어셈블리가 빠져 있던 것이 원인.
+      AllowedReferences에 typeof(Microsoft.CSharp.RuntimeBinder.Binder).Assembly 추가로 해소 —
+      이 프로젝트가 이미 FunctionGlobals.cs에서 dynamic을 쓰고 있어 별도 PackageReference 없이
+      net8.0 SDK가 이미 해석 가능한 어셈블리(추가 패키지 참조 불필요, 이 csproj의 ItemGroup은
+      변경하지 않음).
   -->
 
   <PropertyGroup>
@@ -58,9 +98,11 @@
 
   <ItemGroup>
     <!-- 02번 문서 1번 탭 폴더 구조 — 코어 노드 플러그인은 Contracts(+ 필요 시 Util)만 참조
-         (Registry/Runtime 비참조). 이 프로젝트는 NCalc 표현식만 다뤄 Util의 도움이 필요 없어
-         Contracts만 참조한다. -->
+         (Registry/Runtime 비참조). FN-01 시점엔 NCalc 표현식만 다뤄 Contracts만 참조했으나, FN-02부터
+         RoslynFunctionExecutor의 참조 화이트리스트가 NodeSharp.Util 어셈블리를 가리켜야 해서(위 Step:
+         FN-02 항목 참고) Util도 함께 참조한다. -->
     <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\NodeSharp.Util\NodeSharp.Util.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -68,6 +110,9 @@
          확인). NCalcFunctionExecutor.cs가 유일한 사용처 — Contracts/Util에는 의도적으로 추가하지
          않음(IFunctionExecutor.cs XML 문서 "구현체 위치" 항목 참고). -->
     <PackageReference Include="NCalc" Version="6.4.0" />
+    <!-- FN-02: Roslyn C# 스크립팅 라이브러리(2026-08 WebSearch+nuget.org 패키지 페이지로 5.6.0이
+         net8.0 타겟과 호환됨을 확인). RoslynFunctionExecutor.cs가 유일한 사용처. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.6.0" />
   </ItemGroup>
 
 </Project>

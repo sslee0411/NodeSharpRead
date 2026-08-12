@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis.Scripting;
 using NodeSharp.Contracts.Enums;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
@@ -9,11 +10,12 @@ using Xunit;
 namespace NodeSharp.Tests;
 
 /// <summary>
-/// <see cref="FunctionNode"/>/<see cref="FunctionNodeType"/>(FN-01, 03번 개발 Step맵 Phase 7 —
-/// Function 노드 NCalc 표현식 실행기)에 대한 통합 테스트입니다. 완료 기준(03번 Step맵 FN-01): "수식
-/// 문법 오류(괄호 불일치 등)를 입력해도 Runner가 크래시하지 않고 노드 에러로만 표면화되는지, 컴파일
-/// 없이 즉시 반영되는지 확인"을 <see cref="FlowEngine"/> 실제 배포·라우팅 경로로 증명합니다(Inject/
-/// Switch 노드와 동일한 방식 — Editor→Runner IPC가 아직 없어 FunctionNode를 직접 생성해
+/// <see cref="FunctionNode"/>/<see cref="FunctionNodeType"/>(FN-01·FN-02, 03번 개발 Step맵 Phase 7 —
+/// Function 노드 NCalc 표현식 실행기 + Roslyn C# 코드 실행기)에 대한 통합 테스트입니다. 완료 기준
+/// (03번 Step맵 FN-01): "수식 문법 오류(괄호 불일치 등)를 입력해도 Runner가 크래시하지 않고 노드
+/// 에러로만 표면화되는지, 컴파일 없이 즉시 반영되는지 확인"과 완료 기준(FN-02): "문법 오류는 컴파일
+/// 에러로 표면화되는지"를 <see cref="FlowEngine"/> 실제 배포·라우팅 경로로 증명합니다(Inject/Switch
+/// 노드와 동일한 방식 — Editor→Runner IPC가 아직 없어 FunctionNode를 직접 생성해
 /// <see cref="FunctionNode.OnInputAsync"/>를 호출하는 것을 "메시지 도착"의 대역으로 삼음).
 /// </summary>
 public class FunctionNodeTests
@@ -144,22 +146,58 @@ public class FunctionNodeTests
     }
 
     [Fact]
-    public async Task OnStartAsync는_CSharp_모드면_NotSupportedException을_던진다()
+    public async Task OnStartAsync는_CSharp_모드_정상_코드면_예외_없이_컴파일된다()
     {
         var node = new FunctionNode { Id = "fn", Mode = FunctionMode.CSharp, Code = "return msg;" };
         var ctx = new RecordingNodeContext(new FlowEngine(new NodeTypeRegistry(contractsVersion: "1.0.0")));
 
-        await Assert.ThrowsAsync<NotSupportedException>(() => node.OnStartAsync(ctx, CancellationToken.None));
+        var exception = await Record.ExceptionAsync(() => node.OnStartAsync(ctx, CancellationToken.None));
+
+        Assert.Null(exception);
+        Assert.IsType<RoslynFunctionExecutor>(node.Executor);
     }
 
     [Fact]
-    public void DeployAsync는_CSharp_모드_Function_노드를_FailedNodeIds에_기록하고_다른_노드는_계속_배포한다()
+    public async Task OnStartAsync는_CSharp_모드_문법_오류_코드면_CompilationErrorException을_던진다()
+    {
+        var node = new FunctionNode { Id = "fn", Mode = FunctionMode.CSharp, Code = "return msg + ;" }; // 문법 오류
+        var ctx = new RecordingNodeContext(new FlowEngine(new NodeTypeRegistry(contractsVersion: "1.0.0")));
+
+        await Assert.ThrowsAsync<CompilationErrorException>(() => node.OnStartAsync(ctx, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task OnInputAsync는_CSharp_모드_정상_코드면_결과를_다음_노드로_전달한다()
+    {
+        var (engine, receiver) = BuildWireOnlyEngine();
+        var node = new FunctionNode
+        {
+            Id = "fn",
+            Mode = FunctionMode.CSharp,
+            Code = "msg.payload = (double)msg.payload * 2; return msg;",
+        };
+        var ctx = new RecordingNodeContext(engine);
+
+        await node.OnStartAsync(ctx, CancellationToken.None);
+        await node.OnInputAsync(new Msg { Payload = 21.0 }, ctx, CancellationToken.None);
+
+        Assert.Single(receiver.Received);
+        Assert.Equal(42.0, Convert.ToDouble(receiver.Received[0]));
+        Assert.Empty(ctx.StatusCalls);
+    }
+
+    [Fact]
+    public void DeployAsync는_CSharp_모드_문법_오류_Function_노드를_FailedNodeIds에_기록하고_다른_노드는_계속_배포한다()
     {
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         registry.TryRegister(new PluginManifest("receiver", "1.0.0", RequiredContractsVersion: "1.0.0"), typeof(ReceiverNode));
 
-        var fnConfig = new NodeConfig("fn", "function", "테스트", "f1", new Dictionary<string, object?> { ["mode"] = "csharp" });
+        var fnConfig = new NodeConfig("fn", "function", "테스트", "f1", new Dictionary<string, object?>
+        {
+            ["mode"] = "csharp",
+            ["code"] = "return msg + ;", // 문법 오류
+        });
         var receiverConfig = new NodeConfig("r0", "receiver", "r0", "f1", new Dictionary<string, object?>());
 
         var engine = new FlowEngine(registry);
@@ -169,5 +207,25 @@ public class FunctionNodeTests
 
         Assert.Contains("fn", engine.FailedNodeIds);
         Assert.DoesNotContain("r0", engine.FailedNodeIds);
+    }
+
+    [Fact]
+    public void DeployAsync는_CSharp_모드_정상_코드_Function_노드는_FailedNodeIds에_기록되지_않는다()
+    {
+        var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
+        registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
+
+        var fnConfig = new NodeConfig("fn", "function", "테스트", "f1", new Dictionary<string, object?>
+        {
+            ["mode"] = "csharp",
+            ["code"] = "return msg;",
+        });
+
+        var engine = new FlowEngine(registry);
+        var flow = new FlowDefinition(Id: "f1", Name: "테스트 플로우",
+            Nodes: new List<NodeConfig> { fnConfig }, Wires: new List<Wire>());
+        engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None).GetAwaiter().GetResult();
+
+        Assert.DoesNotContain("fn", engine.FailedNodeIds);
     }
 }

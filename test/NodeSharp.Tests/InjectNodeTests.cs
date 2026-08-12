@@ -299,16 +299,24 @@ public class InjectNodeTests
         {
             Id = "n1",
             Once = true,
-            OnceDelaySeconds = 0.02,
+            // (★ 버그 수정, 2026-08-12) 이전엔 OnceDelaySeconds=0.02(20ms)와 아래 "onceDelay 전" 확인의
+            // Task.Delay(20)이 같은 20ms라 Task.Delay의 타이머 해상도(Windows 기준 대략 15ms 단위)
+            // 안에서 두 지연이 서로 앞서거나 뒤서는 순서를 보장할 수 없는 경쟁 상태(race condition)였다
+            // — 사용자가 실제 dotnet test 실행에서 "onceDelay 전" 확인이 이미 발행된 상태로 실패하는
+            // 것을 보고해 발견. OnceDelaySeconds를 0.12(120ms)로 늘려 아래 "onceDelay 전" 확인의
+            // Task.Delay(20)과 6배 이상 여유를 두고, "onceDelay 이후" 확인도 총 250ms를 기다려 120ms와
+            // 충분한 여유(약 2배)를 둠 — 값 자체(20ms)가 아니라 두 지연 사이의 상대적 여유가 핵심이라
+            // 완료 기준("정확히 1회만 발행")의 검증 내용은 그대로 유지된다.
+            OnceDelaySeconds = 0.12,
             DefaultPayload = "boot",
             // TriggerMode는 기본값 "manual" — interval을 켜지 않았으므로 once 1회 이후 반복되지 않아야 함.
         };
 
         await injectNode.OnStartAsync(ctx, CancellationToken.None);
-        await Task.Delay(20);   // onceDelay 전 — 아직 발행되면 안 됨
+        await Task.Delay(20);   // onceDelay(120ms) 전 — 아직 발행되면 안 됨(6배 이상 여유)
         Assert.Empty(ReceiverNode.Received);
 
-        await Task.Delay(80);   // onceDelay 이후 충분히 대기
+        await Task.Delay(230);   // 누적 250ms — onceDelay(120ms) 이후 충분히 대기(약 2배 여유)
         await injectNode.OnCloseAsync(ctx);
 
         Assert.Single(ReceiverNode.Received);
