@@ -72,6 +72,27 @@
     - 완료 기준 확인은 WPF 창이 실제로 그려지고 테마 팝업 클릭으로 전환되는지 봐야 해서 이 개발
       환경에서 자동 검증 불가 — xUnit 없이 사용자가 Windows에서 직접 빌드·실행해 타이틀바의 테마
       선택 버튼을 눌러 8개 테마 중 하나로 실제 전환되는지 확인해야 한다.
+
+    Step: EC-16 (03번 개발 Step맵.html, Phase 6 — ★ 사용자 요청, 팝업 창 제목표시줄 DWM 테마 적용)
+    - EC-03 콤보박스 테마 수정(v2.89) 직후 사용자가 "팝업 타이틀바는 아직 흰색 그대로"를 재보고 —
+      WPF Window.Background/DynamicResource는 클라이언트 영역만 칠할 뿐, WindowStyle 기본값으로
+      남긴 OS 네이티브 제목표시줄은 DWM이 직접 그려 WPF 리소스가 손댈 수 없음을 확인. EC-03이
+      "모달 다이얼로그는 OS 기본 창 틀 유지"로 이미 판단해둔 것은 뒤집지 않고, 네이티브 캡션의
+      "색상"만 DWM API로 테마에 맞추는 절충안을 채택(저위험 판단, AskUserQuestion 생략).
+    - WindowTitleBarTheme.cs 신규 — dwmapi.dll DwmSetWindowAttribute를 P/Invoke. Windows 11(빌드
+      22000+)은 DWMWA_CAPTION_COLOR(35)/DWMWA_TEXT_COLOR(36)/DWMWA_BORDER_COLOR(34)로 테마의
+      BgColor/TextColor/BorderColor를 그대로 재현, 이 세 속성이 없는 Windows 10(1809+)은
+      DWMWA_USE_IMMERSIVE_DARK_MODE(20)로 최소 다크/라이트 여부만 반영 — 네 호출 모두 개별
+      try/catch로 감싸 미지원 환경에서도 예외 없이 조용히 무시(시각 개선 사항이 창 표시 자체를
+      막으면 안 됨).
+    - src\NodeSharp.Editor\Views\NodePropertyDialog.xaml.cs 수정 — SourceInitialized에서
+      WindowTitleBarTheme.Apply(this) 1회 호출 + ThemeManager.ThemeChanged 구독(열려 있는 동안
+      테마 전환에도 즉시 반영), ThemePickerViewModel과 동일한 관례로 OnClosed에서 구독 해제.
+      MainWindow는 이미 WindowStyle="None" 커스텀 타이틀바라 네이티브 제목표시줄 자체를 쓰지 않아
+      이번 범위에서 제외.
+    - tools/check-xmldoc.py 오류 0건, 신규 1개(WindowTitleBarTheme.cs, 중괄호 15/15) 파일 확인
+      완료 — 이 세션도 샌드박스에 .NET SDK가 없어 dotnet build 및 실제 DWM 호출은 사용자 로컬
+      (Windows 10/11) 확인이 필요하다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>

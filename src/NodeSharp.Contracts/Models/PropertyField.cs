@@ -17,6 +17,15 @@ namespace NodeSharp.Contracts.Models;
 /// 보고는 단위가 ms인지 sec인지, 0을 넣으면 무한대기인지 알 수 없습니다. 그러나 C# 언어 자체는
 /// 빈 문자열 기본값을 컴파일 오류로 막지 못하므로, <see cref="PropertySchemaValidator"/>가 런타임
 /// 검증으로 이를 표면화합니다(노드 타입 등록 시점에 호출하는 것을 권장).
+///
+/// <b>(FN-03) 조건부 표시 — <see cref="VisibleWhenKey"/>/<see cref="VisibleWhenValue"/></b>: 02번
+/// 설계 문서 5번 탭 카드8의 "mode에 따라 expressionCode/csharpCode 중 하나만 표시"·8번 탭이 예고한
+/// "PlcNode의 CommType별 조건부 필드 표시"를 위해 신설한 선택적 필드 쌍입니다. 둘 다 지정하면
+/// <c>NodePropertyDialog</c>가 같은 스키마 안의 <see cref="VisibleWhenKey"/> 필드(반드시 이 필드보다
+/// 앞선 순서여야 함) 값이 <see cref="VisibleWhenValue"/>와 같을 때만 이 필드를 보여주고, 다르면
+/// 감춥니다(값 자체는 그대로 보존 — 감춰졌다고 지워지지 않음). 지정하지 않으면(기본값 둘 다 null)
+/// 기존과 동일하게 항상 표시됩니다(하위 호환 — 기존 <see cref="PropertyField"/> 생성 코드는 전혀
+/// 수정할 필요가 없습니다).
 /// </remarks>
 /// <example>
 /// <code>
@@ -30,6 +39,11 @@ namespace NodeSharp.Contracts.Models;
 ///     HelpText: "서버 응답을 기다리는 최대 시간(밀리초, ms)입니다. 이 시간이 지나면 자동으로 " +
 ///               "실패 처리되고 msg가 2번째(에러) 출력 포트로 나갑니다. 0을 입력하면 무제한 대기입니다.",
 ///     Example: "예: 5000 (5초), 30000 (30초, 느린 서버용)");
+///
+/// // (FN-03) mode가 "expression"일 때만 보이는 필드:
+/// var expressionField = new PropertyField(
+///     Key: "expressionCode", Label: "표현식", Type: PropertyFieldType.Code,
+///     VisibleWhenKey: "mode", VisibleWhenValue: "expression");
 /// </code>
 /// </example>
 public sealed record PropertyField(
@@ -40,7 +54,9 @@ public sealed record PropertyField(
     string? DefaultValue = null,
     IReadOnlyList<string>? Options = null,
     string HelpText = "",
-    string Example = "");
+    string Example = "",
+    string? VisibleWhenKey = null,
+    string? VisibleWhenValue = null);
 
 /// <summary>
 /// Class명 : 속성 스키마 검증기

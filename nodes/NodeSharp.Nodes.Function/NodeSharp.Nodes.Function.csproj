@@ -86,6 +86,101 @@
       이 프로젝트가 이미 FunctionGlobals.cs에서 dynamic을 쓰고 있어 별도 PackageReference 없이
       net8.0 SDK가 이미 해석 가능한 어셈블리(추가 패키지 참조 불필요, 이 csproj의 ItemGroup은
       변경하지 않음).
+
+    Step: FN-03 (03번 개발 Step맵.html, Phase 7 — Function 노드 편집 UI 모드 전환)
+    - 사용자가 "빌드 확인 다음단계 진행해줘"로 FN-02/EC-13/14/15/16을 완료 반영한 뒤 착수. 개발
+      지침 8번에 따라 착수 전 02번 문서 5번 탭 카드8을 재확인한 결과, 카드8 원본 설계(모드별로
+      expressionCode/csharpCode 2개의 별도 필드에 저장해 모드를 오가도 각자 입력 내용을 잃지 않음,
+      mode 값도 "Expression"/"CSharp" 대문자)와 이미 확정 배포된 FN-01/FN-02(단일 code 필드 하나를
+      두 모드가 공유, mode 값은 소문자 "expression"/"csharp")가 서로 다르다는 실질적 모순을 발견 —
+      이미 사용자 로컬에서 build·test까지 확인한 기존 코드·데이터 구조에 영향을 주는 갈림길이라
+      저위험 예외를 적용하지 않고 AskUserQuestion으로 "단일 필드 유지(추천, 낮은 리스크)" vs
+      "설계 문서대로 모드별 분리 필드" 확인 — 사용자가 처음엔 "설명을 더 자세하게 해줘"로 두 옵션의
+      구체적 차이(데이터 모델·수정 파일 범위·기존 flows.json 호환성)를 채팅으로 상세히 설명받은 뒤,
+      "설계대로 분리"를 최종 선택. mode 값의 대소문자는 카드8 스니펫이 "Expression"/"CSharp"이지만
+      FunctionMode enum 매핑·기존 xUnit 테스트가 전부 소문자를 전제하고 있어 카드8과 무관한 별개
+      쟁점으로 판단해 낮은 리스크로 소문자를 그대로 유지(불필요한 추가 마이그레이션 회피, 사용자
+      질문의 핵심은 필드 분리 여부였지 대소문자가 아니었음).
+    - src\NodeSharp.Contracts\Models\PropertyField.cs에 VisibleWhenKey/VisibleWhenValue 선택적
+      필드 2개 신규(NodeSharp.Contracts.csproj의 FN-03 블록 참고) — 이 프로젝트가 그 필드를 실제로
+      사용하는 첫 사례.
+    - FunctionNode.cs 수정 — 단일 Code 속성을 ExpressionCode/CSharpCode 2개로 교체, 사설
+      ActiveCode(Mode에 맞는 쪽만 선택)를 OnStartAsync가 Executor.Prepare에 넘김 — 실행 동작 자체는
+      이전과 동일, Editor 편집 시 두 모드의 입력값이 독립 보존되는 것만 새로 생김.
+    - FunctionNodeType.cs 수정 — PropertySchema를 "mode"/"code" 2개에서 "mode"/"expressionCode"/
+      "csharpCode" 3개로 교체, expressionCode/csharpCode에 각각 VisibleWhenKey="mode"를 걸어 모드에
+      맞는 쪽만 보이도록 함. Factory는 새 키를 우선 읽되, 둘 다 없고 옛 "code" 키만 있으면(FN-01/
+      FN-02 시절 저장분) 저장 당시 mode에 맞는 새 필드로 옮겨 읽는 구버전 호환 로직을 추가 —
+      NodeSharp.Util.Config.Migration(flows.json 전체 스키마 버전용 무거운 인프라)을 쓰지 않고 이미
+      이 파일이 쓰던 ReadString 패턴을 확장하는 가벼운 방식을 택함(이 파일 XML 문서에 상세 근거).
+    - src\NodeSharp.Editor\Views\NodePropertyDialog.xaml.cs 수정 — VisibleWhenKey가 있는 필드의
+      행을 조건 필드(ComboBox)의 SelectionChanged에 맞춰 즉시 보이거나 감추는 범용 로직
+      (ApplyConditionalVisibility) 신규 추가(NodeSharp.Editor.csproj의 FN-03 블록 참고 — Function
+      노드 전용 코드가 아니라 PropertyField.VisibleWhenKey를 쓰는 어떤 노드 타입에도 재사용 가능).
+    - test\NodeSharp.Tests\FunctionNodeTests.cs 갱신 — PropertySchema.Count 2→3, Key 순서 검증
+      갱신, VisibleWhenKey/VisibleWhenValue 배선 검증 신규, expressionCode/csharpCode 독립 보존
+      검증 신규, 구버전 단일 code 키 호환 읽기 검증 신규, 기존 OnStartAsync/OnInputAsync/DeployAsync
+      테스트의 Code 참조를 ExpressionCode/CSharpCode로 전부 갱신.
+    - tools/check-xmldoc.py 오류 0건, 수정 4개(FunctionNode.cs/FunctionNodeType.cs/
+      FunctionNodeTests.cs/NodePropertyDialog.xaml.cs) + PropertyField.cs/PropertyFieldTests.cs
+      전부 중괄호 균형 확인 완료 — 이 세션도 샌드박스에 .NET SDK가 없어(WPF 프로젝트 포함) dotnet
+      build/test는 사용자 로컬 확인 필요, 확인 전까지 이 Step은 ⏳ 대기 유지. 완료 기준 중 "ComboBox
+      전환 시 입력란이 즉시 전환"은 WPF 창이 실제로 그려져야 확인 가능해(EC-03과 동일한 한계) 이
+      세션에서 자동 검증할 수 없다.
+    - ★ 확인(2026-08-14): 사용자가 "빌드완료"로 로컬 dotnet build/test 및 WPF UI(ComboBox 전환) 확인을
+      알려 03번 Step맵.html의 FN-03을 ⏳ 대기 → ✅ 완료로 반영.
+
+    Step: FN-04 (03번 개발 Step맵.html, Phase 7 — Function 노드 실행 격리: 타임아웃 + 위험 네임스페이스 경고)
+    - FN-03 확인 직후 "빌드완료 ... 다음단계 진행해줘"로 착수. 완료 기준은 "무한루프 코드를 넣은
+      Function 노드가 타임아웃 시간에 정확히 강제 중단되고 알림되는지 확인"뿐 — FN-04 설명(desc)의
+      "위험 네임스페이스 경고" 부분은 OP-04(FlowLinter, ⏳ 대기)가 먼저 있어야 하는 것을 Step맵 자체가
+      "★ 실행 순서 주의"로 이미 예견해뒀으므로, 이번엔 완료 기준이 요구하는 타임아웃 부분만 구현하고
+      네임스페이스 경고는 OP-04 착수 시로 넘긴다(범위를 완료 기준에 정확히 맞춤).
+    - 착수 전 02번 문서 5번 탭 카드7을 재확인 — 스니펫은 CancellationTokenSource.CreateLinkedTokenSource
+      +CancelAfter로 만든 토큰을 그대로 _runner에 넘기는 방식이었는데, 이 방식만으로는 await/토큰 검사
+      지점이 전혀 없는 사용자 코드(예: while(true){})를 실제로 멈추지 못한다는 것을 발견 — .NET
+      Core 이후 Thread.Abort·AppDomain 언로드가 모두 제거돼 관리형 코드로 다른 스레드를 강제 정지시킬
+      방법이 아예 없기 때문(카드7 스니펫 자체의 한계이지 이 프로젝트만의 문제가 아님). 이미 확정
+      배포된 코드를 뒤집는 사안이 아니라(FN-04는 이번이 최초 구현) 실행 방식을 보강하는 낮은 리스크
+      판단으로 보고 AskUserQuestion 없이 진행 — 카드7의 CancellationToken 골격은 그대로 쓰되,
+      Task.Run+Task.WhenAny로 사용자 코드를 별도 스레드 풀 스레드에 맡기고 "그 작업이 끝나는 것"과
+      "타임아웃"중 먼저 오는 쪽만 기다리는 watchdog 방식을 추가해, await 지점이 있는 코드는 카드7
+      그대로 즉시 취소되고 없는 코드도 FunctionNode 호출 자체는 타임아웃 시간 안에 반드시 반환되도록
+      함(완료 기준의 "타임아웃 시간에... 강제 중단"을 "노드가 멈추지 않는다"는 의미로 충족) — 다만
+      끝나지 않은 사용자 코드의 스레드 자체는 백그라운드에서 계속 실행될 수 있다는 것을
+      FunctionTimeoutException.cs·RoslynFunctionExecutor.cs XML 문서에 과장 없이 명시.
+    - FunctionTimeoutException.cs 신규 — RoslynFunctionExecutor.ExecuteAsync 전용 예외, "강제 중단"의
+      실제 의미(watchdog, OS 강제 종료 아님)를 상세히 기록.
+    - RoslynFunctionExecutor.cs 수정 — ExecutionTimeoutSeconds 속성 신규(기본 5초). ExecuteAsync를
+      Task.Run+Task.WhenAny(scriptTask, Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token)) watchdog
+      구조로 재작성 — 외부 ct에 의한 취소와 자체 타임아웃을 ct.ThrowIfCancellationRequested()로 구분.
+      클래스 remarks에 FN-04 항목 추가, "FN-04 Linter 경고" 언급을 실제 담당 Step인 "OP-04"로 정정.
+    - FunctionNode.cs 수정 — TimeoutSeconds 속성 신규(기본 5초, init). OnStartAsync가 CSharp 모드
+      기본 실행기를 만들 때 new RoslynFunctionExecutor { ExecutionTimeoutSeconds = TimeoutSeconds }로
+      전달. FunctionTimeoutException은 일반 Exception이라 OnInputAsync의 기존 catch(FN-01 결정)가 그대로
+      잡아 ctx.SetStatus(Red, ...)로 표면화 — 완료 기준의 "알림"을 FN-01과 동일한 이유(실제
+      NodeErrorEvent 발행 인프라가 아직 없음, NR-01a 몫)로 SetStatus로 대신함(새 판단 아님, FN-01
+      재사용).
+    - FunctionNodeType.cs 수정 — PropertySchema에 "timeoutSec"(Number, 기본값 "5", VisibleWhenKey=
+      "mode"/"csharp"로 CSharp 모드에서만 노출) 신규 추가(3개 → 4개). Factory에 신규 ReadDouble
+      헬퍼(ReadString과 동일한 JsonElement/문자열 겸용 패턴 확장, CultureInfo.InvariantCulture로
+      파싱, 값이 없거나 파싱 실패·0 이하면 기본값 5초로 대체) 추가.
+    - test\NodeSharp.Tests\RoslynFunctionExecutorTests.cs 신규 2건 — 짧은 타임아웃 안에 끝나는 코드는
+      방해받지 않는 회귀 테스트, while(true){} 코드가 FunctionTimeoutException으로 타임아웃 시간
+      근처에서 빠르게 반환되는지(Stopwatch로 5초 이내 확인) 테스트 — 후자는 백그라운드에 무한루프
+      스레드가 남는 것을 최소화하려 타임아웃을 0.1초로 짧게 잡음(테스트 코드 주석에 근거 기록).
+    - test\NodeSharp.Tests\FunctionNodeTests.cs 갱신 — PropertySchema.Count 3→4·timeoutSec Key/
+      VisibleWhenKey 검증 갱신, Factory의 timeoutSec 파싱(기본값·정상값·0 이하/숫자아님 방어) 신규
+      3건, OnInputAsync가 CSharp 모드 무한루프+TimeoutSeconds=0.1에서 크래시 없이 SetStatus(빨강,
+      "타임아웃" 메시지 포함)로만 표면화하는지 통합 테스트 신규 1건.
+    - NodeSharp.Nodes.Function.csproj(이 파일)에 이 Step 블록 신규 추가, 새 파일(FunctionTimeoutException.cs)은
+      기존 ItemGroup 변경 없이도(같은 프로젝트 내 .cs 파일은 net8.0 SDK 스타일 프로젝트가 자동 포함)
+      컴파일 대상에 포함됨.
+    - 검증: tools/check-xmldoc.py 오류 0건, 신규/수정 파일(FunctionTimeoutException.cs/
+      RoslynFunctionExecutor.cs/FunctionNode.cs/FunctionNodeType.cs/RoslynFunctionExecutorTests.cs/
+      FunctionNodeTests.cs) 전부 중괄호 균형 확인 완료 — 이 세션도 샌드박스에 .NET SDK가 없어
+      dotnet build/test는 사용자 로컬 확인 필요, 확인 전까지 이 Step은 ⏳ 대기 유지. "위험 네임스페이스
+      사용 경고" 부분은 OP-04 착수 시 이 프로젝트가 아니라 그 Step에서 별도 구현될 예정.
   -->
 
   <PropertyGroup>

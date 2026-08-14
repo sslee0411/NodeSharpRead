@@ -228,6 +228,27 @@
       확인 완료 — 이 세션도 샌드박스에 .NET SDK가 없어(dotnet: command not found) dotnet build/test는
       실행하지 못했다(사용자 로컬 확인 필요 — 이 프로젝트는 헤드리스라 원래는 이 샌드박스에서도
       dotnet test가 가능한 유형이지만, 이번 세션엔 SDK 자체가 없어 예외적으로 실행하지 못함).
+
+    Step: FN-03 (03번 개발 Step맵.html, Phase 7 — Function 노드 편집 UI 모드 전환, Contracts 쪽 모델
+    추가분만)
+    - 착수 전 02번 문서 5번 탭 카드8 재확인 중, 카드8 원본 설계(모드별 expressionCode/csharpCode
+      분리 저장)와 이미 구현된 FN-01/FN-02(단일 code 필드 공유)가 다르다는 모순을 발견 — 사용자에게
+      "단일 필드 유지" vs "설계대로 분리" 확인, "설계대로 분리" 선택받아 진행(자세한 배경은
+      NodeSharp.Nodes.Function.csproj의 FN-03 블록·FunctionNode.cs XML 문서 참고). 이 프로젝트는
+      그 분리를 UI에서 실제로 구현하는 데 필요한 공용 모델 확장만 담당한다.
+    - src\Models\PropertyField.cs 수정 — 선택적 필드 2개(VisibleWhenKey/VisibleWhenValue, 둘 다
+      기본값 null) 신규 추가. 지정하면 NodePropertyDialog가 "VisibleWhenKey 필드의 현재 값이
+      VisibleWhenValue와 같을 때만 이 필드를 표시"하는 조건부 표시를 적용 — 02번 문서 8번 탭이
+      예고했던 "PlcNode CommType별 조건부 필드 표시"·5번 탭 카드8 "mode별 expressionCode/csharpCode
+      중 하나만 표시"를 모두 이 한 쌍의 필드로 만족시킬 수 있는 범용 설계. 둘 다 선택적 매개변수라
+      기존 PropertyField 생성 코드(Inject/Switch/Function NodeType 전부)는 전혀 수정할 필요가 없다
+      (하위 호환 확인 — 저장소 전체 `new PropertyField(` grep으로 위치 파악 필수 매개변수 개수를
+      늘리지 않았음을 재확인).
+    - test\NodeSharp.Tests\PropertyFieldTests.cs에 테스트 2개 추가(생략 시 기본값 null, 지정 시
+      그대로 보존).
+    - tools/check-xmldoc.py 오류 0건, 수정 2개(PropertyField.cs/PropertyFieldTests.cs) 파일 중괄호
+      균형 확인 완료 — 이 세션도 샌드박스에 .NET SDK가 없어 dotnet build/test는 실행하지 못했다
+      (사용자 로컬 확인 필요).
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

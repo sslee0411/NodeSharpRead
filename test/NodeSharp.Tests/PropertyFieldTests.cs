@@ -21,6 +21,20 @@ public class PropertyFieldTests
         Assert.False(field.Required);
         Assert.Null(field.DefaultValue);
         Assert.Null(field.Options);
+        Assert.Null(field.VisibleWhenKey);    // (FN-03) 생략 시 기본값 — 항상 표시(기존 동작과 하위 호환)
+        Assert.Null(field.VisibleWhenValue);
+    }
+
+    [Fact]
+    public void PropertyField_VisibleWhenKey_Value를_지정하면_그대로_보존된다()
+    {
+        // (FN-03) FunctionNodeType의 expressionCode/csharpCode 조건부 표시가 실제로 쓰는 형태.
+        var field = new PropertyField(
+            Key: "csharpCode", Label: "C# 코드", Type: PropertyFieldType.Code,
+            VisibleWhenKey: "mode", VisibleWhenValue: "csharp");
+
+        Assert.Equal("mode", field.VisibleWhenKey);
+        Assert.Equal("csharp", field.VisibleWhenValue);
     }
 
     [Fact]

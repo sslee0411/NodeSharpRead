@@ -12,11 +12,12 @@ namespace NodeSharp.Tests;
 /// 실행기 + 컴파일 캐시)에 대한 단위 테스트입니다. 완료 기준(03번 Step맵 FN-02): "최초 실행 시 컴파일
 /// 지연 후 동일 코드 재실행 시 캐시로 지연이 사라지는지, 문법 오류는 컴파일 에러로 표면화되는지,
 /// LL-11a ScaleExtensions를 using 없이 직접 호출 가능한지, 화이트리스트 밖 네임스페이스는 컴파일은
-/// 되지만 FN-04 Linter 경고가 뜨는지 확인" — 이 중 "LL-11a ScaleExtensions" 검증은 LL-08a/LL-11a가
+/// 되지만 OP-04 Linter 경고가 뜨는지 확인" — 이 중 "LL-11a ScaleExtensions" 검증은 LL-08a/LL-11a가
 /// 아직 ⏳ 대기라 이 Step 범위 밖입니다(대신 NodeSharp.Util 어셈블리 참조 자체가 동작하는지를
-/// SemVer로 검증), "FN-04 Linter 경고" 검증도 FN-04가 아직 없어 범위 밖입니다(RoslynFunctionExecutor.cs
+/// SemVer로 검증), "OP-04 Linter 경고" 검증도 OP-04가 아직 없어 범위 밖입니다(RoslynFunctionExecutor.cs
 /// XML 문서 참고). 이 클래스는 나머지 검증 가능한 항목(컴파일 캐시 재사용, 컴파일 오류 표면화, 실제
-/// C# 문법 실행)을 다룹니다.
+/// C# 문법 실행)과, FN-04(03번 개발 Step맵 Phase 7)가 추가한 <see cref="RoslynFunctionExecutor.ExecutionTimeoutSeconds"/>
+/// 타임아웃(watchdog 방식)을 다룹니다.
 /// </summary>
 public class RoslynFunctionExecutorTests
 {
@@ -117,5 +118,42 @@ public class RoslynFunctionExecutorTests
         executorB.Prepare(uniqueCode);
 
         Assert.Same(runnerAfterFirstCompile, cache[uniqueCode]); // 참조 동일 = 재컴파일되지 않고 캐시가 재사용됨
+    }
+
+    [Fact]
+    public async Task ExecuteAsync는_ExecutionTimeoutSeconds_안에_끝나는_코드는_타임아웃_없이_정상_반환한다()
+    {
+        // (FN-04) 완료 기준의 "정상 코드는 방해받지 않는지"를 확인하는 회귀 테스트 — 타임아웃을
+        // 아주 짧게(0.2초) 걸어도 그 안에 끝나는 코드는 FunctionTimeoutException 없이 정상 반환된다.
+        var executor = new RoslynFunctionExecutor { ExecutionTimeoutSeconds = 0.2 };
+        executor.Prepare("msg.payload = (double)msg.payload + 1; return msg;");
+
+        var result = await executor.ExecuteAsync(new Msg { Payload = 41.0 }, CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.Equal(42.0, Convert.ToDouble(result!.Payload));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync는_ExecutionTimeoutSeconds를_초과하면_FunctionTimeoutException을_던지고_타임아웃_시간_근처에서_즉시_반환한다()
+    {
+        // (FN-04) 완료 기준: "무한루프 코드를 넣은 Function 노드가 타임아웃 시간에 정확히 강제 중단되고
+        // 알림되는지 확인". await/토큰 검사 지점이 전혀 없는 while(true){} 코드로 검증 — watchdog 방식
+        // (RoslynFunctionExecutor.cs·FunctionTimeoutException.cs XML 문서 참고)이라 이 메서드 호출
+        // 자체는 타임아웃 시간 근처에서 반드시 반환되지만, 루프를 실행 중이던 스레드 풀 스레드는 이
+        // 테스트 프로세스가 끝날 때까지 백그라운드에서 계속 도는 것이 알려진 한계다(코드 문서에 명시).
+        // 타임아웃을 0.1초로 아주 짧게 잡아 남는 스레드가 적게 유지되도록 최소화한다.
+        var executor = new RoslynFunctionExecutor { ExecutionTimeoutSeconds = 0.1 };
+        executor.Prepare($"while (true) {{ }} // cache-key-{Guid.NewGuid():N}");
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var ex = await Assert.ThrowsAsync<FunctionTimeoutException>(
+            () => executor.ExecuteAsync(new Msg(), CancellationToken.None));
+        stopwatch.Stop();
+
+        Assert.Contains("0.1", ex.Message);
+        // watchdog이 실제로 짧게 반환됐는지 확인 — 무한루프인데도 이 호출이 수초 안에 끝나야 함(강제
+        // 중단은 아니지만 노드가 멈추지 않는다는 완료 기준을 충족).
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"타임아웃 반환이 너무 오래 걸림: {stopwatch.Elapsed}");
     }
 }

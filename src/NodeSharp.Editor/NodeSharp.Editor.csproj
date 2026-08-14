@@ -787,6 +787,33 @@
       .xaml.cs) 파일 중괄호 균형·XAML 정형성 확인 완료(이 세션은 python3로 직접 실행해 검증) — 이
       세션도 샌드박스에 .NET SDK가 없어(WPF 프로젝트라 애초에 이 샌드박스에서 컴파일 자체가 불가능한
       유형, ED-B0부터 동일한 제약) dotnet build/test는 사용자 로컬 확인 필요.
+
+    Step: EC-16 (03번 개발 Step맵.html, Phase 6, ★ 사용자 요청 — 팝업 창 제목표시줄 DWM 테마 적용)
+    - EC-03 콤보박스 테마 수정 직후 사용자가 "팝업 타이틀바는 아직 흰색 그대로"를 재보고 — WPF
+      Background/DynamicResource는 클라이언트 영역만 칠할 뿐 OS 네이티브 제목표시줄은 DWM이 직접
+      그려 손댈 수 없음을 확인. EC-03의 "OS 기본 창 틀 유지" 판단은 유지하고 네이티브 캡션의 색상만
+      DWM API로 테마에 맞추는 절충안 채택(저위험, AskUserQuestion 생략 — 자세한 내용은
+      NodeSharp.UI.Themes.csproj의 EC-16 블록·WindowTitleBarTheme.cs XML 문서 참고).
+    - Views\NodePropertyDialog.xaml.cs 수정 — SourceInitialized에서 WindowTitleBarTheme.Apply(this)
+      1회 호출 + ThemeManager.ThemeChanged 구독(열려 있는 동안 테마 전환에도 즉시 반영),
+      ThemePickerViewModel과 동일한 관례로 OnClosed에서 구독 해제.
+    - tools/check-xmldoc.py 오류 0건, 수정 1개(NodePropertyDialog.xaml.cs, 중괄호 31/31) 파일 확인
+      완료 — 사용자 로컬(Windows 10/11) 확인 필요.
+
+    Step: FN-03 (03번 개발 Step맵.html, Phase 7 — Function 노드 편집 UI 모드 전환)
+    - 사용자가 "빌드 확인 다음단계 진행해줘"로 확인 후 착수. 02번 문서 5번 탭 카드8과 FN-01/FN-02
+      실제 구현 사이 모순(모드별 필드 분리 vs 단일 필드 공유)을 발견해 AskUserQuestion으로 확인,
+      "설계대로 분리"로 진행(자세한 배경은 NodeSharp.Nodes.Function.csproj의 FN-03 블록 참고).
+    - Views\NodePropertyDialog.xaml.cs 수정 — PropertyField.VisibleWhenKey/VisibleWhenValue(신규,
+      NodeSharp.Contracts.csproj FN-03 블록 참고)를 읽어 조건 필드(예: "mode" ComboBox)의 현재 값에
+      따라 의존 필드의 행 전체를 보이거나 감추는 ApplyConditionalVisibility 신규 추가 — Function
+      노드 전용이 아니라 VisibleWhenKey를 쓰는 어떤 PropertySchema에도 재사용 가능한 범용 로직으로
+      설계(향후 Phase 9 PlcNode CommType별 조건부 필드에도 그대로 쓸 수 있게 함). 조건 필드가
+      ComboBox면 SelectionChanged를 구독해 즉시 갱신(완료 기준 — "ComboBox 전환 시 입력란이 즉시
+      전환"). 값을 지우지 않고 Visibility만 바꾸므로 감춰진 필드의 내용도 보존됨.
+    - tools/check-xmldoc.py 오류 0건, 수정 1개(NodePropertyDialog.xaml.cs, 중괄호 36/36) 파일 확인
+      완료 — 완료 기준의 실제 UI 동작 확인은 WPF 창이 그려져야 해서(EC-03과 동일한 한계) 사용자
+      로컬 확인이 필요, 확인 전까지 이 Step은 ⏳ 대기 유지.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>

@@ -23,9 +23,10 @@ namespace NodeSharp.Nodes.Function;
 /// 컴파일 결과(<see cref="ScriptRunner{T}"/>)를 <see cref="ConcurrentDictionary{TKey,TValue}"/>에
 /// 캐시합니다 — 같은 코드를 여러 노드가 쓰거나 재배포해도 최초 1회만 컴파일됩니다(카드7 설계 그대로).</item>
 /// <item><b>참조 화이트리스트(02번 문서 v1.31 설계 반영)</b>: 사용자가 임의 어셈블리를 추가하지 못하도록
-/// <see cref="AllowedReferences"/>·<see cref="AllowedImports"/> 2개 고정 목록만 허용합니다 — FN-04(위험
-/// 네임스페이스 경고, ⏳ 대기)가 아직 없어 목록 밖 네임스페이스(예: <c>System.IO</c>)도 지금은 컴파일
-/// 자체를 막지는 않고, 배포 전 경고 표시만 FN-04 몫으로 남습니다.</item>
+/// <see cref="AllowedReferences"/>·<see cref="AllowedImports"/> 2개 고정 목록만 허용합니다 — FN-04는
+/// 실행 타임아웃(<see cref="ExecutionTimeoutSeconds"/>)만 구현했고, 위험 네임스페이스 경고는
+/// <c>OP-04</c>(FlowLinter, ⏳ 대기)가 먼저 있어야 해 아직 없습니다 — 목록 밖 네임스페이스(예:
+/// <c>System.IO</c>)도 지금은 컴파일 자체를 막지는 않고, 배포 전 경고 표시는 <c>OP-04</c> 몫으로 남습니다.</item>
 /// <item><b>발견한 공백 — NodeSharp.Util.Extensions 임포트는 아직 보류</b>: 02번 문서 v1.31 스니펫은
 /// <c>NodeSharp.Util.Extensions</c>(<c>ScaleExtensions</c> 등)를 고정 임포트에 포함하지만,
 /// 이 시점엔 <c>LL-08a</c>/<c>LL-11a</c>(포팅 대상 Step)가 모두 <c>⏳ 대기</c>라 그 네임스페이스에
@@ -50,6 +51,22 @@ namespace NodeSharp.Nodes.Function;
 /// <see cref="AllowedReferences"/>에 <c>typeof(Microsoft.CSharp.RuntimeBinder.Binder).Assembly</c>를
 /// 추가해 해소 — 이 프로젝트가 이미 <see cref="FunctionGlobals"/>에서 <c>dynamic</c>을 쓰고 있어
 /// 별도 NuGet 패키지 추가 없이 런타임에 이미 로드되어 있는 어셈블리입니다.</item>
+/// <item><b>(FN-04) 실행 타임아웃 — watchdog 방식, 진짜 강제 종료 아님</b>: <see cref="ExecuteAsync"/>는
+/// <see cref="ExecutionTimeoutSeconds"/>(기본 5초, <c>FunctionNode.TimeoutSeconds</c>에서 전달)를
+/// 넘기면 <see cref="FunctionTimeoutException"/>을 던집니다. 02번 설계 문서 5번 탭 카드7의
+/// <c>CancellationTokenSource.CreateLinkedTokenSource</c>+<c>CancelAfter</c> 스니펫을 그대로 따르되,
+/// 그 스니펫만으로는 <c>while(true){}</c>처럼 <c>await</c>/토큰 검사 지점이 전혀 없는 사용자 코드를
+/// 실제로 멈추지 못한다는 것(<see cref="FunctionTimeoutException"/> XML 문서에 근거 상세 기록 — .NET
+/// Core 이후 <c>Thread.Abort</c>/<c>AppDomain</c> 언로드가 모두 제거돼 관리형 코드로 다른 스레드를
+/// 강제 정지시킬 방법이 없음)을 착수 전 검토로 발견 — 그래서 사용자 코드를 <c>Task.Run</c>으로 별도
+/// 스레드 풀 스레드에 맡기고, <c>Task.WhenAny</c>로 "그 작업이 먼저 끝나는지, 타임아웃이 먼저 오는지"만
+/// 지켜보는 watchdog 방식을 채택 — <c>FunctionNode</c> 입장에서는 타임아웃 시간 안에 반드시 응답이
+/// 돌아오지만(완료 기준 충족), 끝나지 않은 사용자 코드의 스레드 자체는 백그라운드에서 계속 실행될 수
+/// 있다는 한계를 <see cref="FunctionTimeoutException"/> 문서에 명시(허위로 "완전한 강제 종료"라고
+/// 과장하지 않음). 진짜 OS 프로세스 수준 강제 종료가 필요하면 Roslyn 실행을 별도 프로세스로 분리하는
+/// 더 큰 아키텍처 변경이 필요해 이 Step 범위 밖으로 남김. FN-04의 "위험 네임스페이스 사용 경고" 부분은
+/// <c>OP-04</c>(FlowLinter, ⏳ 대기)가 먼저 있어야 해 이 클래스가 아니라 <c>OP-04</c> 착수 시 별도로
+/// 구현됩니다(03번 Step맵 FN-04 항목의 "★ 실행 순서 주의"가 이미 예견한 순서).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -84,7 +101,7 @@ public sealed class RoslynFunctionExecutor : IFunctionExecutor
 
     /// <summary>
     /// 고정 임포트 네임스페이스 목록입니다. 목록 밖 네임스페이스(예: <c>System.IO</c>)도 지금은 컴파일
-    /// 자체는 막지 않습니다(위 클래스 remarks 참고) — FN-04 Linter가 배포 전 경고를 담당할 예정입니다.
+    /// 자체는 막지 않습니다(위 클래스 remarks 참고) — <c>OP-04</c> FlowLinter가 배포 전 경고를 담당할 예정입니다.
     /// </summary>
     private static readonly string[] AllowedImports =
     {
@@ -98,6 +115,15 @@ public sealed class RoslynFunctionExecutor : IFunctionExecutor
 
     /// <summary>코드 문자열별로 컴파일 결과를 캐시합니다 — 같은 코드를 여러 노드가 쓰거나 재배포해도 재컴파일하지 않습니다(위 클래스 remarks 참고).</summary>
     private static readonly ConcurrentDictionary<string, ScriptRunner<object>> CompileCache = new();
+
+    /// <summary>
+    /// (FN-04) <see cref="ExecuteAsync"/>가 이 시간(초)을 넘기면 <see cref="FunctionTimeoutException"/>을
+    /// 던집니다. 기본값 5초는 02번 설계 문서 5번 탭 카드7과 동일 — <c>FunctionNode.OnStartAsync</c>가
+    /// <c>FunctionNode.TimeoutSeconds</c>(노드 속성 "timeoutSec")로 덮어씁니다. "진짜 강제 종료"가
+    /// 아닌 watchdog 방식의 한계는 위 클래스 remarks의 FN-04 항목·<see cref="FunctionTimeoutException"/>
+    /// XML 문서를 참고하십시오.
+    /// </summary>
+    public double ExecutionTimeoutSeconds { get; set; } = 5.0;
 
     private ScriptRunner<object>? _runner;
 
@@ -121,12 +147,35 @@ public sealed class RoslynFunctionExecutor : IFunctionExecutor
     /// <summary>
     /// <paramref name="msg"/>를 <see cref="FunctionGlobals.msg"/>에 담아 컴파일된 스크립트를 실행합니다.
     /// 사용자 코드가 <c>return null;</c>이면 이 메서드도 <c>null</c>을 반환합니다(다음 노드로 전달되지
-    /// 않음, 필터링 용도). 실행 중 예외는 잡지 않고 그대로 전파합니다.
+    /// 않음, 필터링 용도). <see cref="ExecutionTimeoutSeconds"/>를 넘기면 <see cref="FunctionTimeoutException"/>을
+    /// 던집니다(watchdog 방식 — 실제 스레드가 종료된다는 보장은 없음, 위 클래스 remarks의 FN-04 항목·
+    /// <see cref="FunctionTimeoutException"/> XML 문서 참고). 그 외 실행 중 예외는 잡지 않고 그대로 전파합니다.
     /// </summary>
     public async Task<Msg?> ExecuteAsync(Msg msg, CancellationToken ct)
     {
         var globals = new FunctionGlobals { msg = msg };
-        var result = await _runner!(globals, ct);
+
+        // (FN-04) 사용자 코드를 별도 스레드 풀 스레드(Task.Run)에 맡기고, 그 작업이 끝나는 것과
+        // 타임아웃 중 먼저 오는 쪽만 기다린다(Task.WhenAny) — await 지점이 있는 코드는 timeoutCts.Token이
+        // 곧바로 취소를 전파해 정상적으로 즉시 중단되고, await 지점이 전혀 없는 코드(예: while(true){})는
+        // 스레드 자체가 계속 실행되더라도 이 메서드는 타임아웃 시점에 FunctionTimeoutException으로
+        // 즉시 반환한다 — "노드가 멈추지 않는다"는 완료 기준을 충족하되 "스레드가 실제로 죽는다"는
+        // 것까지는 보장하지 않는다(근거: FunctionTimeoutException XML 문서).
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(ExecutionTimeoutSeconds));
+
+        var scriptTask = Task.Run(() => _runner!(globals, timeoutCts.Token), CancellationToken.None);
+        var watchdogTask = Task.Delay(Timeout.InfiniteTimeSpan, timeoutCts.Token);
+
+        var finished = await Task.WhenAny(scriptTask, watchdogTask).ConfigureAwait(false);
+        if (finished != scriptTask)
+        {
+            // timeoutCts가 취소됨 — 원인이 외부 ct(플로우 중지 등)인지, 이 메서드 자체의 타임아웃인지 구분
+            ct.ThrowIfCancellationRequested();
+            throw new FunctionTimeoutException($"코드 실행이 {ExecutionTimeoutSeconds}초를 초과해 타임아웃 처리되었습니다.");
+        }
+
+        var result = await scriptTask.ConfigureAwait(false); // 정상 완료 — 스크립트가 던진 예외는 여기서 그대로 전파됨
         return result as Msg; // 사용자가 null을 return하면 여기서도 null → 필터링
     }
 }
