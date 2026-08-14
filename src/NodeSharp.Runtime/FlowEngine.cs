@@ -1,4 +1,5 @@
 using NodeSharp.Contracts.Enums;
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
 
@@ -232,6 +233,25 @@ namespace NodeSharp.Runtime;
 /// 않기로 사용자와 확인 완료).</item>
 /// </list>
 /// </para>
+/// <para>
+/// (LK-02a) <see cref="DispatchOneAsync"/>가 대상 노드를 찾은 직후 <see cref="FlowActivityEvent"/>를
+/// 발행하도록 추가됐습니다 — <c>CT-05a</c>에서 이미 정의된 이벤트지만 지금까지는 아무도 발행하지
+/// 않았습니다(그 Step 완료 기준도 "정의됐는지"만 요구했고, 실제 발행은 <c>LK-02</c>가 생기면 하기로
+/// 명시적으로 미뤄져 있었습니다). Runner의 <c>StatusBroadcaster</c>가 이 이벤트를 구독해 SignalR로
+/// Editor에 중계하면 캔버스 와이어가 하이라이트됩니다(Editor UI 반영은 <c>LK-02b</c>). 발행 시점은
+/// "<see cref="_nodes"/>에 대상 인스턴스가 실제로 있어 <c>OnInputAsync</c>가 곧 호출될 예정"인 순간
+/// (<c>TryGetValue</c> 성공 직후, 동시성 게이트를 기다리기 전)으로 잡아, 배포 자체에 없는 대상(예:
+/// 테스트에서 존재하지 않는 <c>NodeConfig.Id</c>로 직접 <c>RouteAsync</c>를 호출한 경우)까지 "메시지가
+/// 흘렀다"고 잘못 표시하지 않습니다. 다만 <see cref="MissingNode"/>(등록되지 않은 노드 타입의 대체
+/// 자리표시자, <c>RT-02a</c>)는 <see cref="_nodes"/>에 실제로 들어 있어 이 조건을 통과합니다 — Wire
+/// 자체는 배포에 존재하고 메시지가 그 와이어를 타고 "시도"된 것은 사실이므로(대상 노드가 무동작인
+/// 것과 별개), 캔버스에서 와이어가 하이라이트되는 것은 의도된 동작입니다(어떤 노드가 왜 반응하지
+/// 않는지는 사용자가 노드 카드 상태를 보고 판단). <c>Publish</c>(동기)를 쓰는 이유는
+/// <see cref="NodeStatusEvent"/>/<see cref="DebugMessageEvent"/>가 이미 쓰고 있는 것과 동일한
+/// <see cref="IEventBus"/> 계약이 <c>PublishAsync</c>를 제공하지 않기 때문입니다(구체 클래스
+/// <c>NodeSharp.Util.Messaging.EventBus</c>에는 있지만, <see cref="IEventBus"/> 계약에는 없음 —
+/// Contracts→Runtime 순환 참조 방지 원칙상 계약을 넓히려면 <c>NR-04</c>/<c>NR-11</c> 때처럼 기존
+/// 구현체 전부를 함께 고쳐야 해 이번 Step 범위를 벗어남, 저위험 판단으로 동기 <c>Publish</c> 유지).</para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -583,6 +603,14 @@ public sealed class FlowEngine
     private async Task DispatchOneAsync(Wire wire, Msg msg, CancellationToken ct)
     {
         if (!_nodes.TryGetValue(wire.TargetNodeId, out var target)) return;
+
+        // (LK-02a) _nodes에서 대상 인스턴스를 실제로 찾은 뒤에만 발행 — 배포에 아예 없는 대상(위
+        // TryGetValue 실패)까지 "메시지가 흘렀다"고 캔버스에 알리면 사용자에게 거짓 정보가 되므로
+        // 이 지점 이후에 발행한다. target이 MissingNode(등록되지 않은 타입의 자리표시자)여도 이미
+        // _nodes에 들어 있어 이 줄까지 도달하므로 이벤트는 발행된다(의도된 동작 — 위 클래스 remarks
+        // LK-02a 항목 참고). Publish(동기, IEventBus 계약)는 기존 NodeStatusEvent/DebugMessageEvent와
+        // 동일한 방식이다(IEventBus에는 비동기 발행 오버로드가 없다).
+        _eventBus.Publish(new FlowActivityEvent(wire.SourceNodeId, wire.SourcePort, wire.TargetNodeId, msg.Id, DateTime.UtcNow));
 
         var maxConcurrency = _currentFlow?.Nodes.FirstOrDefault(n => n.Id == wire.TargetNodeId)?.MaxConcurrency
             ?? target.MaxConcurrency;

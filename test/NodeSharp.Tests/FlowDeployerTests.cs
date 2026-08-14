@@ -14,7 +14,10 @@ namespace NodeSharp.Tests;
 /// 확인(Inject/Function/Switch/Debug 동작 확인은 Phase 8 LK-02에서 별도 수행)". (LK-01) 완료 기준
 /// "flows.json.signal 변경 감지 → 자동 재배포"에서 "자동 재배포" 부분(<see cref="FlowDeployer.RedeployAsync"/>)도
 /// 이 클래스가 검증합니다 — "감지" 부분(<see cref="FileSystemWatcher"/> 연동)은
-/// <c>FlowFileWatcherTests</c>가 별도로 다룹니다.
+/// <c>FlowFileWatcherTests</c>가 별도로 다룹니다. (LK-02a) <c>attachMonitor</c> 콜백이 진짜 새
+/// <c>FlowEngine</c>이 만들어질 때만 호출되고(엔진 재사용 시 재호출되지 않음) 정확한 <c>EventBus</c>를
+/// 받는지도 이 클래스가 검증합니다 — <c>StatusBroadcaster</c> 자체의 SignalR 중계 로직은
+/// <c>StatusBroadcasterTests</c>가 별도로 다룹니다.
 /// </summary>
 public class FlowDeployerTests
 {
@@ -373,5 +376,92 @@ public class FlowDeployerTests
         {
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task DeployIfAvailableAsync는_attachMonitor를_새_엔진의_EventBus로_정확히_한_번_호출한다()
+    {
+        // (LK-02a) attachMonitor 콜백이 실제로 배선되는지, 그리고 "그 엔진의 EventBus"가 넘어오는지 확인.
+        var dir = NewTempDir();
+        try
+        {
+            var flow = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow }));
+            var stages = new List<StartupStageResult> { new("flows.json", Succeeded: true, ErrorMessage: null) };
+
+            var callCount = 0;
+            IEventBus? received = null;
+            Func<IEventBus, IDisposable> attachMonitor = eventBus =>
+            {
+                callCount++;
+                received = eventBus;
+                return new NoOpDisposable();
+            };
+
+            var engine = await new FlowDeployer().DeployIfAvailableAsync(
+                dir, stages, NewRegistryWithStatusPing(), CancellationToken.None, attachMonitor);
+
+            Assert.NotNull(engine);
+            Assert.Equal(1, callCount);
+            Assert.Same(engine!.EventBus, received);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RedeployAsync는_기존_엔진을_재사용할_때_attachMonitor를_다시_호출하지_않는다()
+    {
+        // (LK-02a) 완료 기준 근거: 같은 엔진에 StatusBroadcaster가 중복 구독되면 SignalR로 같은
+        // 이벤트가 여러 번 전송된다 — CreateEngineWithLogger(진짜 새 엔진을 만드는 유일한 지점)에서만
+        // attachMonitor를 호출해야 하므로, 엔진 재사용 시(RedeployAsync가 existingEngine을 그대로
+        // DeployAsync에 넘길 때) callCount가 늘어나지 않아야 한다.
+        var dir = NewTempDir();
+        try
+        {
+            var flow1 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑1", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow1 }));
+
+            var callCount = 0;
+            Func<IEventBus, IDisposable> attachMonitor = eventBus =>
+            {
+                callCount++;
+                return new NoOpDisposable();
+            };
+
+            var registry = NewRegistryWithStatusPing();
+            var deployer = new FlowDeployer();
+            var firstEngine = await deployer.RedeployAsync(existingEngine: null, dir, registry, CancellationToken.None, attachMonitor);
+            Assert.Equal(1, callCount);   // 최초 생성 1회
+
+            var flow2 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n2", "status-ping", "핑2", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow2 }));
+
+            var secondEngine = await deployer.RedeployAsync(firstEngine, dir, registry, CancellationToken.None, attachMonitor);
+
+            Assert.Same(firstEngine, secondEngine);
+            Assert.Equal(1, callCount);   // 재배포(엔진 재사용)에서는 다시 호출되지 않음
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>attachMonitor 테스트에서 실제 구독 없이 <see cref="IDisposable"/> 계약만 충족하기 위한 무동작 더미.</summary>
+    private sealed class NoOpDisposable : IDisposable
+    {
+        public void Dispose() { }
     }
 }

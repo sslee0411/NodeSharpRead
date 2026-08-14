@@ -30,6 +30,12 @@
     Step: NR-11 (03번 개발 Step맵.html, Phase 7)
     - DebugNode(Phase 7의 마지막 코어 노드 플러그인)를 실제 FlowEngine 배포·라우팅 경로로 검증하기
       위해 nodes\NodeSharp.Nodes.Debug\NodeSharp.Nodes.Debug.csproj ProjectReference 추가.
+
+    Step: LK-02a (03번 개발 Step맵.html, Phase 8)
+    - StatusBroadcasterTests.cs가 IHubContext&lt;MonitorHub&gt;/IHubClients/IClientProxy(Microsoft.
+      AspNetCore.SignalR 네임스페이스)를 손으로 구현한 가짜로 사용하기 위해 아래 FrameworkReference
+      추가 — NodeSharp.Runner.csproj가 이미 가진 것과 동일한 참조를 이 프로젝트에도 명시적으로
+      추가해, ProjectReference를 통한 전이적 전파에 기대지 않고 확실히 한다.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -52,6 +58,13 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- LK-02a — StatusBroadcasterTests.cs가 Microsoft.AspNetCore.SignalR의 IHubContext<MonitorHub>/
+         IHubClients/IClientProxy를 손으로 구현한 가짜로 쓰기 위한 참조(NodeSharp.Runner.csproj의
+         RN-04a 항목과 동일한 이유·동일한 참조). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>

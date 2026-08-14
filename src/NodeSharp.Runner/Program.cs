@@ -18,10 +18,15 @@
 // (RN-06a) CrashDumpCollector.Register()를 0번 단계로 추가 — 처리되지 않은 예외가 나면 덤프를
 // 남기고 이벤트 로그에도 기록한다(02번 문서 7번 탭 카드14). 다른 어떤 코드보다 먼저 등록해야
 // 그 이후에 나는 모든 예외를 잡을 수 있어 builder 생성보다도 앞에 둔다.
+// (LK-02a) builder.Services.AddSignalR()/app.MapHub<MonitorHub>(...) 추가 — 02번 문서 7번 탭
+// 카드2의 MonitorHub를 실제 엔드포인트로 노출한다. /health와 같은 Kestrel(같은 포트 47500)에
+// 얹으므로 별도 프로세스나 포트가 필요 없다(RN-04a가 이미 확보한 WebApplication 위에 얹는
+// 방식, 02번 문서 7번 탭 port 표 "47500 | /health·SignalR 모니터링 스트림").
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using NodeSharp.Runner;
+using NodeSharp.Runner.Core;
 using NodeSharp.Runner.Diagnostics;
 using NodeSharp.Runner.Health;
 
@@ -43,6 +48,13 @@ builder.Services.AddHostedService<Worker>();
 //    Worker와 /health 둘 다 이 같은 1개의 인스턴스를 나눠 쓰게 된다.
 builder.Services.AddSingleton<RunnerHealthState>();
 
+// 3-1) (LK-02a) SignalR 서비스 + StatusBroadcaster(FlowEngine 이벤트를 MonitorHub로 중계하는
+//      구독자, DI가 IHubContext<MonitorHub>를 자동으로 만들어 넣어준다) 등록. Worker 생성자가
+//      StatusBroadcaster?를 선택적으로 받으므로, 이 등록이 없어도(예: 과거 테스트 환경) Worker는
+//      SignalR 없이 그대로 동작한다(하위 호환).
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<StatusBroadcaster>();
+
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).
 builder.WebHost.UseUrls("http://localhost:47500");
@@ -55,6 +67,12 @@ var app = builder.Build();
 //    예: 브라우저에서 http://localhost:47500/health 접속하면 이 결과가 보인다.
 app.MapGet("/health", (RunnerHealthState health) => health.Snapshot());
 
+// 6-1) (LK-02a) "/hubs/monitor" 경로로 SignalR 연결을 받는다 — Editor의 EditorMonitorClient(LK-02b)가
+//      이 경로로 접속해 nodeStatus/flowActivity/debugMessage/nodeError 이벤트를 실시간으로 받는다.
+//      인증은 아직 없음(로컬호스트 전용 바인딩으로만 보호 — 토큰 인증은 LK-03 몫, MonitorHub 클래스
+//      문서 참고).
+app.MapHub<MonitorHub>("/hubs/monitor");
+
 // 7) 서버를 실제로 켜고, 종료 신호(Ctrl+C 등)가 올 때까지 계속 대기한다.
-//    이 줄이 실행되는 순간부터 Worker도 백그라운드에서 돌고, /health도 응답을 시작한다.
+//    이 줄이 실행되는 순간부터 Worker도 백그라운드에서 돌고, /health·SignalR도 응답을 시작한다.
 await app.RunAsync();

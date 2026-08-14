@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Registry;
 using NodeSharp.Runner.Core;
 using NodeSharp.Runner.Health;
@@ -24,6 +25,9 @@ namespace NodeSharp.Runner;
 /// 감시합니다 — 신호가 오면 <c>FlowDeployer.RedeployAsync</c>로 같은(또는 아직 없었다면 새) 엔진에
 /// 재배포하고, 성공하면 <see cref="RunnerHealthState.RecordDeploy"/>도 다시 호출해 /health가 최신
 /// 배포 결과를 돌려주게 합니다.
+/// (LK-02a) 생성자가 <c>StatusBroadcaster?</c>도 선택적으로 주입받습니다 — 있으면 두 배포 호출
+/// (초기 배포 + <see cref="FlowFileWatcher"/> 콜백의 재배포) 모두에 <c>attachMonitor</c> 콜백으로
+/// 넘겨, 새로 만들어지는 <c>FlowEngine</c>의 이벤트가 SignalR로 Editor에 중계되게 합니다.
 /// </summary>
 /// <example>
 /// <code>
@@ -41,6 +45,7 @@ public sealed class Worker : BackgroundService
     private readonly RunnerHealthState _healthState;
     private readonly ClockDriftMonitor _clockDriftMonitor;
     private readonly DiskSpaceMonitor? _diskSpaceMonitor;
+    private readonly StatusBroadcaster? _statusBroadcaster;
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
@@ -55,12 +60,21 @@ public sealed class Worker : BackgroundService
     /// 생략하면 <see cref="ExecuteAsync"/>에서 실행 파일 폴더(<c>baseDirectory</c>) 기준으로 실제
     /// <c>DriveInfo</c>를 읽는 기본 인스턴스를 만듭니다(생성자 시점에는 baseDirectory를 아직 몰라
     /// ClockDriftMonitor처럼 생성자에서 바로 기본값을 만들 수 없음).
+    /// (LK-02a) <paramref name="statusBroadcaster"/>도 같은 방식(선택적, 기본값 <c>null</c>)으로
+    /// 주입받습니다 — DI 컨테이너에 <c>AddSingleton&lt;StatusBroadcaster&gt;()</c>가 등록돼 있으면
+    /// 자동으로 채워지고, 생략하면(예: 기존 <c>RunnerWorkerTests</c>처럼 인자 없이 생성) SignalR
+    /// 중계 없이 이전과 동일하게 동작합니다(하위 호환).
     /// </summary>
-    public Worker(RunnerHealthState healthState, ClockDriftMonitor? clockDriftMonitor = null, DiskSpaceMonitor? diskSpaceMonitor = null)
+    public Worker(
+        RunnerHealthState healthState,
+        ClockDriftMonitor? clockDriftMonitor = null,
+        DiskSpaceMonitor? diskSpaceMonitor = null,
+        StatusBroadcaster? statusBroadcaster = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
         _diskSpaceMonitor = diskSpaceMonitor;
+        _statusBroadcaster = statusBroadcaster;
     }
 
     /// <summary>
@@ -86,7 +100,15 @@ public sealed class Worker : BackgroundService
 
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         var deployer = new FlowDeployer();
-        FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken);
+
+        // (LK-02a) _statusBroadcaster가 있으면(DI로 주입됨) 이 콜백을 두 배포 호출 모두에 넘긴다 —
+        // FlowDeployer.CreateEngineWithLogger가 "진짜 새 FlowEngine을 만들 때만" 호출하므로, 아래
+        // RedeployAsync가 기존 engine을 재사용하는 흔한 경우엔 이 콜백이 다시 실행되지 않는다(중복
+        // 구독 방지, StatusBroadcaster 클래스 remarks 참고).
+        Func<IEventBus, IDisposable>? attachMonitor =
+            _statusBroadcaster is null ? null : eventBus => _statusBroadcaster.Subscribe(eventBus);
+
+        FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken, attachMonitor);
         if (engine is not null)
         {
             _healthState.RecordDeploy(engine);
@@ -97,7 +119,7 @@ public sealed class Worker : BackgroundService
         // 엔진을 만들어 배포한다(FlowDeployer.RedeployAsync XML 문서 참고).
         _flowFileWatcher = new FlowFileWatcher(baseDirectory, async ct =>
         {
-            engine = await deployer.RedeployAsync(engine, baseDirectory, registry, ct);
+            engine = await deployer.RedeployAsync(engine, baseDirectory, registry, ct, attachMonitor);
             if (engine is not null)
             {
                 _healthState.RecordDeploy(engine);

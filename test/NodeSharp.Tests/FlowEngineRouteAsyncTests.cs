@@ -1,8 +1,10 @@
 using NodeSharp.Contracts.Enums;
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Registry;
 using NodeSharp.Runtime;
+using NodeSharp.Util.Messaging;
 using Xunit;
 
 namespace NodeSharp.Tests;
@@ -12,6 +14,9 @@ namespace NodeSharp.Tests;
 /// 파이프라인 시퀀스)에 대한 단위 테스트입니다. 완료 기준(03번 Step맵 RT-04a, RT-04a 착수 중 발견한
 /// 계약 불일치를 반영해 정정된 버전): A→B 1:1 Wire에서 A가 <c>ctx.RouteAsync</c>로 보낸 <see cref="Msg"/>가
 /// B의 <c>OnInputAsync</c> 인자로(<c>Clone()</c>되어) 그대로 전달되는지 확인.
+/// (LK-02a) <see cref="FlowActivityEvent"/> 발행(<c>DispatchOneAsync</c>가 대상을 찾은 직후 발행) 테스트
+/// 4건도 이 파일에 함께 둔다 — <c>RouteAsync</c>가 만드는 바로 그 디스패치 경로를 검증 대상으로 삼기
+/// 때문에 별도 파일보다 이 파일이 자연스럽다.
 /// </summary>
 public class FlowEngineRouteAsyncTests
 {
@@ -63,7 +68,14 @@ public class FlowEngineRouteAsyncTests
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         registry.TryRegister(new PluginManifest("receiver", "1.0.0", RequiredContractsVersion: "1.0.0"), typeof(ReceiverNode));
         registry.TryRegister(new PluginManifest("pass-through", "1.0.0", RequiredContractsVersion: "1.0.0"), typeof(PassThroughNode));
-        return new FlowEngine(registry);
+        // (LK-02a 버그 수정) eventBus를 생략하면 FlowEngine이 기본값으로 new EventBusAdapter()를 만드는데,
+        // 그 기본 생성자는 프로세스 전역 EventBus.Instance를 감싼다 — 이 테스트가 FlowActivityEvent를
+        // 구독하기 전까지는 아무도 구독하지 않아 문제가 드러나지 않았지만, LK-02a에서 실제로 구독을
+        // 시작하자 같은 프로세스에서 병렬 실행되는 다른 테스트(다른 클래스의 RouteAsync 호출 포함)가
+        // 발행한 이벤트까지 함께 잡혀버리는 교차 오염이 발생했다(사용자 보고: Parallel 테스트가 기대한
+        // 2건 대신 5건을 받음). EventBusAdapter 클래스 문서가 이미 권장하는 대로, 테스트마다 독립된
+        // EventBus 인스턴스를 명시적으로 주입해 이 파일의 모든 테스트를 서로·다른 파일과 격리한다.
+        return new FlowEngine(registry, eventBus: new EventBusAdapter(new EventBus()));
     }
 
     [Fact]
@@ -173,6 +185,111 @@ public class FlowEngineRouteAsyncTests
         });
 
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task RouteAsync는_대상을_찾으면_FlowActivityEvent를_올바른_필드로_발행한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildEngine();
+        var n1 = new NodeConfig("n1", "pass-through", "발신", "f1", new Dictionary<string, object?>());
+        var n2 = new NodeConfig("n2", "receiver", "수신", "f1", new Dictionary<string, object?>());
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "테스트 플로우",
+            Nodes: new[] { n1, n2 },
+            Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n2", TargetPort: 0) });
+        await engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None);
+
+        var received = new List<FlowActivityEvent>();
+        using var sub = engine.EventBus.Subscribe<FlowActivityEvent>(received.Add);
+
+        var msg = new Msg { Payload = 1 };
+        await engine.RouteAsync("n1", 0, msg, CancellationToken.None);
+
+        var e = Assert.Single(received);
+        Assert.Equal("n1", e.FromNodeId);
+        Assert.Equal(0, e.OutputPort);
+        Assert.Equal("n2", e.ToNodeId);
+        Assert.Equal(msg.Id, e.MsgId);
+    }
+
+    [Fact]
+    public async Task RouteAsync는_일치하는_Wire가_없으면_FlowActivityEvent도_발행하지_않는다()
+    {
+        var engine = BuildEngine();
+        var n1 = new NodeConfig("n1", "pass-through", "발신", "f1", new Dictionary<string, object?>());
+        var n2 = new NodeConfig("n2", "receiver", "수신", "f1", new Dictionary<string, object?>());
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "테스트 플로우",
+            Nodes: new[] { n1, n2 },
+            Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 1, TargetNodeId: "n2", TargetPort: 0) });
+        await engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None);
+
+        var received = new List<FlowActivityEvent>();
+        using var sub = engine.EventBus.Subscribe<FlowActivityEvent>(received.Add);
+
+        await engine.RouteAsync("n1", 0, new Msg { Payload = "무시됨" }, CancellationToken.None);
+
+        Assert.Empty(received);
+    }
+
+    [Fact]
+    public async Task RouteAsync는_대상이_MissingNode여도_FlowActivityEvent는_발행한다()
+    {
+        // (LK-02a) FlowEngine.cs 클래스 remarks의 "MissingNode도 _nodes에 실제로 들어 있어 이 조건을
+        // 통과한다" 설명을 직접 검증 — Wire 자체는 배포에 존재하므로 캔버스 와이어는 하이라이트되는
+        // 것이 의도된 동작이다(대상 노드가 무동작인 것과 별개).
+        var engine = BuildEngine();
+        var n1 = new NodeConfig("n1", "pass-through", "발신", "f1", new Dictionary<string, object?>());
+        var n2 = new NodeConfig("n2", "no-such-type", "삭제된 플러그인", "f1", new Dictionary<string, object?>());
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "테스트 플로우",
+            Nodes: new[] { n1, n2 },
+            Wires: new[] { new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n2", TargetPort: 0) });
+        await engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None);   // n2는 MissingNode로 배포됨
+
+        var received = new List<FlowActivityEvent>();
+        using var sub = engine.EventBus.Subscribe<FlowActivityEvent>(received.Add);
+
+        await engine.RouteAsync("n1", 0, new Msg { Payload = 1 }, CancellationToken.None);
+
+        var e = Assert.Single(received);
+        Assert.Equal("n2", e.ToNodeId);
+    }
+
+    [Fact]
+    public async Task RouteAsync는_Parallel_디스패치에서도_와이어마다_FlowActivityEvent를_발행한다()
+    {
+        ReceiverNode.Received.Clear();
+        var engine = BuildEngine();
+        // OutputDispatch: Parallel — n1의 0번 포트에서 n2/n3 두 곳으로 동시에 나가는 Fan-out(RT-04b).
+        var n1 = new NodeConfig("n1", "pass-through", "발신", "f1", new Dictionary<string, object?>(), OutputDispatch: DispatchMode.Parallel);
+        var n2 = new NodeConfig("n2", "receiver", "수신1", "f1", new Dictionary<string, object?>());
+        var n3 = new NodeConfig("n3", "receiver", "수신2", "f1", new Dictionary<string, object?>());
+        var flow = new FlowDefinition(
+            Id: "f1", Name: "테스트 플로우",
+            Nodes: new[] { n1, n2, n3 },
+            Wires: new[]
+            {
+                new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n2", TargetPort: 0),
+                new Wire(SourceNodeId: "n1", SourcePort: 0, TargetNodeId: "n3", TargetPort: 0),
+            });
+        await engine.DeployAsync(flow, DeployMode.Full, CancellationToken.None);
+
+        var received = new List<FlowActivityEvent>();
+        var gate = new object();
+        // Parallel 경로라 여러 스레드에서 동시에 Add할 수 있어 lock으로 보호(테스트 자체의 스레드
+        // 안전성 문제일 뿐 FlowEngine의 동작과는 무관).
+        using var sub = engine.EventBus.Subscribe<FlowActivityEvent>(e =>
+        {
+            lock (gate) { received.Add(e); }
+        });
+
+        await engine.RouteAsync("n1", 0, new Msg { Payload = "fan-out" }, CancellationToken.None);
+
+        Assert.Equal(2, received.Count);
+        Assert.Contains(received, e => e.ToNodeId == "n2");
+        Assert.Contains(received, e => e.ToNodeId == "n3");
     }
 
     /// <summary>엔진의 <see cref="FlowEngine.RouteAsync"/>로 그대로 위임하는 테스트 전용 <see cref="INodeContext"/>.</summary>

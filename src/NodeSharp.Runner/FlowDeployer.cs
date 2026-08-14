@@ -55,6 +55,18 @@ namespace NodeSharp.Runner;
 /// 엔진을 만들어 <see cref="NodeStatusConsoleLogger"/>도 함께 구독시킵니다(<see cref="DeployIfAvailableAsync"/>가
 /// 하던 것과 동일한 조립 — <see cref="CreateEngineWithLogger"/>로 공유).
 /// </para>
+/// <para>
+/// (LK-02a) <see cref="DeployIfAvailableAsync"/>·<see cref="RedeployAsync"/> 둘 다 새 선택적 매개변수
+/// <c>attachMonitor</c>(<c>Func&lt;IEventBus, IDisposable&gt;?</c>, 기본값 <c>null</c>)를 받습니다 — 기존
+/// 호출부(테스트 포함)는 아무것도 바꾸지 않아도 그대로 동작합니다(트레일링 선택적 매개변수, <c>EC-05
+/// 확장</c>의 <c>PropertyField.VisibleWhenKey</c> 추가와 동일한 하위 호환 방식). <c>Worker</c>가 이
+/// 자리에 <c>eventBus =&gt; statusBroadcaster.Subscribe(eventBus)</c>를 넘기면, 진짜 새 <see cref="FlowEngine"/>이
+/// 만들어질 때(<see cref="CreateEngineWithLogger"/> 문서 참고)만 <c>StatusBroadcaster</c>가 그 엔진의
+/// <c>EventBus</c>를 구독해 SignalR로 중계합니다. 이 파일은 <c>IEventBus</c>/<c>IDisposable</c>(둘 다
+/// 이미 이 프로젝트가 참조하는 Contracts/System 타입)만 알면 되므로, Runner의 실제 SignalR 의존
+/// (<c>Microsoft.AspNetCore.SignalR</c>)은 <c>Core\StatusBroadcaster.cs</c>에만 격리됩니다 — 이 클래스와
+/// <c>NodeSharp.Tests</c>의 <c>FlowDeployerTests</c>는 SignalR을 몰라도 계속 컴파일·테스트됩니다.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -77,7 +89,8 @@ public sealed class FlowDeployer
         string baseDirectory,
         IReadOnlyList<StartupStageResult> startupStages,
         INodeRegistry registry,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<IEventBus, IDisposable>? attachMonitor = null)
     {
         var flowsStage = startupStages.FirstOrDefault(s => s.FileName == "flows.json");
         if (flowsStage is not { Succeeded: true })
@@ -94,7 +107,7 @@ public sealed class FlowDeployer
             return null;
         }
 
-        var engine = CreateEngineWithLogger(registry);
+        var engine = CreateEngineWithLogger(registry, attachMonitor);
         await engine.DeployAsync(merged, DeployMode.Full, ct);
         return engine;
     }
@@ -110,7 +123,8 @@ public sealed class FlowDeployer
         FlowEngine? existingEngine,
         string baseDirectory,
         INodeRegistry registry,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<IEventBus, IDisposable>? attachMonitor = null)
     {
         var flowsPath = Path.Combine(baseDirectory, "flows.json");
         if (!File.Exists(flowsPath))
@@ -138,7 +152,7 @@ public sealed class FlowDeployer
             return existingEngine;
         }
 
-        var engine = existingEngine ?? CreateEngineWithLogger(registry);
+        var engine = existingEngine ?? CreateEngineWithLogger(registry, attachMonitor);
         await engine.DeployAsync(merged, DeployMode.Full, ct);
         return engine;
     }
@@ -146,12 +160,20 @@ public sealed class FlowDeployer
     /// <summary>
     /// (LK-01) <see cref="DeployIfAvailableAsync"/>·<see cref="RedeployAsync"/>가 공유하는 조립 로직 —
     /// 새 <see cref="FlowEngine"/>을 만들고 <see cref="NodeStatusConsoleLogger"/>를 그 <c>EventBus</c>에
-    /// 구독시켜 반환합니다.
+    /// 구독시켜 반환합니다. (LK-02a) <paramref name="attachMonitor"/>가 있으면(Runner의 <c>Worker</c>가
+    /// <c>eventBus =&gt; statusBroadcaster.Subscribe(eventBus)</c>로 넘김) 같은 <c>EventBus</c>에 그것도
+    /// 호출합니다 — 이 메서드는 "진짜 새 <see cref="FlowEngine"/>을 만드는" 유일한 지점이라(호출부인
+    /// <see cref="RedeployAsync"/>는 <c>existingEngine</c>이 있으면 이 메서드 자체를 부르지 않음), 여기서만
+    /// 연결하면 <c>StatusBroadcaster</c>가 같은 엔진에 중복 구독되는 일이 없습니다(위 <c>StatusBroadcaster</c>
+    /// 클래스 remarks의 "구독 시점" 항목 참고). <c>IEventBus</c>/<c>IDisposable</c>만 참조하므로 이 파일과
+    /// <c>NodeSharp.Tests</c>는 SignalR 타입을 몰라도 됩니다(순수 콜백 위임 — Runner의 <c>StatusBroadcaster</c>가
+    /// 실제 SignalR 의존을 전담).
     /// </summary>
-    private static FlowEngine CreateEngineWithLogger(INodeRegistry registry)
+    private static FlowEngine CreateEngineWithLogger(INodeRegistry registry, Func<IEventBus, IDisposable>? attachMonitor = null)
     {
         var engine = new FlowEngine(registry);
         new NodeStatusConsoleLogger().Subscribe(engine.EventBus);
+        attachMonitor?.Invoke(engine.EventBus);
         return engine;
     }
 
