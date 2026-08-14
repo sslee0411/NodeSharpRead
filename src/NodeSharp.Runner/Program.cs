@@ -22,6 +22,9 @@
 // 카드2의 MonitorHub를 실제 엔드포인트로 노출한다. /health와 같은 Kestrel(같은 포트 47500)에
 // 얹으므로 별도 프로세스나 포트가 필요 없다(RN-04a가 이미 확보한 WebApplication 위에 얹는
 // 방식, 02번 문서 7번 탭 port 표 "47500 | /health·SignalR 모니터링 스트림").
+// (LK-02b 후속, 사용자 요청) builder.Services.AddSingleton<CurrentEngineHolder>() 추가 —
+// MonitorHub.TriggerInject(Editor→Runner 첫 제어 채널)가 "지금 배포된 엔진"에 접근할 통로.
+// Worker도 같은 인스턴스를 주입받아 배포/재배포마다 갱신한다(CurrentEngineHolder 자체 문서 참고).
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -54,6 +57,7 @@ builder.Services.AddSingleton<RunnerHealthState>();
 //      SignalR 없이 그대로 동작한다(하위 호환).
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<StatusBroadcaster>();
+builder.Services.AddSingleton<CurrentEngineHolder>();
 
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).

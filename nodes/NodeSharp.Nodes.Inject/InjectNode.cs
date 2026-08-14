@@ -62,9 +62,17 @@ namespace NodeSharp.Nodes.Inject;
 /// (인터페이스)와 <see cref="INodeContext.RouteAsync"/>(엔진을 거치지 않고 컨텍스트가 직접 노출)입니다
 /// — 이 클래스는 카드7의 "설계 의도"(Manual 트리거 → 1회 발행)만 따르고, 실제 코드는 현재 Contracts
 /// 계약(<see cref="IFlowNode"/>/<see cref="INodeContext"/>, CT-04a 이후 확정)을 그대로 사용합니다.</item>
+/// <item><b>(LK-02b 후속, 사용자 요청) <see cref="IManuallyTriggerable"/> 구현</b>: 지금까지
+/// <see cref="TriggerAsync"/>는 <see cref="IFlowNode"/> 계약 밖의 이 클래스 고유 공개 메서드였는데,
+/// Editor 캔버스에서 실제로 클릭해 트리거하려면 <c>FlowEngine</c>(구체 노드 타입을 모르는 플러그인
+/// 아키텍처)이 "이 노드가 수동 트리거를 지원하는지"를 일반적인 방법으로 판별할 수 있어야 합니다 —
+/// 새 인터페이스 <see cref="IManuallyTriggerable"/>를 만들어 이 클래스가 구현하도록 했습니다(시그니처는
+/// 기존 <see cref="TriggerAsync"/>와 완전히 동일해 이 메서드 자체는 수정할 필요가 없었음). Editor
+/// 쪽에는 <see cref="InjectNodeType.Descriptor"/>의 <c>SupportsManualTrigger =&gt; true</c>로 신호를
+/// 보냅니다.</item>
 /// </list>
 /// </remarks>
-public sealed class InjectNode : IFlowNode
+public sealed class InjectNode : IFlowNode, IManuallyTriggerable
 {
     /// <inheritdoc />
     public string Id { get; init; } = string.Empty;
@@ -240,9 +248,9 @@ public sealed class InjectNode : IFlowNode
 
     /// <summary>
     /// 새 <see cref="Msg"/>를 만들어(<see cref="Msg.Payload"/>에 <paramref name="payload"/> 그대로 대입)
-    /// 0번 출력 포트로 정확히 1회 전달합니다 — 캔버스의 "노드 클릭"(향후 LK-02가 붙으면 Editor→Runner
-    /// 채널을 거쳐 이 메서드를 호출) 또는 지금은 xUnit 테스트가 직접 호출하는 진입점입니다.
-    /// <see cref="IFlowNode"/> 계약에는 없는 이 클래스 고유의 공개 메서드입니다(위 클래스 remarks
+    /// 0번 출력 포트로 정확히 1회 전달합니다 — <see cref="IManuallyTriggerable"/> 구현 메서드로,
+    /// <c>FlowEngine.TriggerManualAsync</c>가 Editor→Runner SignalR 채널(캔버스의 "노드 클릭")을 거쳐
+    /// 호출하거나, xUnit 테스트가 직접 호출합니다(위 클래스 remarks의 IManuallyTriggerable 구현 항목
     /// 참고 — Inject는 입력 포트가 없어 <see cref="OnInputAsync"/>로는 트리거될 수 없기 때문).
     /// </summary>
     public Task TriggerAsync(object? payload, INodeContext ctx, CancellationToken ct)

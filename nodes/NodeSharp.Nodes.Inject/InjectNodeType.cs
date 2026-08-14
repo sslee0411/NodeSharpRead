@@ -61,6 +61,12 @@ public static class InjectNodeType
 
         public int DefaultOutputs => 1;
 
+        // (LK-02b 후속, 사용자 요청) InjectNode가 IManuallyTriggerable을 구현하므로 Editor 캔버스에
+        // 수동 트리거 버튼(▶)을 보여줘도 된다는 신호 — INodeTypeDescriptor.cs 자체 문서의
+        // SupportsManualTrigger 항목 참고, 나머지 노드 타입(Switch/Function/Debug)은 기본값(false)을
+        // 그대로 쓰므로 수정하지 않았다.
+        public bool SupportsManualTrigger => true;
+
         public Func<NodeConfig, IFlowNode> Factory { get; } = cfg => new InjectNode
         {
             Id = cfg.Id,

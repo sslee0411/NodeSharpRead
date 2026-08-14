@@ -3,7 +3,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Threading;
 using NodeSharp.Contracts.Enums;
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
@@ -11,6 +13,9 @@ using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
+// (v3.01 버그 수정) PaletteView.xaml.cs와 동일한 이유로 네임스페이스 전체 대신 DebugNodeType 타입
+// 하나만 별칭으로 가져온다(System.Diagnostics.Debug와의 이름 충돌 방지).
+using DebugNodeType = NodeSharp.Nodes.Debug.DebugNodeType;
 // (EC-11 버그 수정, v2.64) NodeSharp.Contracts.Interfaces에도 별도 용도의 IEditorCommand가 이미
 // 선언돼 있어(ED-D13이 미리 열어둔 "구조 트리 커맨드 공유" 설계, 이 파일의 AddNodeCommand 등이 구현
 // 하는 NodeSharp.Editor.Core.Commands.IEditorCommand와는 다른 타입), 이 네임스페이스를 통째로
@@ -139,6 +144,31 @@ namespace NodeSharp.Editor.Views;
 /// Step은 "포트를 몇 개 둘지"를 UI로 쉽게 조정하는 것까지만 다룹니다. 누락 노드(EC-08)는 실제
 /// 타입 정보가 없어 입력/출력 모두 0개로 그립니다(RT-02a MissingNode 개념과 일치, 이 역시 EC-02가
 /// "Phase 7 이후"로 미뤄뒀던 부분).
+/// (LK-02b) Runner가 <c>EditorMonitorClient</c>(같은 프로젝트 <c>Core</c> 폴더)를 통해 SignalR로 보낸
+/// 모니터링 이벤트 중 2가지를 이 캔버스가 직접 반영합니다 — <see cref="ApplyNodeStatus"/>(<see cref="NodeStatusEvent"/>,
+/// 노드 카드 아래에 색 점+텍스트 배지, <see cref="AddPortEllipse"/>와 같은 "카드와 별개로 떠 있는
+/// 캔버스 요소" 패턴 재사용)와 <see cref="PulseWire"/>(<see cref="FlowActivityEvent"/>, 해당 와이어
+/// 선을 잠깐 강조색으로 바꿨다 되돌림). 둘 다 <see cref="RenderNode"/>/<see cref="DrawWireLine"/>의
+/// 기존 로직은 전혀 바꾸지 않고, 그 결과물(<see cref="_nodeVisuals"/> 위치, 새로 추가한
+/// <see cref="_wireLinesByKey"/> 조회용 인덱스)만 읽는 순수 추가 기능입니다. 이 뷰는 여러 Flow 탭의
+/// 데이터를 모두 들고 있지만 화면엔 활성 탭만 그려지므로(<see cref="RedrawActiveTab"/>), 지금 화면에
+/// 없는 노드/와이어의 이벤트는 조용히 무시합니다(과거 상태를 다시 그려주는 것은 이 Step 범위 밖).
+/// (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") 반대 방향(Editor→Runner)의
+/// 첫 채널도 이 뷰에서 시작합니다 — <see cref="RenderNode"/>가 <c>SupportsManualTrigger</c>인 노드
+/// (지금은 Inject뿐)의 카드 왼쪽에 <see cref="AddManualTriggerButton"/>으로 ▶ 버튼을 그리고, 클릭하면
+/// <see cref="InjectTriggerRequested"/> 이벤트만 발생시킵니다 — 실제 SignalR 호출(<c>EditorMonitorClient.TriggerInjectAsync</c>)은
+/// <c>MainWindow</c>가 구독해 대신 수행합니다(이 뷰는 위 두 반영 기능과 마찬가지로 SignalR을 몰라도 됨).
+/// (사용자 요청, 2026-08-14 — "캔버스에 배치한 노드를 이동할 수 없음, 앞으로 추가될 노드에도
+/// 적용되도록") 카드를 누른 채 끌면 위치가 옮겨집니다 — <see cref="OnCardMouseLeftButtonDown"/>의
+/// 일반 클릭 분기가 <see cref="BeginNodeDrag"/>로 이동 후보를 시작하고, <see cref="OnCanvasMouseMove"/>가
+/// <see cref="ContinueNodeDrag"/>에 위임해 <see cref="NodeMoveDragThreshold"/>(3px)를 넘는 순간부터
+/// <see cref="NodeConfig"/>의 X/Y를 실시간으로 바꾸며 <see cref="RedrawActiveTab"/>으로 카드·포트·
+/// 연결된 와이어·상태 배지를 함께 옮깁니다(따로따로 좌표를 옮기는 코드를 새로 만들지 않고 EC-05의
+/// "다시 그리기" 원칙을 재사용). <see cref="OnCanvasMouseUp"/>이 <see cref="FinishNodeDrag"/>에
+/// 위임해 시작/종료 위치를 <see cref="MoveNodeCommand"/>(EC-07 커맨드)로 묶어 <see cref="_history"/>에
+/// 실행하므로 Ctrl+Z로 되돌릴 수 있습니다. 이 전체 메커니즘은 <see cref="NodeConfig"/>/<c>_nodeConfigs</c>만
+/// 다루고 특정 노드 타입을 전혀 분기하지 않으므로, 지금 등록된 타입은 물론 앞으로 새로 추가되는
+/// 어떤 노드 타입에도 그대로 적용됩니다.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -174,6 +204,19 @@ public partial class FlowCanvasView : UserControl
     private Line? _dragPreviewLine;
     private PortHandle? _hoveredInputPort;
 
+    // (사용자 요청, 2026-08-14: "캔버스에 배치한 노드를 이동할 수 없음") 카드 드래그-이동 진행 상태 —
+    // 카드를 누르는 순간부터 마우스를 놓을 때까지만 값이 있다(EC-02 와이어 드래그와 동일한 생명주기
+    // 패턴). _dragNodeMoved는 NodeMoveDragThreshold(아래)를 실제로 넘어섰는지 기억한다 — 넘기 전까지는
+    // "이동 후보"일 뿐이라, 단순 클릭(선택만 하고 마우스를 그대로 놓는 경우)이 매번 0px짜리 이동
+    // 커맨드를 Undo 스택에 쌓지 않도록 막는 역할이다. BeginNodeDrag/ContinueNodeDrag/FinishNodeDrag
+    // (아래) 세 메서드가 이 필드들을 함께 관리한다.
+    private const double NodeMoveDragThreshold = 3;
+    private string? _dragNodeId;
+    private Point _dragNodeStartMouse;
+    private double _dragNodeStartX;
+    private double _dragNodeStartY;
+    private bool _dragNodeMoved;
+
     // (EC-14) 팔레트 → 캔버스 드래그 중에만 값이 있는 점선 미리보기 도형 — DragEnter에서 만들고
     // DragOver마다 위치만 옮기며, DragLeave/Drop에서 반드시 지운다(RemoveDragPreview).
     private Rectangle? _dragPreview;
@@ -191,6 +234,17 @@ public partial class FlowCanvasView : UserControl
     private readonly HashSet<string> _selectedNodeIds = new();
     private NodeConfig? _clipboardNode;
     private const double PasteOffset = 24;
+
+    // (LK-02b) 노드 상태 배지 — _nodeCards/AddPortEllipse와 동일하게 카드와 별개로 떠 있는 캔버스
+    // 요소 보관용(RenderNode의 카드 Child 구조는 손대지 않는 설계, 클래스 자체 주석 LK-02b 항목
+    // 참고). RedrawActiveTab이 카드를 다시 그릴 때마다 함께 비운다.
+    private readonly Dictionary<string, Border> _nodeStatusBadges = new();
+
+    // (LK-02b) 와이어 펄스 하이라이트 조회용 — DrawWireLine이 그린 Line을 "출발노드:출력포트->도착노드"
+    // 키로 보관한다. FlowActivityEvent(Contracts.Events)에는 도착 포트 정보가 없어 도착 포트까지는
+    // 구분하지 않으며, 같은 키에 여러 와이어가 걸리면(같은 출력 포트에서 같은 도착 노드의 서로 다른
+    // 입력 포트로 각각 연결된 드문 경우) 전부 함께 반짝인다. RedrawActiveTab이 다시 그릴 때마다 비운다.
+    private readonly Dictionary<string, List<Line>> _wireLinesByKey = new();
 
     /// <summary>
     /// (EC-11) 선택 상태가 바뀔 때마다(단일 선택/해제/다중 선택/탭 전환·Undo·Redo로 인한 재렌더링)
@@ -259,10 +313,12 @@ public partial class FlowCanvasView : UserControl
         InitializeComponent();
         // (EC-01c) 이 뷰의 _registry는 팔레트와 별개 인스턴스라 독립적으로 채워야 한다 — 안 채우면
         // PropertySchema 조회(EC-03)·MissingNode 판정(EC-08)이 "등록 안 된 타입"으로 계속 오판한다.
-        // (FN-01) FunctionNodeType 추가.
+        // (FN-01) FunctionNodeType 추가. (v3.01 버그 수정) NR-11(Debug 노드)이 이 목록에 추가하는
+        // 것을 빠뜨려 캔버스에 배치해도 항상 "missing type"(⚠)으로 그려지던 누락을 보완.
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
+        _registry.ScanAssembly(typeof(DebugNodeType).Assembly);
         RenderFlowTabStrip();
         Loaded += OnLoaded;
     }
@@ -553,6 +609,10 @@ public partial class FlowCanvasView : UserControl
         // 붙여넣기가 계속 가능해야 하고, Undo/Redo로도 클립보드 내용이 사라질 이유가 없으므로).
         _nodeCards.Clear();
         _selectedNodeIds.Clear();
+
+        // (LK-02b) 카드/와이어와 마찬가지로 전부 다시 그려지므로 이전 배지·와이어 조회 인덱스도 함께 비운다.
+        _nodeStatusBadges.Clear();
+        _wireLinesByKey.Clear();
 
         var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == _activeFlowId).ToList();
         var tabGroups = _groups.Values.Where(g => IsGroupInFlow(g, _activeFlowId)).ToList();
@@ -911,6 +971,15 @@ public partial class FlowCanvasView : UserControl
         {
             AddPortEllipse(new PortHandle(config.Id, i, IsOutput: true), visual.GetOutputPortPosition(i));
         }
+
+        // (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") 수동 트리거를 지원하는
+        // 타입(지금은 Inject뿐, INodeTypeDescriptor.SupportsManualTrigger 참고)이면 카드 왼쪽 바깥에
+        // ▶ 버튼을 추가로 그린다 — Node-RED가 Inject 노드 왼쪽에 트리거 버튼을 두는 것과 같은 자리.
+        // isMissing이면 descriptor 자체가 없어(등록 안 된 타입) 애초에 지원 여부를 알 수 없으므로 제외.
+        if (!isMissing && descriptor!.SupportsManualTrigger)
+        {
+            AddManualTriggerButton(config.Id, left, top);
+        }
     }
 
     /// <summary>
@@ -971,6 +1040,56 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
+    /// (LK-02b 후속, 사용자 요청) <paramref name="nodeId"/>가 수동 트리거를 지원하는 노드일 때(위
+    /// <see cref="RenderNode"/>의 <c>SupportsManualTrigger</c> 분기 참고) 카드 왼쪽 바깥에 작은 ▶
+    /// 버튼을 그립니다 — <see cref="AddPortEllipse"/>와 동일한 "카드와 별개로 떠 있는 캔버스 요소"
+    /// 패턴입니다. 클릭하면(<c>e.Handled = true</c>로 카드 자체의 선택/더블클릭 처리로 버블링되지
+    /// 않게 막고) <see cref="InjectTriggerRequested"/>를 발생시킵니다 — 실제로 Runner에 신호를
+    /// 보내는 것은 이 뷰의 책임이 아니라 <c>MainWindow</c>가 <c>EditorMonitorClient.TriggerInjectAsync</c>로
+    /// 위임합니다(연결 여부 확인·실패 시 안내도 <c>MainWindow</c> 몫 — 이 뷰는 SignalR을 몰라도 됨).
+    /// </summary>
+    private void AddManualTriggerButton(string nodeId, double cardLeft, double cardTop)
+    {
+        const double size = 16;
+        var button = new Border
+        {
+            Width = size,
+            Height = size,
+            CornerRadius = new CornerRadius(size / 2),
+            Background = (Brush)FindResource("AccentBrush"),
+            Cursor = Cursors.Hand,
+            ToolTip = "클릭해 1회 수동 발동",
+            Child = new TextBlock
+            {
+                Text = "▶",
+                FontSize = 8,
+                Foreground = Brushes.White,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(1, 0, 0, 0)
+            }
+        };
+
+        Canvas.SetLeft(button, cardLeft - size - 4);
+        Canvas.SetTop(button, cardTop + NodeCardHeight / 2 - size / 2);
+        Panel.SetZIndex(button, 1);
+        NodeCanvas.Children.Add(button);
+
+        button.MouseLeftButtonDown += (_, e) =>
+        {
+            InjectTriggerRequested?.Invoke(nodeId);
+            e.Handled = true;
+        };
+    }
+
+    /// <summary>
+    /// (LK-02b 후속, 사용자 요청) <see cref="AddManualTriggerButton"/>이 그린 ▶ 버튼을 클릭하면
+    /// 발생합니다 — <c>MainWindow</c>가 구독해 <c>EditorMonitorClient.TriggerInjectAsync(nodeId)</c>를
+    /// 호출합니다(이 뷰는 SignalR 연결을 전혀 모릅니다).
+    /// </summary>
+    public event Action<string>? InjectTriggerRequested;
+
+    /// <summary>
     /// (EC-02) 출력 포트를 누르면 와이어 드래그를 시작합니다 — 시작점을 기억하고, 미리보기용
     /// <see cref="Line"/>을 캔버스에 추가한 뒤 <see cref="Mouse.Capture(System.Windows.IInputElement)"/>로
     /// 이후 마우스 이벤트를 전부 <c>NodeCanvas</c>가 받도록 만듭니다(포트 Ellipse 밖으로 마우스가
@@ -1001,9 +1120,21 @@ public partial class FlowCanvasView : UserControl
         e.Handled = true;
     }
 
-    /// <summary>와이어 드래그 중이면 미리보기 선의 끝점을 현재 마우스 위치로 계속 갱신합니다.</summary>
+    /// <summary>
+    /// 와이어 드래그 중이면 미리보기 선의 끝점을, 카드 이동 드래그 후보(<see cref="_dragNodeId"/>)가
+    /// 있으면 <see cref="ContinueNodeDrag"/>에 위임해 카드 위치를 현재 마우스 위치로 계속 갱신합니다.
+    /// 카드 이동 쪽을 먼저 검사하는 것은 두 드래그가 동시에 값을 가질 수 없기 때문입니다(카드 이동은
+    /// 카드 본문을, 와이어 드래그는 포트 Ellipse를 눌러야 시작되고 포트가 카드 위에 겹쳐 그려지지
+    /// 않으므로 — 위 클래스 필드 주석 참고).
+    /// </summary>
     private void OnCanvasMouseMove(object sender, MouseEventArgs e)
     {
+        if (_dragNodeId is { } nodeId)
+        {
+            ContinueNodeDrag(nodeId, e);
+            return;
+        }
+
         if (_dragPreviewLine is null)
         {
             return;
@@ -1015,14 +1146,63 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-02, EC-07 확장) 마우스를 놓으면 드래그를 끝냅니다. <see cref="_hoveredInputPort"/>가 다른
-    /// 노드의 입력 포트를 가리키고 있으면 <see cref="Wire"/>를 만들어 <see cref="AddWireCommand"/>로
-    /// <see cref="_history"/>에 실행합니다(Ctrl+Z로 되돌릴 수 있음), 포트 영역 밖(또는 자기 자신)에서
-    /// 놓으면 미리보기 선만 지우고 아무 것도 만들지 않습니다(완료 기준의 "포트 영역 밖에서 드롭하면
-    /// 생성되지 않는지" 조건).
+    /// (사용자 요청, 2026-08-14) <see cref="BeginNodeDrag"/>로 이동 후보가 된 카드가 있을 때 마우스
+    /// 이동마다 호출됩니다. 시작점에서 <see cref="NodeMoveDragThreshold"/> 이상 벌어지기 전까지는
+    /// 아무 것도 하지 않다가(단순 클릭이 이동으로 오인되는 것을 막는 보호장치), 넘어서는 순간부터
+    /// 비로소 <see cref="NodeConfig"/>의 X/Y를 시작 위치 + 마우스 이동량으로 갱신하고
+    /// <see cref="RedrawActiveTab"/>으로 카드·포트·연결된 와이어·상태 배지를 한꺼번에 다시 그립니다
+    /// (이 파일이 이미 따르는 "데이터를 바꾸고 한 메서드로 화면을 맞춘다" 원칙 — EC-05,
+    /// <see cref="RedrawActiveTab"/> 자체 문서 참고 — 를 그대로 재사용해 포트/와이어/배지 좌표를
+    /// 따로따로 옮기는 코드를 새로 만들지 않았습니다). 이 미리보기 단계는 아직
+    /// <see cref="_history"/>(Undo/Redo)에 올리지 않고 <see cref="_nodeConfigs"/>를 바로 바꿉니다 —
+    /// 최종 커밋은 <see cref="FinishNodeDrag"/>가 시작 위치와 최종 위치를 묶어
+    /// <see cref="MoveNodeCommand"/> 하나로 처리합니다. <see cref="RedrawActiveTab"/>은 호출될 때마다
+    /// 선택 상태(<c>_selectedNodeIds</c>)를 지우므로(그 메서드 자체 문서 참고), 드래그 중인 카드가
+    /// 선택 테두리를 잃고 깜빡이지 않도록 매번 <see cref="SelectNode"/>로 되살립니다.
+    /// </summary>
+    private void ContinueNodeDrag(string nodeId, MouseEventArgs e)
+    {
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config))
+        {
+            return;
+        }
+
+        var current = e.GetPosition(NodeCanvas);
+        var delta = current - _dragNodeStartMouse;
+
+        if (!_dragNodeMoved)
+        {
+            if (Math.Abs(delta.X) < NodeMoveDragThreshold && Math.Abs(delta.Y) < NodeMoveDragThreshold)
+            {
+                return;
+            }
+
+            _dragNodeMoved = true;
+        }
+
+        _nodeConfigs[nodeId] = config with { X = _dragNodeStartX + delta.X, Y = _dragNodeStartY + delta.Y };
+        RedrawActiveTab();
+        SelectNode(nodeId);
+    }
+
+    /// <summary>
+    /// (EC-02, EC-07 확장, 사용자 요청으로 노드 드래그-이동 확장) 마우스를 놓으면 드래그를 끝냅니다.
+    /// 카드 이동 드래그 후보(<see cref="_dragNodeId"/>)가 있으면 <see cref="FinishNodeDrag"/>에
+    /// 위임하고 곧바로 반환합니다(두 드래그가 동시에 값을 가질 수 없는 이유는
+    /// <see cref="OnCanvasMouseMove"/> 문서 참고). 그렇지 않고 와이어 드래그 중이었다면
+    /// <see cref="_hoveredInputPort"/>가 다른 노드의 입력 포트를 가리키고 있는지로 갈립니다 —
+    /// 가리키고 있으면 <see cref="Wire"/>를 만들어 <see cref="AddWireCommand"/>로 <see cref="_history"/>에
+    /// 실행합니다(Ctrl+Z로 되돌릴 수 있음), 포트 영역 밖(또는 자기 자신)에서 놓으면 미리보기 선만
+    /// 지우고 아무 것도 만들지 않습니다(완료 기준의 "포트 영역 밖에서 드롭하면 생성되지 않는지" 조건).
     /// </summary>
     private void OnCanvasMouseUp(object sender, MouseButtonEventArgs e)
     {
+        if (_dragNodeId is { } nodeId)
+        {
+            FinishNodeDrag(nodeId);
+            return;
+        }
+
         if (_dragSourcePort is not { } source || _dragPreviewLine is null)
         {
             return;
@@ -1039,6 +1219,30 @@ public partial class FlowCanvasView : UserControl
         }
 
         _dragSourcePort = null;
+    }
+
+    /// <summary>
+    /// (사용자 요청, 2026-08-14) 카드 이동 드래그를 끝맺습니다. 실제로 <see cref="NodeMoveDragThreshold"/>를
+    /// 넘어 옮겨졌으면(<see cref="_dragNodeMoved"/>) 시작 위치(<see cref="_dragNodeStartX"/>/
+    /// <see cref="_dragNodeStartY"/>)와 <see cref="ContinueNodeDrag"/>가 이미 <see cref="_nodeConfigs"/>에
+    /// 반영해둔 최종 위치를 묶어 <see cref="MoveNodeCommand"/> 하나로 <see cref="_history"/>에
+    /// 실행합니다 — <c>Do()</c>가 최종 위치를 다시 대입하는 것은 이미 같은 값이라 실질적으로 중복이지만,
+    /// Ctrl+Z(Undo)/Ctrl+Y(Redo) 짝이 맞으려면 이 시점에 커맨드 객체 자체가 히스토리에 반드시 있어야
+    /// 합니다(EC-07 체계, <see cref="MoveNodeCommand"/> 자체 문서 참고). 임계값을 못 넘겼으면(제자리
+    /// 클릭) 아무 커맨드도 만들지 않습니다 — 클릭마다 0px 이동이 Undo 스택에 쌓이는 것을 막습니다.
+    /// </summary>
+    private void FinishNodeDrag(string nodeId)
+    {
+        Mouse.Capture(null);
+
+        if (_dragNodeMoved && _nodeConfigs.TryGetValue(nodeId, out var current))
+        {
+            var before = current with { X = _dragNodeStartX, Y = _dragNodeStartY };
+            _history.Execute(new MoveNodeCommand(this, nodeId, before, current));
+        }
+
+        _dragNodeId = null;
+        _dragNodeMoved = false;
     }
 
     /// <summary><paramref name="source"/>→<paramref name="target"/> 사이에 실선을 그려 완성된 연결을 표시합니다.</summary>
@@ -1060,16 +1264,134 @@ public partial class FlowCanvasView : UserControl
         // 새 와이어 선이 나중에 그려진 노드 카드 위를 덮지 않도록 맨 뒤(카드보다 아래)로 보낸다.
         Panel.SetZIndex(line, -1);
         NodeCanvas.Children.Insert(0, line);
+
+        // (LK-02b) PulseWire가 나중에 이 선을 찾아 반짝일 수 있도록 조회용 인덱스에 등록.
+        var key = WireKey(source.NodeId, source.PortIndex, target.NodeId);
+        if (!_wireLinesByKey.TryGetValue(key, out var lines))
+        {
+            lines = new List<Line>();
+            _wireLinesByKey[key] = lines;
+        }
+        lines.Add(line);
+    }
+
+    /// <summary>(LK-02b) <see cref="_wireLinesByKey"/>/<see cref="PulseWire"/>가 함께 쓰는 조회 키 — 도착 포트는 구분하지 않는다(위 필드 주석 참고).</summary>
+    private static string WireKey(string sourceNodeId, int sourcePort, string targetNodeId) => $"{sourceNodeId}:{sourcePort}->{targetNodeId}";
+
+    /// <summary>
+    /// (LK-02b) Runner가 SignalR로 보낸 <see cref="NodeStatusEvent"/>를 해당 노드 카드 아래에 작은
+    /// 상태 배지(색 점 + 텍스트, Node-RED의 <c>node.status(...)</c> 표시와 동일한 개념)로 반영합니다.
+    /// <see cref="AddPortEllipse"/>와 동일하게 카드의 <c>Child</c> 구조는 건드리지 않고 별개의 떠 있는
+    /// 캔버스 요소로 그립니다 — <see cref="RenderNode"/>가 만든 배지가 아니라 이 메서드가 최초 호출
+    /// 시점에 만들고, 이후 같은 노드에 대한 호출은 배지를 새로 만들지 않고 내용만 갱신합니다. 지금
+    /// 활성 탭에 그려져 있지 않은 노드(다른 탭 소속, 위 클래스 주석 LK-02b 항목 참고)는 조용히
+    /// 무시합니다.
+    /// </summary>
+    public void ApplyNodeStatus(NodeStatusEvent evt)
+    {
+        if (!_nodeVisuals.TryGetValue(evt.NodeId, out var visual))
+        {
+            return;
+        }
+
+        if (!_nodeStatusBadges.TryGetValue(evt.NodeId, out var badge))
+        {
+            badge = new Border
+            {
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(4, 1, 4, 1),
+                Background = (Brush)FindResource("ControlBackgroundBrush"),
+                Child = new StackPanel { Orientation = Orientation.Horizontal }
+            };
+            Panel.SetZIndex(badge, 2);
+            NodeCanvas.Children.Add(badge);
+            _nodeStatusBadges[evt.NodeId] = badge;
+        }
+
+        var panel = (StackPanel)badge.Child;
+        panel.Children.Clear();
+        panel.Children.Add(new Ellipse
+        {
+            Width = 8,
+            Height = 8,
+            Fill = ResolveStatusBrush(evt.Fill),
+            Margin = new Thickness(0, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = evt.Text,
+            FontSize = 10,
+            Foreground = (Brush)FindResource("SecondaryTextBrush"),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        Canvas.SetLeft(badge, visual.Left);
+        Canvas.SetTop(badge, visual.Top + visual.Height + 2);
     }
 
     /// <summary>
-    /// (EC-03, EC-06 확장, EC-10 확장) 카드를 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의
-    /// Tag(NodeId)로 <see cref="OpenPropertyDialog"/>를 엽니다. 한 번 클릭이면 Ctrl(<see cref="ModifierKeys.Control"/>)이
-    /// 눌려 있는지로 갈립니다 — (EC-10) Ctrl+클릭은 <see cref="ToggleNodeSelection"/>으로 그 노드만
-    /// 선택 목록에 추가/제거(여러 노드를 모아 <see cref="GroupSelectedNodes"/>로 그룹 묶기), (EC-06)
-    /// Ctrl 없는 일반 클릭은 <see cref="SelectNode"/>로 "이 노드 하나만" 선택(다른 선택은 모두
-    /// 해제). 어느 경우든 <paramref name="e"/>.Handled를 <c>true</c>로 설정해, 이 클릭이
-    /// <see cref="NodeCanvas"/>의 배경 클릭 핸들러(<see cref="OnCanvasBackgroundMouseDown"/>)로
+    /// (LK-02b) <see cref="NodeStatusEvent.Fill"/>(Node-RED 관례상 "red"/"green"/"yellow"/"blue"/"grey"
+    /// 문자열)을 실제 <see cref="Brush"/>로 바꿉니다. 목록에 없는 값(대소문자 무관)은 회색으로
+    /// 폴백합니다 — 카탈로그에 없는 Category를 기본값으로 폴백하는 <see cref="Views.NodeCategoryStyle.Resolve"/>와
+    /// 동일한 방어적 설계입니다.
+    /// </summary>
+    private static Brush ResolveStatusBrush(string fill) => fill.ToLowerInvariant() switch
+    {
+        "red" => Brushes.IndianRed,
+        "green" => Brushes.MediumSeaGreen,
+        "yellow" => Brushes.Goldenrod,
+        "blue" => Brushes.CornflowerBlue,
+        _ => Brushes.Gray
+    };
+
+    /// <summary>
+    /// (LK-02b) Runner가 SignalR로 보낸 <see cref="FlowActivityEvent"/>를 해당 와이어 선(들)을 잠깐
+    /// (400ms) 강조색(<c>AccentBrush</c>)으로 바꿨다가 원래 색으로 되돌리는 방식으로 반영합니다 —
+    /// 이 파일의 다른 곳(EC-14 점선 드래그 미리보기 등)과 마찬가지로 별도 Storyboard/XAML 애니메이션
+    /// 없이 코드비하인드 <see cref="DispatcherTimer"/> 한 번으로 구현했습니다(펄스가 겹쳐 들어와도
+    /// 각자 자기 타이머가 끝나면 원래 색으로 되돌리므로 문제 없음). 지금 활성 탭에 그려져 있지 않은
+    /// 와이어는 조용히 무시합니다(<see cref="ApplyNodeStatus"/>와 동일한 원칙).
+    /// </summary>
+    public void PulseWire(FlowActivityEvent evt)
+    {
+        var key = WireKey(evt.FromNodeId, evt.OutputPort, evt.ToNodeId);
+        if (!_wireLinesByKey.TryGetValue(key, out var lines))
+        {
+            return;
+        }
+
+        var accent = (Brush)FindResource("AccentBrush");
+        var normal = (Brush)FindResource("PrimaryTextBrush");
+
+        foreach (var line in lines)
+        {
+            line.Stroke = accent;
+            line.StrokeThickness = 3;
+
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+            timer.Tick += (_, _) =>
+            {
+                line.Stroke = normal;
+                line.StrokeThickness = 2;
+                timer.Stop();
+            };
+            timer.Start();
+        }
+    }
+
+    /// <summary>
+    /// (EC-03, EC-06 확장, EC-10 확장, 사용자 요청으로 노드 드래그-이동 확장) 카드를 더블클릭
+    /// (<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로 <see cref="OpenPropertyDialog"/>를
+    /// 엽니다. 한 번 클릭이면 Ctrl(<see cref="ModifierKeys.Control"/>)이 눌려 있는지로 갈립니다 —
+    /// (EC-10) Ctrl+클릭은 <see cref="ToggleNodeSelection"/>으로 그 노드만 선택 목록에 추가/제거
+    /// (여러 노드를 모아 <see cref="GroupSelectedNodes"/>로 그룹 묶기, 이 경로는 드래그-이동 후보로는
+    /// 삼지 않습니다 — 여러 노드 동시 이동은 이번 요청 범위 밖), (EC-06) Ctrl 없는 일반 클릭은
+    /// <see cref="SelectNode"/>로 "이 노드 하나만" 선택(다른 선택은 모두 해제)한 뒤
+    /// <see cref="BeginNodeDrag"/>로 이동 후보 상태를 시작합니다(실제로 옮겨질지는
+    /// <see cref="ContinueNodeDrag"/>의 임계값 판정에 달려 있어, 그대로 마우스를 놓으면 평범한
+    /// 클릭-선택과 동일하게 동작합니다). 어느 경우든 <paramref name="e"/>.Handled를 <c>true</c>로
+    /// 설정해, 이 클릭이 <see cref="NodeCanvas"/>의 배경 클릭 핸들러(<see cref="OnCanvasBackgroundMouseDown"/>)로
     /// 버블링되어 방금 한 선택이 곧바로 해제되는 것을 막습니다.
     /// </summary>
     private void OnCardMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1090,9 +1412,35 @@ public partial class FlowCanvasView : UserControl
         else
         {
             SelectNode(nodeId);
+            BeginNodeDrag(nodeId, e);
         }
 
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// (사용자 요청, 2026-08-14) <see cref="OnCardMouseLeftButtonDown"/>의 일반 클릭 분기에서 호출되어
+    /// <paramref name="nodeId"/>를 "이동 후보"로 기록합니다 — 시작 시점의 마우스 좌표와
+    /// <see cref="NodeConfig"/>의 현재 X/Y를 기억해두고, EC-02 와이어 드래그와 동일하게
+    /// <see cref="Mouse.Capture(System.Windows.IInputElement)"/>로 <see cref="NodeCanvas"/>가 이후
+    /// 모든 마우스 이벤트를 받도록 만듭니다(마우스가 카드 밖으로 빠르게 나가도 드래그가 끊기지 않게
+    /// 하기 위함). 아직 실제로 카드를 옮기지는 않습니다 — <see cref="ContinueNodeDrag"/>가
+    /// <see cref="NodeMoveDragThreshold"/>를 넘는 이동을 감지한 뒤부터 비로소 이동이 시작됩니다.
+    /// </summary>
+    private void BeginNodeDrag(string nodeId, MouseButtonEventArgs e)
+    {
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config))
+        {
+            return;
+        }
+
+        _dragNodeId = nodeId;
+        _dragNodeStartMouse = e.GetPosition(NodeCanvas);
+        _dragNodeStartX = config.X;
+        _dragNodeStartY = config.Y;
+        _dragNodeMoved = false;
+
+        Mouse.Capture(NodeCanvas);
     }
 
     /// <summary>
@@ -1722,6 +2070,56 @@ public partial class FlowCanvasView : UserControl
 
         /// <inheritdoc />
         public string Description => $"노드 속성 편집: {_after.Name}";
+
+        /// <inheritdoc />
+        public void Do()
+        {
+            _owner._nodeConfigs[_nodeId] = _after;
+            _owner.RedrawActiveTab();
+        }
+
+        /// <inheritdoc />
+        public void Undo()
+        {
+            _owner._nodeConfigs[_nodeId] = _before;
+            _owner.RedrawActiveTab();
+        }
+    }
+
+    /// <summary>
+    /// Class명 : 노드 이동 커맨드
+    /// 역활 및 기능 : 캔버스에 이미 배치된 노드를 드래그로 옮긴 결과를 Undo/Redo 가능하게 만드는 커맨드
+    ///
+    /// (사용자 요청, 2026-08-14: "캔버스에 배치한 노드를 이동할 수 없음") <see cref="FinishNodeDrag"/>가
+    /// 드래그를 끝맺을 때 실행됩니다. <see cref="EditNodePropertiesCommand"/>와 동일하게
+    /// <paramref name="before"/>/<paramref name="after"/> 두 스냅샷을 통째로 기억해두는 방식(필드 단위
+    /// diff가 아님)이라 구현이 단순합니다 — 다른 점은 이 커맨드가 만들어지는 시점에는 이미
+    /// <see cref="ContinueNodeDrag"/>가 실시간 미리보기로 <c>_nodeConfigs[nodeId]</c>를 <paramref name="after"/>와
+    /// 같은 값으로 바꿔둔 상태라는 것뿐입니다(<c>Do()</c>가 다시 같은 값을 대입하는 것은 중복이지만
+    /// 무해하며, Undo/Redo 스택에 정확한 짝을 남기기 위해 필요합니다). 노드 타입을 특정하지 않고
+    /// <see cref="NodeConfig"/>/<see cref="_nodeConfigs"/>만 다루므로, 지금 등록된 타입뿐 아니라
+    /// 앞으로 새로 추가되는 어떤 노드 타입에도 그대로 적용됩니다(사용자 요청의 "앞으로도 계속 생성
+    /// 노드에서도 적용" 조건 — 이 커맨드도 <see cref="RenderNode"/>의 드래그 시작 지점(<see cref="OnCardMouseLeftButtonDown"/>)도
+    /// 노드 타입을 전혀 분기하지 않기 때문입니다).
+    /// </summary>
+    private sealed class MoveNodeCommand : IEditorCommand
+    {
+        private readonly FlowCanvasView _owner;
+        private readonly string _nodeId;
+        private readonly NodeConfig _before;
+        private readonly NodeConfig _after;
+
+        /// <summary>이동 전(<paramref name="before"/>)/후(<paramref name="after"/>) 스냅샷을 기억해두는 생성자.</summary>
+        public MoveNodeCommand(FlowCanvasView owner, string nodeId, NodeConfig before, NodeConfig after)
+        {
+            _owner = owner;
+            _nodeId = nodeId;
+            _before = before;
+            _after = after;
+        }
+
+        /// <inheritdoc />
+        public string Description => $"노드 이동: {_after.Name}";
 
         /// <inheritdoc />
         public void Do()

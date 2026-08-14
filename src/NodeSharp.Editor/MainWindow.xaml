@@ -62,6 +62,13 @@
   이벤트를 각각 FlowCanvas.SearchNodes/FlowCanvas.NavigateToNode에 연결하는 OnExplorerQueryChanged/
   OnExplorerResultActivated도 생성자에서 함께 구독한다(FlowCanvas.SelectionChanged 구독과 동일한
   패턴).
+  (LK-02b) Runner의 SignalR 모니터링 스트림(LK-02a)을 반영하는 마지막 조각 — 네 번째 탭 "Debug"
+  (신규 DebugSidebarView)를 EC-11/EC-12와 동일하게 "탭만 늘리면 됨" 패턴으로 추가하고, 타이틀바에
+  연결 상태 배지(ConnectionStatusText, 이미 있는 아이콘/제목 TextBlock과 동일하게 클릭 불가능한
+  순수 표시 요소라 Button 스타일 문제 없음)를 새 열로 끼워 넣었다(ThemePickerButton/최소화/최대화/
+  닫기 버튼의 Grid.Column을 하나씩 뒤로 밀었다). Window.Loaded/Closed에 OnWindowLoaded/
+  OnWindowClosed를 새로 연결해 EditorMonitorClient(Core, LK-02b)의 시작/정리를 창 생명주기에 맞췄다
+  (자세한 배선은 MainWindow.xaml.cs LK-02b 블록 참고).
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -75,7 +82,9 @@
         Background="{DynamicResource WindowBackgroundBrush}"
         WindowStyle="None"
         ResizeMode="CanResize"
-        StateChanged="OnWindowStateChanged">
+        StateChanged="OnWindowStateChanged"
+        Loaded="OnWindowLoaded"
+        Closed="OnWindowClosed">
     <!-- (EC-04) Ctrl+S로도 저장을 트리거 — 메뉴 클릭과 동일한 OnSaveFlowClick을 호출한다.
          (EC-06) Ctrl+C/Ctrl+V도 같은 패턴으로 추가 — 각각 OnCopyNodeClick/OnPasteNodeClick 호출.
          (EC-07) Ctrl+Z/Ctrl+Y도 같은 패턴으로 추가 — CommandBinding에 CanExecute까지 연결해
@@ -241,6 +250,7 @@
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <TextBlock Grid.Column="0" Text="🟠" FontSize="13"
@@ -249,20 +259,28 @@
                        Foreground="{DynamicResource PrimaryTextBrush}"
                        FontSize="12" VerticalAlignment="Center" />
 
+            <!-- (LK-02b) Runner(EditorMonitorClient, Core)의 SignalR 연결 상태 — 클릭 불가능한 순수
+                 표시용 TextBlock이라(위 아이콘/제목과 동일한 패턴) Button 스타일 미비 문제와 무관.
+                 OnWindowLoaded가 시작한 EditorMonitorClient.ConnectionStateChanged를 그대로 반영한다. -->
+            <TextBlock x:Name="ConnectionStatusText" Grid.Column="2"
+                       Text="⚪ Runner 연결 안됨"
+                       Foreground="{DynamicResource SecondaryTextBrush}"
+                       FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0" />
+
             <!-- (ED-B4) 테마 선택 팝업 버튼 — 클릭 가능한 컨트롤이라 IsHitTestVisibleInChrome 필요 -->
-            <themes:ThemePickerButton Grid.Column="2"
+            <themes:ThemePickerButton Grid.Column="3"
                        Margin="0,0,8,0" VerticalAlignment="Center"
                        shell:WindowChrome.IsHitTestVisibleInChrome="True" />
 
-            <Button x:Name="MinimizeButton" Grid.Column="3" Content="─"
+            <Button x:Name="MinimizeButton" Grid.Column="4" Content="─"
                     Style="{StaticResource TitleBarButtonStyle}"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
                     Click="OnMinimizeClick" />
-            <Button x:Name="MaximizeRestoreButton" Grid.Column="4" Content="☐"
+            <Button x:Name="MaximizeRestoreButton" Grid.Column="5" Content="☐"
                     Style="{StaticResource TitleBarButtonStyle}"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
                     Click="OnMaximizeRestoreClick" />
-            <Button x:Name="CloseButton" Grid.Column="5" Content="✕"
+            <Button x:Name="CloseButton" Grid.Column="6" Content="✕"
                     Style="{StaticResource TitleBarCloseButtonStyle}"
                     shell:WindowChrome.IsHitTestVisibleInChrome="True"
                     Click="OnCloseClick" />
@@ -277,6 +295,13 @@
             <Menu Background="Transparent" Foreground="{DynamicResource PrimaryTextBrush}">
                 <MenuItem Header="파일">
                     <MenuItem Header="저장" InputGestureText="Ctrl+S" Click="OnSaveFlowClick" />
+                    <Separator />
+                    <!-- (LK-02b 후속, 사용자 요청 — "Runner를 배포 형식으로 실행하고 싶다") Node-RED의
+                         "Deploy" 버튼과 비슷한 경험을 주는 진입점 — Runner는 여전히 별도 프로세스지만
+                         (헤드리스 배포 요구사항 유지, README "빌드·테스트 확인 방법" 참고), 이 메뉴가
+                         대신 그 프로세스를 실행/저장하거나 정지해준다. -->
+                    <MenuItem Header="Runner 실행(배포)" Click="OnRunnerDeployClick" />
+                    <MenuItem Header="Runner 중지" Click="OnRunnerStopClick" />
                 </MenuItem>
                 <MenuItem Header="편집">
                     <MenuItem Header="실행 취소" InputGestureText="Ctrl+Z" Command="{x:Static ApplicationCommands.Undo}" />
@@ -361,6 +386,11 @@
                     </TabItem>
                     <TabItem x:Name="ExplorerTab" Header="Explorer">
                         <views:ExplorerPanelView x:Name="ExplorerPanel" />
+                    </TabItem>
+                    <!-- (LK-02b) 네 번째 탭 "Debug" — EC-12 Explorer와 동일하게 "탭만 늘리면 됨" 패턴으로
+                         추가(별도 AskUserQuestion 없이 진행, EC-12 README 선례와 동일한 낮은 리스크 판단). -->
+                    <TabItem Header="Debug">
+                        <views:DebugSidebarView x:Name="DebugPanel" />
                     </TabItem>
                 </TabControl>
             </Grid>

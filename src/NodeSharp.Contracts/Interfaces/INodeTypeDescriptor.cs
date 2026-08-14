@@ -28,6 +28,12 @@ namespace NodeSharp.Contracts.Interfaces;
 /// (02번 문서 9번 탭 카드3의 <c>HttpRequestNodeType.Descriptor</c> 예시) — <c>NodeTypeRegistry.ScanAssembly</c>
 /// (RG-01)가 이 관례를 따라 어셈블리에서 <see cref="INodeTypeDescriptor"/> 타입의 정적 멤버를 찾아
 /// 수집합니다.</item>
+/// <item><b>(LK-02b 후속, 사용자 요청) <see cref="SupportsManualTrigger"/></b>: <c>IFlowNode.MaxConcurrency</c>
+/// (RT-06)와 동일한 방식으로 기본 구현 멤버(<c>=&gt; false</c>)로 추가했습니다 — 기존 3개 노드 타입
+/// (Function/Switch/Debug)은 아무것도 바꾸지 않아도 계속 컴파일되고 자동으로 <c>false</c>이며, Inject
+/// 노드 타입만 <c>true</c>로 재정의합니다(<c>NR-04</c>/<c>NR-11</c>의 "계약을 넓히려면 기존 구현체
+/// 전부를 고쳐야 함" 선례와 달리, 이번엔 대부분의 구현체가 손댈 필요가 없는 선택적 확장이라 기본
+/// 구현 멤버 쪽이 더 적합하다고 판단).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -79,4 +85,11 @@ public interface INodeTypeDescriptor
 
     /// <summary>노드 속성 편집 다이얼로그에 표시할 입력 필드 목록(9번 탭 카드3, <see cref="PropertyField"/> 참고).</summary>
     IReadOnlyList<PropertyField> PropertySchema { get; }
+
+    /// <summary>
+    /// (LK-02b 후속) 이 노드 타입이 <see cref="IManuallyTriggerable"/>을 구현해 캔버스에서 수동 트리거
+    /// 버튼(▶)을 보여줘야 하는지 여부입니다. 기본값 <c>false</c> — Inject처럼 실제로 구현하는 타입만
+    /// 재정의합니다(위 클래스 remarks 참고).
+    /// </summary>
+    bool SupportsManualTrigger => false;
 }

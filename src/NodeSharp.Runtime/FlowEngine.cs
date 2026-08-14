@@ -252,6 +252,15 @@ namespace NodeSharp.Runtime;
 /// <c>NodeSharp.Util.Messaging.EventBus</c>에는 있지만, <see cref="IEventBus"/> 계약에는 없음 —
 /// Contracts→Runtime 순환 참조 방지 원칙상 계약을 넓히려면 <c>NR-04</c>/<c>NR-11</c> 때처럼 기존
 /// 구현체 전부를 함께 고쳐야 해 이번 Step 범위를 벗어남, 저위험 판단으로 동기 <c>Publish</c> 유지).</para>
+/// <para>
+/// (LK-02b 후속, 사용자 요청) <see cref="TriggerManualAsync"/>가 추가됐습니다 — LK-02b가 SignalR로
+/// Runner→Editor 모니터링 스트림만 만들고 반대 방향(Editor→Runner 제어)은 만들지 않았던 공백을
+/// 메웁니다. 사용자가 "Inject 노드를 클릭/버튼으로 트리거하려는데 방법을 모르겠다"고 보고해 조사한
+/// 결과, <c>InjectNode.TriggerAsync</c>(<c>NR-03a</c>)는 이미 있었지만 지금까지 xUnit 테스트만
+/// 직접 호출했을 뿐 Editor에서 실제로 호출할 채널이 없었음을 확인 — <see cref="IManuallyTriggerable"/>
+/// 인터페이스를 새로 만들어 <c>InjectNode</c>가 구현하게 하고, 이 엔진이 <c>is</c> 패턴 매칭으로
+/// (구체 타입을 몰라도) 호출을 위임하도록 했습니다. Runner의 <c>MonitorHub.TriggerInject(nodeId)</c>
+/// (SignalR 클라이언트 호출 가능 메서드)가 이 메서드를 호출하는 실제 경로입니다.</para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -625,6 +634,28 @@ public sealed class FlowEngine
         {
             gate.Release();
         }
+    }
+
+    /// <summary>
+    /// (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") <paramref name="nodeId"/>가
+    /// 배포된 노드이고 <see cref="IManuallyTriggerable"/>을 구현하면(예: <c>InjectNode</c>) 그
+    /// <see cref="IManuallyTriggerable.TriggerAsync"/>를 호출합니다. Editor 캔버스의 "노드 클릭"이
+    /// Runner의 SignalR <c>MonitorHub.TriggerInject</c>를 거쳐 이 메서드를 호출하는 것이 실제 사용
+    /// 경로입니다(xUnit 테스트도 직접 호출 가능). 이 클래스(<see cref="FlowEngine"/>)는
+    /// <c>InjectNode</c> 같은 구체 노드 타입을 전혀 몰라도 됩니다 — <c>is</c> 패턴 매칭만으로 판별하는
+    /// 플러그인 아키텍처 원칙(<see cref="IManuallyTriggerable"/> 자체 문서 참고). 대상이 배포돼 있지
+    /// 않거나(오래된 nodeId, 재배포로 제거됨 등) <see cref="IManuallyTriggerable"/>을 구현하지 않으면
+    /// (예: Function/Switch/Debug 노드 Id를 잘못 넘긴 경우) 조용히 아무 일도 하지 않습니다 — 존재하지
+    /// 않는 대상에 대한 <see cref="RouteAsync"/>와 동일한 관용 원칙.
+    /// </summary>
+    public Task TriggerManualAsync(string nodeId, object? payload, CancellationToken ct)
+    {
+        if (_nodes.TryGetValue(nodeId, out var node) && node is IManuallyTriggerable triggerable)
+        {
+            return triggerable.TriggerAsync(payload, BuildContext(nodeId, node), ct);
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

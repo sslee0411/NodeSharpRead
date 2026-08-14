@@ -28,6 +28,9 @@ namespace NodeSharp.Runner;
 /// (LK-02a) 생성자가 <c>StatusBroadcaster?</c>도 선택적으로 주입받습니다 — 있으면 두 배포 호출
 /// (초기 배포 + <see cref="FlowFileWatcher"/> 콜백의 재배포) 모두에 <c>attachMonitor</c> 콜백으로
 /// 넘겨, 새로 만들어지는 <c>FlowEngine</c>의 이벤트가 SignalR로 Editor에 중계되게 합니다.
+/// (LK-02b 후속) 생성자가 <see cref="CurrentEngineHolder"/>도 같은 방식(선택적)으로 주입받습니다 —
+/// 있으면 두 배포 호출 직후 최신 <c>engine</c>을 그 홀더에 기록해, <c>MonitorHub.TriggerInject</c>가
+/// "지금 배포된 엔진"에 접근할 수 있게 합니다(<see cref="CurrentEngineHolder"/> 자체 문서 참고).
 /// </summary>
 /// <example>
 /// <code>
@@ -46,6 +49,7 @@ public sealed class Worker : BackgroundService
     private readonly ClockDriftMonitor _clockDriftMonitor;
     private readonly DiskSpaceMonitor? _diskSpaceMonitor;
     private readonly StatusBroadcaster? _statusBroadcaster;
+    private readonly CurrentEngineHolder? _currentEngineHolder;
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
@@ -69,12 +73,14 @@ public sealed class Worker : BackgroundService
         RunnerHealthState healthState,
         ClockDriftMonitor? clockDriftMonitor = null,
         DiskSpaceMonitor? diskSpaceMonitor = null,
-        StatusBroadcaster? statusBroadcaster = null)
+        StatusBroadcaster? statusBroadcaster = null,
+        CurrentEngineHolder? currentEngineHolder = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
         _diskSpaceMonitor = diskSpaceMonitor;
         _statusBroadcaster = statusBroadcaster;
+        _currentEngineHolder = currentEngineHolder;
     }
 
     /// <summary>
@@ -113,6 +119,13 @@ public sealed class Worker : BackgroundService
         {
             _healthState.RecordDeploy(engine);
         }
+        // (LK-02b 후속) 배포 직후 최신 engine을 홀더에 기록 — MonitorHub.TriggerInject가 이 값을 읽어
+        // "지금 배포된 엔진"에 TriggerManualAsync를 호출한다(engine이 null이어도 그대로 기록해, 아직
+        // 한 번도 배포되지 않은 상태를 홀더도 정확히 반영하게 한다).
+        if (_currentEngineHolder is not null)
+        {
+            _currentEngineHolder.Engine = engine;
+        }
 
         // (LK-01) flows.json.signal 변경을 감지해 자동 재배포 — 부팅 시점엔 flows.json이 아직 없어서
         // (또는 문법 오류라) engine이 null이었어도, 그 뒤 Editor에서 최초로 저장하면 이 콜백이 새
@@ -123,6 +136,10 @@ public sealed class Worker : BackgroundService
             if (engine is not null)
             {
                 _healthState.RecordDeploy(engine);
+            }
+            if (_currentEngineHolder is not null)
+            {
+                _currentEngineHolder.Engine = engine;
             }
         });
 

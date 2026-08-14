@@ -5,6 +5,10 @@ using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
+// (v3.01 버그 수정) "NodeSharp.Nodes.Debug" 네임스페이스 전체를 using하면 이 파일이 나중에
+// System.Diagnostics.Debug(정적 클래스)를 쓰게 될 경우 이름이 겹칠 수 있어, DebugNodeType 타입
+// 하나만 별칭으로 가져온다(FlowCanvasView.xaml.cs가 INodeTypeDescriptor에 이미 쓴 것과 동일한 방식).
+using DebugNodeType = NodeSharp.Nodes.Debug.DebugNodeType;
 
 namespace NodeSharp.Editor.Views;
 
@@ -38,6 +42,8 @@ public partial class PaletteView : UserControl
     /// 팔레트가 Phase 7 이후에도 계속 비어 있던 공백이 있었습니다 — 여기서 코어 노드 플러그인
     /// 어셈블리를 직접 스캔해 채웁니다. 새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 한 줄씩
     /// 추가해야 팔레트에 나타납니다. (FN-01) FunctionNodeType 추가.
+    /// (v3.01 버그 수정) NR-11(Debug 노드)이 이 목록에 한 줄 추가하는 것을 빠뜨려 Debug 노드가
+    /// 팔레트에 나타나지 않던 누락을 보완 — DebugNodeType 추가.
     /// </summary>
     public PaletteView()
     {
@@ -45,6 +51,7 @@ public partial class PaletteView : UserControl
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
+        _registry.ScanAssembly(typeof(DebugNodeType).Assembly);
         RefreshAllCards();
         ApplyFilter(string.Empty);
     }

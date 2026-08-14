@@ -1,7 +1,12 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
+using Microsoft.Win32;
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Core;
 
 namespace NodeSharp.Editor;
 
@@ -45,9 +50,32 @@ namespace NodeSharp.Editor;
 /// 하이라이트를 트리거합니다. "편집 → 찾기"/Ctrl+F(<c>ApplicationCommands.Find</c>)가 공유하는
 /// <see cref="OnFindClick"/>은 <c>SidebarTabControl.SelectedItem</c>을 <c>ExplorerTab</c>으로 바꾸고
 /// <c>ExplorerPanel.FocusSearchBox()</c>를 호출해 탭 전환과 동시에 검색창에 포커스를 줍니다.
+/// (LK-02b) 네 번째 탭 "Debug"(<see cref="Views.DebugSidebarView"/>)와 타이틀바 연결 상태 배지
+/// (<c>ConnectionStatusText</c>)가 추가되면서, <see cref="OnWindowLoaded"/>(<see cref="Window.Loaded"/>)가
+/// <see cref="EditorMonitorClient"/>(Core, Runner의 "/hubs/monitor" SignalR Hub 클라이언트)를 만들어
+/// 4가지 이벤트(<see cref="NodeStatusEvent"/>/<see cref="FlowActivityEvent"/>/<see cref="DebugMessageEvent"/>/
+/// <see cref="NodeErrorEvent"/>)와 연결 상태 변화를 각각 <c>FlowCanvas.ApplyNodeStatus</c>/
+/// <c>FlowCanvas.PulseWire</c>/<c>DebugPanel.AppendDebugMessage</c>/<c>DebugPanel.AppendNodeError</c>/
+/// <see cref="UpdateConnectionBadge"/>에 연결한 뒤 <c>StartAsync()</c>합니다. SignalR 콜백은 SignalR
+/// 자체 스레드에서 오므로(WPF UI 스레드가 아님) 전부 <see cref="Dispatcher.Invoke(System.Action)"/>로
+/// 감쌉니다 — 감싸지 않으면 UI 요소를 다른 스레드에서 건드리는 WPF 규칙 위반으로 예외가 납니다.
+/// <see cref="OnWindowClosed"/>(<see cref="Window.Closed"/>)가 <c>DisposeAsync()</c>로 연결을 정리합니다.
+/// (LK-02b 후속, ★ 사용자 요청 — "Node-RED처럼 배포 버튼 하나로 살아나는 경험을 원함") "파일" 메뉴에
+/// "Runner 실행(배포)"(<see cref="OnRunnerDeployClick"/>)/"Runner 중지"(<see cref="OnRunnerStopClick"/>)
+/// 2개 항목이 추가됐습니다 — <see cref="RunnerProcessManager"/>(신규, Core 폴더)로 Runner 실행 파일을
+/// 자식 프로세스로 띄우거나 정지합니다. Editor와 Runner를 하나의 프로세스로 합치는 재설계는 하지
+/// 않았습니다(<see cref="RunnerProcessManager"/> 클래스 remarks 참고 — 헤드리스 배포 요구사항 유지) —
+/// 대신 이 메뉴가 "버튼 하나로 실행"이라는 체감만 제공합니다.
 /// </summary>
 public partial class MainWindow : Window
 {
+    // (LK-02b) Runner SignalR Hub 클라이언트 — 생성만 여기서 하고 실제 연결 시도는 OnWindowLoaded에서
+    // 한다(창이 완전히 그려진 뒤에 시작해야 FlowCanvas/DebugPanel의 x:Name 필드가 확실히 준비됨).
+    private readonly EditorMonitorClient _monitorClient = new();
+
+    // (LK-02b 후속, 사용자 요청) "Runner 실행(배포)"/"Runner 중지" 메뉴가 쓰는 프로세스 관리자.
+    private readonly RunnerProcessManager _runnerProcessManager = new();
+
     /// <summary>
     /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-11) <c>FlowCanvas</c>는
     /// <c>InitializeComponent</c> 직후 이미 생성돼 있으므로(x:Name 필드), <see cref="Window.Loaded"/>를
@@ -60,6 +88,92 @@ public partial class MainWindow : Window
         FlowCanvas.SelectionChanged += OnCanvasSelectionChanged;
         ExplorerPanel.QueryChanged += OnExplorerQueryChanged;
         ExplorerPanel.ResultActivated += OnExplorerResultActivated;
+        // (LK-02b 후속) FlowCanvas.InjectTriggerRequested는 SignalR을 몰라도 되므로, 이 창이 대신
+        // EditorMonitorClient.TriggerInjectAsync를 호출한다(OnInjectTriggerRequested 참고).
+        FlowCanvas.InjectTriggerRequested += OnInjectTriggerRequested;
+    }
+
+    /// <summary>
+    /// (LK-02b) 창이 완전히 로드된 뒤 <see cref="_monitorClient"/>의 4가지 이벤트를 캔버스/Debug
+    /// 패널/연결 배지에 연결하고 <c>StartAsync()</c>를 호출합니다. Runner가 아직 실행 중이 아니어도
+    /// (<see cref="EditorMonitorClient"/> 클래스 remarks의 "실패 격리" 항목) 예외 없이 조용히
+    /// "연결 안됨" 상태로 남고, Editor는 오프라인 편집을 계속할 수 있습니다.
+    /// </summary>
+    private async void OnWindowLoaded(object sender, RoutedEventArgs e)
+    {
+        _monitorClient.ConnectionStateChanged += connected => Dispatcher.Invoke(() => UpdateConnectionBadge(connected));
+        _monitorClient.NodeStatusReceived += evt => Dispatcher.Invoke(() => FlowCanvas.ApplyNodeStatus(evt));
+        _monitorClient.FlowActivityReceived += evt => Dispatcher.Invoke(() => FlowCanvas.PulseWire(evt));
+        _monitorClient.DebugMessageReceived += evt => Dispatcher.Invoke(() => DebugPanel.AppendDebugMessage(evt));
+        _monitorClient.NodeErrorReceived += evt => Dispatcher.Invoke(() => DebugPanel.AppendNodeError(evt));
+
+        await _monitorClient.StartAsync();
+
+        // (LK-02b 후속) 이전에 사용자가 선택해둔 Runner 실행 파일 경로가 있으면 불러온다 — "Runner
+        // 실행(배포)" 메뉴를 눌렀을 때 매번 다시 물어보지 않기 위함.
+        await _runnerProcessManager.LoadPathAsync(FlowCanvas.DataDirectory);
+    }
+
+    /// <summary>
+    /// (LK-02b) 타이틀바 <c>ConnectionStatusText</c>를 연결 상태에 맞게 바꿉니다 — Node-RED 5.0의
+    /// 연결 상태 점(초록/회색)과 같은 개념을 텍스트 배지 하나로 단순화했습니다.
+    /// </summary>
+    private void UpdateConnectionBadge(bool connected)
+    {
+        ConnectionStatusText.Text = connected ? "🟢 Runner 연결됨" : "⚪ Runner 연결 안됨";
+        ConnectionStatusText.Foreground = (Brush)FindResource(connected ? "GreenBrush" : "SecondaryTextBrush");
+    }
+
+    /// <summary>
+    /// (LK-02b) 창이 닫힐 때 <see cref="_monitorClient"/>를 정리합니다(<see cref="EditorMonitorClient"/>
+    /// 클래스 remarks의 "구독 해제" 항목). <see cref="Window.Closed"/> 핸들러는 <c>async void</c>만
+    /// 가능해(반환값을 기다려줄 호출자가 없음) 실패해도 프로세스 종료를 막지 않도록 예외를 삼킵니다
+    /// (창을 닫는 도중의 정리 실패가 사용자에게 새삼 알릴 만한 문제는 아니라고 판단).
+    /// </summary>
+    private async void OnWindowClosed(object? sender, EventArgs e)
+    {
+        try
+        {
+            await _monitorClient.DisposeAsync();
+        }
+        catch
+        {
+            // (위 요약 참고) 창을 닫는 중의 정리 실패는 조용히 무시한다.
+        }
+    }
+
+    /// <summary>
+    /// (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") <c>FlowCanvas.InjectTriggerRequested</c>가
+    /// 발생하면(캔버스의 ▶ 버튼 클릭) <c>EditorMonitorClient.TriggerInjectAsync</c>로 위임합니다.
+    /// 아직 Runner에 연결돼 있지 않으면(<c>_monitorClient.IsConnected</c>가 <c>false</c>) 호출 자체를
+    /// 시도하지 않고 안내 메시지만 띄웁니다(연결 안 된 상태에서 <c>InvokeAsync</c>를 호출하면 예외가
+    /// 나므로, 사용자에게 "왜 안 되는지"를 명확히 알려주는 편이 더 낫다고 판단). 연결은 돼 있지만
+    /// 호출 자체가 실패하면(드묾 — 예: 호출 도중 연결이 막 끊긴 경합) 그 예외 메시지를 그대로 보여줍니다.
+    /// </summary>
+    private async void OnInjectTriggerRequested(string nodeId)
+    {
+        if (!_monitorClient.IsConnected)
+        {
+            MessageBox.Show(
+                "Runner에 연결되어 있지 않아 트리거할 수 없습니다. Runner를 실행한 뒤 다시 시도해 주세요.",
+                "Inject 트리거 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            await _monitorClient.TriggerInjectAsync(nodeId);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Inject 트리거 중 오류가 발생했습니다.\n{ex.Message}",
+                "Inject 트리거 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
     }
 
     /// <summary>
@@ -161,6 +275,100 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
+    }
+
+    /// <summary>
+    /// (LK-02b 후속, ★ 사용자 요청 — "Node-RED의 Deploy 버튼 같은 경험") "파일 → Runner 실행(배포)"
+    /// 클릭 핸들러입니다. 이미 Runner에 연결돼 있으면(<c>_monitorClient.IsConnected</c>) 새로 띄울
+    /// 필요가 없으므로 <see cref="OnSaveFlowClick"/>만 재사용해 저장 → LK-01 자동 재배포를 트리거합니다.
+    /// 연결돼 있지 않으면 <see cref="RunnerProcessManager.RunnerExecutablePath"/>가 비어 있거나 그
+    /// 파일이 더 이상 없을 때만 <see cref="OpenFileDialog"/>로 Runner 실행 파일(.exe/.dll)을 한 번
+    /// 물어보고(이후 <see cref="RunnerProcessManager.SavePathAsync"/>로 기억해 다음부터는 다시 묻지
+    /// 않음), <see cref="RunnerProcessManager.Start"/>로 자식 프로세스를 띄웁니다. <c>HubConnection</c>의
+    /// <c>WithAutomaticReconnect()</c>는 "한 번 연결된 뒤 끊긴 경우"만 자동 재시도하고 최초
+    /// <c>StartAsync</c> 실패는 재시도하지 않으므로(<see cref="EditorMonitorClient"/> 클래스 remarks
+    /// 참고), Runner의 Kestrel이 포트를 열 때까지 짧은 간격으로 직접 재시도합니다. 연결에 성공하면
+    /// 즉시 저장까지 이어서 실행해(첫 배포) "누르면 바로 살아난다"는 체감을 완성합니다.
+    /// </summary>
+    private async void OnRunnerDeployClick(object sender, RoutedEventArgs e)
+    {
+        if (_monitorClient.IsConnected)
+        {
+            OnSaveFlowClick(sender, e);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_runnerProcessManager.RunnerExecutablePath) ||
+            !File.Exists(_runnerProcessManager.RunnerExecutablePath))
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "NodeSharp.Runner 실행 파일 선택",
+                Filter = "Runner 실행 파일 (*.exe;*.dll)|*.exe;*.dll|모든 파일 (*.*)|*.*"
+            };
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            _runnerProcessManager.RunnerExecutablePath = dialog.FileName;
+            await _runnerProcessManager.SavePathAsync(FlowCanvas.DataDirectory);
+        }
+
+        try
+        {
+            _runnerProcessManager.Start();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Runner 실행 중 오류가 발생했습니다.\n{ex.Message}",
+                "Runner 실행 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return;
+        }
+
+        for (var attempt = 0; attempt < 10 && !_monitorClient.IsConnected; attempt++)
+        {
+            await Task.Delay(500);
+            await _monitorClient.StartAsync();
+        }
+
+        if (_monitorClient.IsConnected)
+        {
+            OnSaveFlowClick(sender, e);
+        }
+        else
+        {
+            MessageBox.Show(
+                "Runner를 실행했지만 아직 연결되지 않았습니다. 잠시 후 \"Runner 실행(배포)\"를 다시 눌러 주세요.",
+                "Runner 실행",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// (LK-02b 후속, ★ 사용자 요청) "파일 → Runner 중지" 클릭 핸들러입니다. 이 창(정확히는
+    /// <see cref="_runnerProcessManager"/>)이 직접 띄운 프로세스만 정지할 수 있습니다 — 사용자가
+    /// 터미널 등에서 직접 실행한 Runner는 이 메뉴로 끌 수 없다는 점을 안내 메시지로 알립니다
+    /// (<see cref="RunnerProcessManager"/> 클래스 remarks의 "외부에서 실행한 Runner는 정지 불가" 항목 참고).
+    /// </summary>
+    private void OnRunnerStopClick(object sender, RoutedEventArgs e)
+    {
+        if (!_runnerProcessManager.IsRunning)
+        {
+            MessageBox.Show(
+                "이 Editor가 직접 실행한 Runner 프로세스가 없습니다(외부에서 실행한 Runner는 이 메뉴로 정지할 수 없습니다).",
+                "Runner 중지",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        _runnerProcessManager.Stop();
     }
 
     /// <summary>
