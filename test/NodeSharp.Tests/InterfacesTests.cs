@@ -10,7 +10,8 @@ namespace NodeSharp.Tests;
 /// <see cref="INodeContext"/>(CT-04a, 02번 설계 문서 2번 탭 카드 1·6·9)에 대한 단위 테스트입니다.
 /// 인터페이스 자체는 동작이 없으므로, 여기서는 (1) 최소 스텁 구현이 실제로 컴파일·동작하는지,
 /// (2) <see cref="INodeContext"/>의 기본 인터페이스 멤버(<c>SetStatus(NodeStatusLevel, ...)</c>)가
-/// 문자열 오버로드로 올바르게 위임되는지를 확인합니다.
+/// 문자열 오버로드로 올바르게 위임되는지, (3) (NR-11) <c>INodeContext.Debug</c>가 인자를 그대로
+/// 전달하는지를 확인합니다.
 /// </summary>
 public class InterfacesTests
 {
@@ -19,6 +20,7 @@ public class InterfacesTests
     {
         public (string SourceNodeId, int OutputPort, Msg Msg)? LastRoute { get; private set; }
         public (string Fill, string Shape, string Text)? LastStatus { get; private set; }
+        public (string NodeName, string MsgJson)? LastDebug { get; private set; }
 
         // (NR-04) INodeContext.Flow/Global 신규 멤버 — 이 파일은 인터페이스 자체(Contracts)만
         // 다루는 최소 스텁 취지라, Runtime의 ContextScope를 끌어오지 않고 Dictionary 기반의
@@ -33,6 +35,9 @@ public class InterfacesTests
         }
 
         public void SetStatus(string fill, string shape, string text) => LastStatus = (fill, shape, text);
+
+        // (NR-11) INodeContext.Debug 신규 멤버 — 실제 이벤트 발행 없이 호출 여부·인자만 기록.
+        public void Debug(string nodeName, string msgJson) => LastDebug = (nodeName, msgJson);
     }
 
     /// <summary>(NR-04) <see cref="IContextScope"/> 최소 스텁 — 실제 Context 저장소 없이 Dictionary 하나로 Get/Set/Keys를 그대로 구현.</summary>
@@ -106,6 +111,18 @@ public class InterfacesTests
 
         var fake = (FakeNodeContext)ctx;
         Assert.Equal(("green", "dot", "연결됨"), fake.LastStatus);
+    }
+
+    [Fact]
+    public void INodeContext_Debug는_nodeName과_msgJson을_그대로_전달한다()
+    {
+        // (NR-11) 인터페이스 계약 자체(어떤 인자로 호출되는지)만 검증 — 실제 DebugMessageEvent 발행은
+        // NodeContext(Runtime)의 몫이라 이 파일(Contracts 전용) 범위 밖(DebugNodeTests가 실제 발행까지 검증).
+        var ctx = new FakeNodeContext();
+
+        ctx.Debug("디버그", "{\"payload\":42}");
+
+        Assert.Equal(("디버그", "{\"payload\":42}"), ctx.LastDebug);
     }
 
     [Fact]

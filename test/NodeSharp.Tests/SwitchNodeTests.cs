@@ -50,6 +50,9 @@ public class SwitchNodeTests
         public void SetStatus(string fill, string shape, string text) { }
         public IContextScope Flow { get; } = new ContextScope(new InMemoryContextStore(), "flow", "test");
         public IContextScope Global { get; } = new ContextScope(new InMemoryContextStore(), "global", string.Empty);
+
+        // (NR-11) INodeContext.Debug 신규 멤버 — 이 파일의 테스트 범위(Switch 라우팅)와 무관해 무동작.
+        public void Debug(string nodeName, string msgJson) { }
     }
 
     /// <summary>수신 노드 <paramref name="portCount"/>개(r0, r1, ...)를 각각 "sw"의 0..N-1번 출력 포트에 와이어로 연결해 배포한다 — "sw" 자체는 NodeConfig 없이 두어(BuildWireOnlyEngine, InjectNodeTests와 동일 패턴) 테스트가 SwitchNode를 직접 생성할 수 있게 한다.</summary>

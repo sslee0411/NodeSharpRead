@@ -188,5 +188,8 @@ public class FlowEngineRouteAsyncTests
         // 실제 구현체 ContextScope+InMemoryContextStore를 그대로 재사용(별도 스텁 불필요).
         public IContextScope Flow { get; } = new ContextScope(new InMemoryContextStore(), "flow", "test");
         public IContextScope Global { get; } = new ContextScope(new InMemoryContextStore(), "global", string.Empty);
+
+        // (NR-11) INodeContext.Debug 신규 멤버 — 이 파일의 테스트 범위(RouteAsync)와 무관해 무동작.
+        public void Debug(string nodeName, string msgJson) { }
     }
 }

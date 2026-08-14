@@ -30,6 +30,10 @@ namespace NodeSharp.Runtime;
 /// 동일) — <c>FlowEngine</c>의 옛 <c>NoOpNodeContext.SetStatus</c>는 아무것도 하지 않았지만, 이제부터는
 /// 실제로 이벤트가 발행됩니다(RT-07 EventBus 연동 전까지 계속 무동작이라던 FlowEngine 주석이 이 Step에서
 /// 해소됨).</item>
+/// <item><b>(NR-11) <c>Debug</c></b>: <see cref="SetStatus"/>와 동일한 <see cref="IEventBus"/>에
+/// <c>DebugMessageEvent</c>를 발행합니다 — Debug 노드가 <c>ctx.Debug(Name, msg.ToJson())</c>를 호출하면
+/// 이 컨텍스트가 이미 아는 <see cref="_nodeId"/>와 함께 이벤트로 감싸 발행합니다(<c>INodeContext.Debug</c>
+/// XML 문서 참고).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -93,4 +97,8 @@ public sealed class NodeContext : INodeContext
     /// <inheritdoc/>
     public void SetStatus(string fill, string shape, string text) =>
         _eventBus.Publish(new NodeStatusEvent(_nodeId, fill, shape, text, DateTime.UtcNow));
+
+    /// <inheritdoc/>
+    public void Debug(string nodeName, string msgJson) =>
+        _eventBus.Publish(new DebugMessageEvent(_nodeId, nodeName, msgJson, DateTime.UtcNow));
 }

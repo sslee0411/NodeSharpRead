@@ -30,6 +30,16 @@ namespace NodeSharp.Contracts.Interfaces;
 /// 신설해 <see cref="Flow"/>/<see cref="Global"/> 2개만 우선 노출합니다(사용자 확인, 2026-08 세션).
 /// <c>Local</c>(node 스코프)/<c>Env</c>는 아직 이 인터페이스에 없습니다 — <c>Env</c>는 <c>NR-10b</c>
 /// (환경변수 병합)가 실제 값을 채우기 전까지는 노출해도 항상 빈 스코프라 의미가 없어 함께 미룹니다.</item>
+/// <item><b>(NR-11) <see cref="Debug"/> 추가</b>: Debug 노드(03번 Step맵 Phase 7)가
+/// <c>NodeSharp.Contracts.Events.DebugMessageEvent</c>를 발행하려면 <c>IEventBus</c>가 필요한데,
+/// Debug 노드는 <c>nodes\NodeSharp.Nodes.Debug</c>(Contracts만 참조)에 있어 Runtime의 <c>IEventBus</c>를
+/// 직접 참조할 수 없습니다 — <c>SetStatus</c>가 <c>NodeStatusEvent</c> 발행을 감춘 것과 정확히 같은
+/// 이유로, <see cref="Debug"/>도 이 인터페이스 뒤로 <c>DebugMessageEvent</c> 발행을 감춥니다. <c>Flow</c>/
+/// <c>Global</c> 추가 때의 선례(추상 멤버로 추가, 기존 <c>INodeContext</c> 구현체 전부를 함께 수정)를
+/// 그대로 따라 <c>default</c> 본문 없는 추상 멤버로 추가했습니다 — 아무 동작도 하지 않는 기본
+/// 구현을 주면 실제 발행 책임이 있는 <c>NodeContext</c>(Runtime)가 실수로 재정의를 빠뜨려도 조용히
+/// 무동작이 될 위험이 있어(발행이 "선택"이 아니라 Debug 노드의 핵심 기능이므로), 매번 컴파일 타임에
+/// 강제하는 쪽을 택했습니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -74,4 +84,12 @@ public interface INodeContext
     /// 해석할 때 씁니다.
     /// </summary>
     IContextScope Global { get; }
+
+    /// <summary>
+    /// (NR-11) Debug 노드 출력 1건을 알립니다 — 구현체가 <c>DebugMessageEvent(NodeId, nodeName, msgJson, At)</c>를
+    /// 발행합니다(<c>NodeId</c>는 이 컨텍스트가 이미 알고 있는 노드 자신의 Id, <c>At</c>은 발행 시점
+    /// UTC — <see cref="SetStatus(string, string, string)"/>과 동일한 패턴). <paramref name="msgJson"/>은
+    /// 보통 <c>Msg.ToJson()</c> 결과입니다.
+    /// </summary>
+    void Debug(string nodeName, string msgJson);
 }

@@ -26,6 +26,10 @@
     - FunctionNode(Function 노드의 첫 구현체, NCalc 표현식 모드)를 실제 FlowEngine 배포·라우팅
       경로로 검증하기 위해 nodes\NodeSharp.Nodes.Function\NodeSharp.Nodes.Function.csproj
       ProjectReference 추가.
+
+    Step: NR-11 (03번 개발 Step맵.html, Phase 7)
+    - DebugNode(Phase 7의 마지막 코어 노드 플러그인)를 실제 FlowEngine 배포·라우팅 경로로 검증하기
+      위해 nodes\NodeSharp.Nodes.Debug\NodeSharp.Nodes.Debug.csproj ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -75,6 +79,9 @@
     <!-- FN-01(03번 개발 Step맵.html) — FunctionNode(코어 노드 플러그인, 첫 구현체)를 실제 FlowEngine
          배포·라우팅 경로로 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Function\NodeSharp.Nodes.Function.csproj" />
+    <!-- NR-11(03번 개발 Step맵.html) — DebugNode(코어 노드 플러그인, Phase 7 마지막)를 실제 FlowEngine
+         배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Debug\NodeSharp.Nodes.Debug.csproj" />
   </ItemGroup>
 
 </Project>
