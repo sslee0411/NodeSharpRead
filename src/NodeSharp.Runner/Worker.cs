@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using NodeSharp.Registry;
+using NodeSharp.Runner.Core;
 using NodeSharp.Runner.Health;
+using NodeSharp.Runtime;
 
 namespace NodeSharp.Runner;
 
@@ -18,6 +20,10 @@ namespace NodeSharp.Runner;
 /// <see cref="ClockDriftMonitor"/>를 호출해 결과를 계속 기록하는 반복 루프가 추가됐습니다.
 /// (RN-05b-a) 같은 5분 주기 루프에서 <see cref="DiskSpaceMonitor"/>도 함께 호출해 디스크 여유
 /// 공간을 기록합니다(Critical 시 RetentionSweeper 강제 실행 연동은 RN-05b-b에서 이어집니다).
+/// (LK-01) 초기 배포 직후 <see cref="FlowFileWatcher"/>를 만들어 <c>flows.json.signal</c> 변경을
+/// 감시합니다 — 신호가 오면 <c>FlowDeployer.RedeployAsync</c>로 같은(또는 아직 없었다면 새) 엔진에
+/// 재배포하고, 성공하면 <see cref="RunnerHealthState.RecordDeploy"/>도 다시 호출해 /health가 최신
+/// 배포 결과를 돌려주게 합니다.
 /// </summary>
 /// <example>
 /// <code>
@@ -35,6 +41,9 @@ public sealed class Worker : BackgroundService
     private readonly RunnerHealthState _healthState;
     private readonly ClockDriftMonitor _clockDriftMonitor;
     private readonly DiskSpaceMonitor? _diskSpaceMonitor;
+
+    /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
+    private FlowFileWatcher? _flowFileWatcher;
 
     /// <summary>
     /// (RN-04a) DI로 <see cref="RunnerHealthState"/>를 주입받습니다 — 배포에 성공했을 때
@@ -76,11 +85,24 @@ public sealed class Worker : BackgroundService
         var stages = await new StartupSequencer().RunAsync(baseDirectory, stoppingToken);
 
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
-        var engine = await new FlowDeployer().DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken);
+        var deployer = new FlowDeployer();
+        FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken);
         if (engine is not null)
         {
             _healthState.RecordDeploy(engine);
         }
+
+        // (LK-01) flows.json.signal 변경을 감지해 자동 재배포 — 부팅 시점엔 flows.json이 아직 없어서
+        // (또는 문법 오류라) engine이 null이었어도, 그 뒤 Editor에서 최초로 저장하면 이 콜백이 새
+        // 엔진을 만들어 배포한다(FlowDeployer.RedeployAsync XML 문서 참고).
+        _flowFileWatcher = new FlowFileWatcher(baseDirectory, async ct =>
+        {
+            engine = await deployer.RedeployAsync(engine, baseDirectory, registry, ct);
+            if (engine is not null)
+            {
+                _healthState.RecordDeploy(engine);
+            }
+        });
 
         var diskSpaceMonitor = _diskSpaceMonitor ?? new DiskSpaceMonitor(baseDirectory);
 
@@ -117,5 +139,16 @@ public sealed class Worker : BackgroundService
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// (LK-01) <see cref="ExecuteAsync"/>가 만든 <see cref="_flowFileWatcher"/>를 정리합니다 —
+    /// 해제하지 않으면 프로세스 종료 전까지 <see cref="FileSystemWatcher"/>가 계속 살아있게 됩니다
+    /// (공통 규칙 ② — 구독/리소스는 반드시 해제).
+    /// </summary>
+    public override void Dispose()
+    {
+        _flowFileWatcher?.Dispose();
+        base.Dispose();
     }
 }

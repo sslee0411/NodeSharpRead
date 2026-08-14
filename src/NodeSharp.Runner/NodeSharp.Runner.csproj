@@ -209,6 +209,43 @@
       List&lt;FlowDefinition&gt; 자체의 System.Text.Json 왕복(탭 순서·개수·Disabled 보존) 테스트 1개 추가.
     - tools/check-xmldoc.py 오류 0건, 신규/수정 5개 .cs 파일 전부 중괄호 균형 확인 완료 — 이 세션도
       샌드박스에 .NET SDK가 없어(dotnet 명령 없음) dotnet build/test는 사용자 로컬 확인 필요.
+
+    Step: LK-01 (03번 개발 Step맵.html, Phase 8 — FileSystemWatcher(.signal) 감지)
+    - 완료 기준: ".signal 파일 변경을 FileSystemWatcher가 감지해 자동 재배포가 트리거되는지 확인".
+      착수 전 FlowEngine.DeployAsync(NodeSharp.Runtime, RT-01b~RT-09b) 본문을 다시 읽어, 같은
+      FlowEngine 인스턴스에 DeployMode.Full로 반복 호출해도 _currentFlow 기준으로 diff해 이전
+      배포에만 있던 노드를 OnCloseAsync로 정리한다는 이미 확정된 동작을 확인 — 재배포마다 새
+      FlowEngine을 새로 만들면 이전 인스턴스의 노드(예: Inject 타이머)가 정리되지 않고 새는
+      문제가 있어, "엔진 인스턴스를 재사용"하는 설계를 택함(FlowEngine/RT-0x 쪽은 이번에도 전혀
+      수정하지 않음 — EC-05 확장 Step과 동일한 "확정 API 비변경" 원칙).
+    - src\NodeSharp.Runner\FlowDeployer.cs 수정 — 기존 DeployIfAvailableAsync의 병합(MergeActiveFlows)/
+      엔진 생성(CreateEngineWithLogger) 로직을 private 헬퍼로 추출(동작 100% 동일, 기존 6개 테스트로
+      회귀 확인)하고, 새 공개 메서드 RedeployAsync(FlowEngine? existingEngine, baseDirectory, registry, ct)
+      추가 — flows.json을 다시 읽어 병합한 뒤, existingEngine이 있으면 그 인스턴스에, 없으면(최초
+      실행 시 flows.json이 아직 없었던 경우) 새로 만들어 DeployAsync(Full)로 배포. flows.json이 없거나
+      JSON 파싱에 실패하면 예외를 던지지 않고 existingEngine을 그대로 반환(StartupSequencer의 "단계별
+      격리" 원칙과 동일).
+    - src\NodeSharp.Runner\Core\FlowFileWatcher.cs 신규 — 02번 설계 문서 1번 탭 폴더 구조가 지정한
+      경로 그대로. FileSystemWatcher로 flows.json.signal의 Changed/Created를 구독하고,
+      System.Threading.Timer로 마지막 이벤트 이후 조용한 시간(기본 300ms, 생성자에서 조정 가능)이
+      지나야 콜백을 1번 호출하는 디바운스를 구현(Windows FileSystemWatcher.Changed가 한 번의 저장에도
+      여러 번 연달아 발생할 수 있는 특성 대응). Interlocked.CompareExchange로 재진입(콜백 진행 중 새
+      신호 도착)을 가드하고, 콜백 예외는 삼켜 콘솔에만 기록(Worker의 5분 주기 루프와 동일한 예외
+      격리 원칙) — IDisposable로 구독/타이머를 정리.
+    - src\NodeSharp.Runner\Worker.cs 수정 — ExecuteAsync가 초기 배포 직후 FlowFileWatcher를 만들어
+      baseDirectory를 감시하고, 신호가 오면 FlowDeployer.RedeployAsync로 재배포한 뒤 성공 시
+      RunnerHealthState.RecordDeploy도 다시 호출하도록 콜백을 연결(engine 지역 변수를 async 람다
+      클로저로 캡처). Dispose를 override해 _flowFileWatcher를 해제(공통 규칙 ② 구독/리소스 해제).
+    - test\NodeSharp.Tests\FlowDeployerTests.cs에 테스트 4개 추가(완료 기준 중 "재배포" 절반 직접
+      검증: 기존 엔진 없으면 새로 만들어 배포, 기존 엔진 있으면 같은 인스턴스에 재배포(Assert.Same),
+      이전 flows.json 기준 노드가 정리되고 새 flows.json 기준 노드로 교체, flows.json이 없으면
+      기존 엔진을 그대로 반환). test\NodeSharp.Tests\FlowFileWatcherTests.cs 신규 — 테스트 4개
+      (완료 기준 중 "감지" 절반 직접 검증: signal 파일 생성 시 콜백 호출, 이미 있는 signal 파일을
+      재저장해도(Changed 경로) 콜백 호출, 디바운스 시간 안의 연속 저장 5회가 콜백 1회로 합쳐짐,
+      콜백이 예외를 던져도 다음 신호를 정상적으로 계속 처리).
+    - tools/check-xmldoc.py 오류 0건, 수정/신규 5개 .cs 파일(FlowDeployer.cs, Core\FlowFileWatcher.cs,
+      Worker.cs, FlowDeployerTests.cs, FlowFileWatcherTests.cs) 전부 중괄호 균형 확인 완료 — 이
+      샌드박스에는 .NET SDK가 없어(dotnet 명령 없음) dotnet build/test는 사용자 로컬 확인 필요.
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>

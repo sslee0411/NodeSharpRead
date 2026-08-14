@@ -11,7 +11,10 @@ namespace NodeSharp.Tests;
 /// <summary>
 /// <see cref="FlowDeployer"/>·<see cref="NodeStatusConsoleLogger"/>(RN-02)에 대한 테스트입니다.
 /// 완료 기준(03번 Step맵 RN-02): "더미 노드 1개를 DeployAsync한 뒤 콘솔에 상태 로그가 출력되는지
-/// 확인(Inject/Function/Switch/Debug 동작 확인은 Phase 8 LK-02에서 별도 수행)".
+/// 확인(Inject/Function/Switch/Debug 동작 확인은 Phase 8 LK-02에서 별도 수행)". (LK-01) 완료 기준
+/// "flows.json.signal 변경 감지 → 자동 재배포"에서 "자동 재배포" 부분(<see cref="FlowDeployer.RedeployAsync"/>)도
+/// 이 클래스가 검증합니다 — "감지" 부분(<see cref="FileSystemWatcher"/> 연동)은
+/// <c>FlowFileWatcherTests</c>가 별도로 다룹니다.
 /// </summary>
 public class FlowDeployerTests
 {
@@ -230,6 +233,141 @@ public class FlowDeployerTests
                 dir, stages, NewRegistryWithStatusPing(), CancellationToken.None);
 
             Assert.Null(engine);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RedeployAsync는_기존_엔진이_없으면_새로_만들어_배포한다()
+    {
+        // (LK-01) 부팅 시점엔 flows.json이 없었지만 Editor가 그 뒤 처음 저장한 상황을 시뮬레이션.
+        var dir = NewTempDir();
+        try
+        {
+            var flow = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow }));
+
+            var engine = await new FlowDeployer().RedeployAsync(
+                existingEngine: null, dir, NewRegistryWithStatusPing(), CancellationToken.None);
+
+            Assert.NotNull(engine);
+            Assert.Contains("n1", engine!.Nodes.Keys);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RedeployAsync는_기존_엔진이_있으면_새_엔진을_만들지_않고_같은_인스턴스에_재배포한다()
+    {
+        // (LK-01) 완료 기준 근거: 매번 새 FlowEngine을 만들면 이전 엔진의 노드(예: Inject 타이머)가
+        // OnCloseAsync 없이 버려지는 누수가 생긴다 — 같은 인스턴스를 재사용해야 DeployAsync의 기존
+        // 노드 정리(OnCloseAsync) 경로를 탄다(FlowDeployer.cs 클래스 remarks의 LK-01 항목 참고).
+        var dir = NewTempDir();
+        try
+        {
+            var flow1 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑1", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow1 }));
+
+            var registry = NewRegistryWithStatusPing();
+            var deployer = new FlowDeployer();
+            var firstEngine = await deployer.RedeployAsync(existingEngine: null, dir, registry, CancellationToken.None);
+            Assert.NotNull(firstEngine);
+
+            var flow2 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n2", "status-ping", "핑2", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow2 }));
+
+            var secondEngine = await deployer.RedeployAsync(firstEngine, dir, registry, CancellationToken.None);
+
+            Assert.Same(firstEngine, secondEngine); // 참조 동일 = 새 엔진을 만들지 않고 재사용됨
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RedeployAsync는_이전_노드를_정리하고_새_flows_json_기준으로_노드를_교체한다()
+    {
+        // (LK-01) 완료 기준 직접 검증: 재배포가 실제로 flows.json의 최신 내용을 반영하는지 —
+        // n1만 있던 배포를 n2만 있는 flows.json으로 재배포하면 n1은 사라지고 n2만 남아야 한다.
+        var dir = NewTempDir();
+        try
+        {
+            var flow1 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑1", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow1 }));
+
+            var registry = NewRegistryWithStatusPing();
+            var deployer = new FlowDeployer();
+            var engine = await deployer.RedeployAsync(existingEngine: null, dir, registry, CancellationToken.None);
+            Assert.Contains("n1", engine!.Nodes.Keys);
+
+            var flow2 = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n2", "status-ping", "핑2", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            File.WriteAllText(Path.Combine(dir, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow2 }));
+
+            engine = await deployer.RedeployAsync(engine, dir, registry, CancellationToken.None);
+
+            Assert.DoesNotContain("n1", engine!.Nodes.Keys);
+            Assert.Contains("n2", engine.Nodes.Keys);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task RedeployAsync는_flows_json이_없으면_기존_엔진을_그대로_반환한다()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            // flows.json을 아예 만들지 않음 — 신호가 잘못 왔거나 아직 저장 전인 상황.
+            var registry = NewRegistryWithStatusPing();
+            var deployer = new FlowDeployer();
+
+            var resultWhenNull = await deployer.RedeployAsync(existingEngine: null, dir, registry, CancellationToken.None);
+            Assert.Null(resultWhenNull);
+
+            // 이미 배포된 엔진이 있는 상태에서 flows.json이 사라진(또는 아직 없는) 경우 — 있던 걸 지우지 않음.
+            var flow = new FlowDefinition(
+                Id: "f1", Name: "테스트 플로우",
+                Nodes: new List<NodeConfig> { new("n1", "status-ping", "핑", "f1", new Dictionary<string, object?>()) },
+                Wires: new List<Wire>());
+            var dir2 = NewTempDir();
+            try
+            {
+                File.WriteAllText(Path.Combine(dir2, "flows.json"), JsonSerializer.Serialize(new List<FlowDefinition> { flow }));
+                var existingEngine = await deployer.RedeployAsync(existingEngine: null, dir2, registry, CancellationToken.None);
+
+                var resultWhenMissing = await deployer.RedeployAsync(existingEngine, dir, registry, CancellationToken.None); // dir(flows.json 없음)로 재배포 시도
+                Assert.Same(existingEngine, resultWhenMissing);
+            }
+            finally
+            {
+                Directory.Delete(dir2, recursive: true);
+            }
         }
         finally
         {

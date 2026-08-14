@@ -476,4 +476,151 @@
         <Setter Property="Margin"     Value="0,10"/>
     </Style>
 
+    <!-- ════════════════════════════════════════════
+         §13 ─ 메뉴(MenuItem) — 상단 메뉴 바 + 팝업 서브메뉴 공통 테마
+         (LK-01 확인 중 사용자가 스크린샷으로 보고: 상단 메뉴("편집" 등)를
+         클릭했을 때 열리는 드롭다운이 OS 기본 흰색 목록으로 표시되는 버그)
+         근본 원인: MainWindow.xaml의 <Menu>는 Background/Foreground를
+         인라인으로 지정했지만, 그 안의 <MenuItem>들이 여는 서브메뉴 Popup은
+         MenuItem 자신의 ControlTemplate이 그리는 영역이라 이 저장소 어디에도
+         MenuItem 스타일이 정의된 적이 없어(ComboBox의 PropCombo와 달리
+         "만들어졌지만 안 쓰인" 것도 아니라 아예 존재하지 않았음) WPF 기본
+         Aero 스타일 그대로 노출된 것. x:Key 없는 암시적(implicit) 스타일이라
+         이 딕셔너리가 병합된 곳이면 MainWindow.xaml을 건드리지 않아도 모든
+         MenuItem(현재의 파일/편집/보기/도움말 메뉴 전부, 향후 추가될
+         ContextMenu 포함)에 자동 적용됨. Role(TopLevelHeader/TopLevelItem/
+         SubmenuHeader/SubmenuItem)별 Trigger로 메뉴 바 항목과 팝업 안 항목의
+         모양을 구분하는 WPF 표준 패턴(PresentationFramework.Aero 기본
+         MenuItem 템플릿과 동일한 구조를 이 저장소 색상 리소스로 재구성).
+    ════════════════════════════════════════════ -->
+    <Style TargetType="MenuItem">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize"   Value="{DynamicResource FontBase}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource UiFont}"/>
+        <Setter Property="Padding"    Value="10,6"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Grid SnapsToDevicePixels="True">
+                        <Border x:Name="root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{DynamicResource RadiusSm}"
+                                SnapsToDevicePixels="True">
+                            <Grid Margin="{TemplateBinding Padding}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="MenuItemIconColumn"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Path x:Name="checkMark"
+                                      Grid.Column="0"
+                                      Data="M 0 3.5 L 3 7 L 8 0"
+                                      Stroke="{DynamicResource AccBrush}"
+                                      StrokeThickness="1.6"
+                                      Width="10" Height="8"
+                                      Margin="0,0,8,0"
+                                      VerticalAlignment="Center"
+                                      Visibility="Collapsed"/>
+                                <ContentPresenter x:Name="headerHost"
+                                                  Grid.Column="1"
+                                                  ContentSource="Header"
+                                                  RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  TextBlock.FontSize="{TemplateBinding FontSize}"
+                                                  TextBlock.FontFamily="{TemplateBinding FontFamily}"/>
+                                <TextBlock x:Name="gestureText"
+                                           Grid.Column="2"
+                                           Text="{TemplateBinding InputGestureText}"
+                                           Foreground="{DynamicResource Text3Brush}"
+                                           FontSize="{DynamicResource FontSm}"
+                                           FontFamily="{DynamicResource UiFont}"
+                                           Margin="24,0,0,0"
+                                           VerticalAlignment="Center"/>
+                                <Path x:Name="submenuArrow"
+                                      Grid.Column="3"
+                                      Data="M 0 0 L 4 3.5 L 0 7 Z"
+                                      Fill="{DynamicResource Text3Brush}"
+                                      Width="4" Height="7"
+                                      Margin="14,0,0,0"
+                                      VerticalAlignment="Center"
+                                      Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <Popup x:Name="PART_Popup"
+                               AllowsTransparency="True"
+                               Focusable="False"
+                               PopupAnimation="Fade"
+                               IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                               PlacementTarget="{Binding ElementName=root}"
+                               Placement="Bottom">
+                            <Border Background="{DynamicResource CardBrush}"
+                                    BorderBrush="{DynamicResource Border2Brush}"
+                                    BorderThickness="1"
+                                    CornerRadius="{DynamicResource RadiusSm}"
+                                    Padding="4"
+                                    MinWidth="{Binding ActualWidth, ElementName=root}">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Opacity="0.35" Color="Black"/>
+                                </Border.Effect>
+                                <ScrollViewer CanContentScroll="True"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter Grid.IsSharedSizeScope="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Role" Value="TopLevelHeader">
+                            <Setter TargetName="submenuArrow" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="gestureText"  Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="checkMark"    Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PART_Popup"   Property="Placement"  Value="Bottom"/>
+                            <Setter Property="Padding" Value="12,6"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="TopLevelItem">
+                            <Setter TargetName="PART_Popup"   Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="submenuArrow" Property="Visibility" Value="Collapsed"/>
+                            <Setter Property="Padding" Value="12,6"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="SubmenuHeader">
+                            <Setter TargetName="submenuArrow" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="PART_Popup"   Property="Placement"  Value="Right"/>
+                        </Trigger>
+                        <Trigger Property="Role" Value="SubmenuItem">
+                            <Setter TargetName="PART_Popup" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="root" Property="Background" Value="{DynamicResource AccFaintBrush}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource AccBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ════════════════════════════════════════════
+         §14 ─ 메뉴 구분선(Separator) — 서브메뉴 팝업 안에서 쓰는 암시적 스타일
+         §12의 키 있는 DividerLine(패널용, Margin 0,10)과 별개 — 메뉴 팝업
+         안에서는 그만큼 넓은 여백이 어색해 더 좁은 여백으로 새로 정의.
+         x:Key가 없어 <Separator/>만 그대로 써도 자동 적용됨(MainWindow.xaml의
+         "편집" 메뉴 안 3개 Separator가 대상).
+    ════════════════════════════════════════════ -->
+    <Style TargetType="Separator">
+        <Setter Property="Background"      Value="{DynamicResource Border2Brush}"/>
+        <Setter Property="Height"          Value="1"/>
+        <Setter Property="Margin"          Value="4,4"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
 </ResourceDictionary>

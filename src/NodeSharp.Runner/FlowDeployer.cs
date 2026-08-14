@@ -36,6 +36,25 @@ namespace NodeSharp.Runner;
 /// 동일한 정신). 병합 단위의 <see cref="FlowDefinition.Id"/>/<see cref="FlowDefinition.Name"/>은
 /// 표시용일 뿐 <c>FlowEngine</c> 동작에 영향을 주지 않아 고정값(<c>"__merged__"</c>)을 씁니다.
 /// </para>
+/// <para>
+/// (LK-01) <see cref="RedeployAsync"/> 신규 — <c>Core\FlowFileWatcher</c>가 <c>flows.json.signal</c>
+/// 변경을 감지했을 때 호출됩니다. <see cref="DeployIfAvailableAsync"/>와 달리 <c>StartupStageResult</c>
+/// 게이트가 없습니다(부팅 시퀀스 밖에서 프로세스 수명 내내 반복 호출되므로 부팅 시점 1회성 검사와는
+/// 무관) — 대신 flows.json이 없거나 JSON 파싱에 실패하거나(저장 도중 신호가 먼저 도착하는 극단적
+/// 경합 등) 활성 탭이 하나도 없으면 아무 것도 하지 않고 기존 엔진을 그대로 돌려줍니다(있던 걸 잘못
+/// 지우지 않음). 두 메서드가 "flows.json을 읽어 활성 탭만 병합"하는 로직을 공유하도록
+/// <see cref="MergeActiveFlows"/>로 뽑아냈습니다(중복 제거, 동작은 기존과 완전히 동일).
+/// <see cref="RedeployAsync"/>에 이미 떠 있는 <see cref="FlowEngine"/>을 넘기면(재배포) 그 위에 그대로
+/// <c>DeployAsync(..., DeployMode.Full, ...)</c>를 호출합니다 — <c>FlowEngine.DeployAsync</c>가
+/// Full 모드에서도 "새 <c>FlowDefinition</c>에 없는 기존 노드는 <c>OnCloseAsync</c>로 먼저 정리한다"는
+/// 것을 <c>RT-03</c> 구현에서 이미 확인했으므로(코드 재확인, 착수 전 조사), 매번 <c>new FlowEngine(...)</c>을
+/// 새로 만들지 않고 <b>같은 엔진 인스턴스를 계속 재사용</b>합니다 — 새 엔진을 매번 만들면 이전
+/// 엔진이 갖고 있던 노드(예: Inject의 Interval 타이머)가 <c>OnCloseAsync</c> 없이 그대로 버려져
+/// 타이머가 계속 백그라운드에서 도는 누수가 생기기 때문입니다. <paramref name="existingEngine"/>이
+/// <c>null</c>이면(부팅 시점엔 flows.json이 아직 없었지만 Editor에서 그 뒤 처음 저장한 경우) 새
+/// 엔진을 만들어 <see cref="NodeStatusConsoleLogger"/>도 함께 구독시킵니다(<see cref="DeployIfAvailableAsync"/>가
+/// 하던 것과 동일한 조립 — <see cref="CreateEngineWithLogger"/>로 공유).
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -69,6 +88,81 @@ public sealed class FlowDeployer
         var flowsPath = Path.Combine(baseDirectory, "flows.json");
         var json = await File.ReadAllTextAsync(flowsPath, ct);
         var flows = JsonSerializer.Deserialize<List<FlowDefinition>>(json);
+        var merged = MergeActiveFlows(flows);
+        if (merged is null)
+        {
+            return null;
+        }
+
+        var engine = CreateEngineWithLogger(registry);
+        await engine.DeployAsync(merged, DeployMode.Full, ct);
+        return engine;
+    }
+
+    /// <summary>
+    /// (LK-01) <c>flows.json.signal</c> 변경 감지 시 <c>Core\FlowFileWatcher</c>가 호출하는 재배포
+    /// 진입점입니다. <paramref name="existingEngine"/>이 있으면(이미 배포된 적 있음) 그 인스턴스에
+    /// 그대로 재배포하고(위 클래스 remarks의 LK-01 항목 참고 — 노드 누수 방지), 없으면 새로 만들어
+    /// 배포합니다. flows.json이 없거나 JSON 파싱에 실패하거나 활성 탭이 하나도 없으면
+    /// <paramref name="existingEngine"/>을 그대로 반환합니다(원래 <c>null</c>이었으면 계속 <c>null</c>).
+    /// </summary>
+    public async Task<FlowEngine?> RedeployAsync(
+        FlowEngine? existingEngine,
+        string baseDirectory,
+        INodeRegistry registry,
+        CancellationToken ct)
+    {
+        var flowsPath = Path.Combine(baseDirectory, "flows.json");
+        if (!File.Exists(flowsPath))
+        {
+            return existingEngine;
+        }
+
+        List<FlowDefinition>? flows;
+        try
+        {
+            var json = await File.ReadAllTextAsync(flowsPath, ct);
+            flows = JsonSerializer.Deserialize<List<FlowDefinition>>(json);
+        }
+        catch (JsonException)
+        {
+            // flows.json 저장(.tmp → File.Replace)과 .signal 발행 사이는 원자적 저장이 이미 끝난
+            // 뒤라 정상적으로는 발생하지 않지만(EC-04 JsonWriteService 순서 참고), 혹시 모를 손상된
+            // 파일 상태에서도 재배포 시도 전체가 죽지 않도록 방어 — 다음 신호가 오면 다시 시도된다.
+            return existingEngine;
+        }
+
+        var merged = MergeActiveFlows(flows);
+        if (merged is null)
+        {
+            return existingEngine;
+        }
+
+        var engine = existingEngine ?? CreateEngineWithLogger(registry);
+        await engine.DeployAsync(merged, DeployMode.Full, ct);
+        return engine;
+    }
+
+    /// <summary>
+    /// (LK-01) <see cref="DeployIfAvailableAsync"/>·<see cref="RedeployAsync"/>가 공유하는 조립 로직 —
+    /// 새 <see cref="FlowEngine"/>을 만들고 <see cref="NodeStatusConsoleLogger"/>를 그 <c>EventBus</c>에
+    /// 구독시켜 반환합니다.
+    /// </summary>
+    private static FlowEngine CreateEngineWithLogger(INodeRegistry registry)
+    {
+        var engine = new FlowEngine(registry);
+        new NodeStatusConsoleLogger().Subscribe(engine.EventBus);
+        return engine;
+    }
+
+    /// <summary>
+    /// (★ EC-05 확장 로직을 LK-01에서 재사용 가능하도록 추출) <paramref name="flows"/>에서
+    /// <see cref="FlowDefinition.Disabled"/>가 아닌 탭들의 Nodes/Wires를 하나로 병합합니다(위 클래스
+    /// remarks 참고). <paramref name="flows"/>가 <c>null</c>이거나 비어 있거나 활성 탭이 하나도 없으면
+    /// <c>null</c>을 반환합니다.
+    /// </summary>
+    private static FlowDefinition? MergeActiveFlows(List<FlowDefinition>? flows)
+    {
         if (flows is null || flows.Count == 0)
         {
             return null;
@@ -86,11 +180,6 @@ public sealed class FlowDeployer
         // 기준으로 diff를 계산하므로(위 remarks 참고), 여러 번 나눠 호출하지 않고 한 번만 호출한다.
         var mergedNodes = activeFlows.SelectMany(f => f.Nodes).ToList();
         var mergedWires = activeFlows.SelectMany(f => f.Wires).ToList();
-        var merged = new FlowDefinition(Id: "__merged__", Name: "전체 배포", Nodes: mergedNodes, Wires: mergedWires);
-
-        var engine = new FlowEngine(registry);
-        new NodeStatusConsoleLogger().Subscribe(engine.EventBus);
-        await engine.DeployAsync(merged, DeployMode.Full, ct);
-        return engine;
+        return new FlowDefinition(Id: "__merged__", Name: "전체 배포", Nodes: mergedNodes, Wires: mergedWires);
     }
 }
