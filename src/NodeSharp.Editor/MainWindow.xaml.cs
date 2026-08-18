@@ -7,6 +7,7 @@ using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core;
+using NodeSharp.Editor.Views;
 
 namespace NodeSharp.Editor;
 
@@ -66,6 +67,21 @@ namespace NodeSharp.Editor;
 /// 자식 프로세스로 띄우거나 정지합니다. Editor와 Runner를 하나의 프로세스로 합치는 재설계는 하지
 /// 않았습니다(<see cref="RunnerProcessManager"/> 클래스 remarks 참고 — 헤드리스 배포 요구사항 유지) —
 /// 대신 이 메뉴가 "버튼 하나로 실행"이라는 체감만 제공합니다.
+/// (★ 버그 수정, 2026-08-14 — 사용자가 "프로그램 종료 시 예외 발생"으로 보고) <see cref="OnWindowLoaded"/>가
+/// 구독하는 5개 <c>_monitorClient</c> 이벤트가 <c>Dispatcher.Invoke</c>를 직접 호출하는 대신 신규
+/// <see cref="SafeDispatcherInvoke"/>를 거치도록 통일했습니다 — 창이 닫히는 시점에 <c>HubConnection</c>
+/// 정리(<c>Closed</c> 이벤트)가 겹치면 이 창의 <see cref="Dispatcher"/>가 이미 종료 중일 수 있어 생기던
+/// 예외를 막습니다(자세한 근본 원인·수정 내용은 <see cref="SafeDispatcherInvoke"/> 자체 문서 참고).
+/// (LK-03) runner.token 기반 인증이 <see cref="EditorMonitorClient"/>에 추가되면서, <see cref="OnWindowLoaded"/>의
+/// 순서가 바뀌었습니다 — 이제 <c>_monitorClient.StartAsync()</c>보다 <b>먼저</b>
+/// <c>_runnerProcessManager.LoadPathAsync</c>(Runner 실행 파일 경로, 같은 PC 판단 근거)와
+/// <see cref="RunnerTokenCache.ResolveAsync"/>(같은 PC면 Runner 폴더의 <c>runner.token</c>을,
+/// 아니면 로컬 캐시를 읽음)를 호출해 <c>_monitorClient.SetToken(...)</c>까지 끝낸 뒤 연결을
+/// 시도합니다 — 토큰 없이 먼저 연결하면 <c>TokenAuthMiddleware</c>가 401로 거부하기 때문입니다.
+/// "파일" 메뉴에 새로 추가된 "토큰 재발급"(<see cref="OnReissueTokenClick"/>)/"Runner 토큰 입력"
+/// (<see cref="OnEnterTokenClick"/>, <see cref="Views.TokenInputDialog"/> 모달 사용) 2개 항목과,
+/// 다른 연결에서 재발급이 트리거됐을 때 이 연결도 스스로 끊도록 하는 <see cref="OnTokenInvalidatedByServer"/>
+/// (<see cref="EditorMonitorClient.TokenInvalidatedByServer"/> 구독)가 함께 추가됐습니다.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -94,24 +110,92 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// (LK-02b) 창이 완전히 로드된 뒤 <see cref="_monitorClient"/>의 4가지 이벤트를 캔버스/Debug
-    /// 패널/연결 배지에 연결하고 <c>StartAsync()</c>를 호출합니다. Runner가 아직 실행 중이 아니어도
+    /// (LK-02b) 창이 완전히 로드된 뒤 <see cref="_monitorClient"/>의 이벤트를 캔버스/Debug 패널/연결
+    /// 배지에 연결하고 <c>StartAsync()</c>를 호출합니다. Runner가 아직 실행 중이 아니어도
     /// (<see cref="EditorMonitorClient"/> 클래스 remarks의 "실패 격리" 항목) 예외 없이 조용히
     /// "연결 안됨" 상태로 남고, Editor는 오프라인 편집을 계속할 수 있습니다.
+    /// (LK-03) <c>StartAsync()</c>를 호출하기 <b>전</b>에 <c>_runnerProcessManager.LoadPathAsync</c>와
+    /// <see cref="RunnerTokenCache.ResolveAsync"/>로 인증 토큰을 먼저 알아내 <c>_monitorClient.SetToken</c>에
+    /// 반영합니다 — 순서가 바뀐 이유는 클래스 remarks 참고. 토큰을 전혀 못 찾아도(최초 원격 PC
+    /// 연결 등) 예외 없이 그대로 연결을 시도해 401로 조용히 거부되고(<see cref="EditorMonitorClient"/>의
+    /// "실패 격리"), 사용자가 "Runner 토큰 입력" 메뉴로 직접 입력하면 됩니다.
     /// </summary>
     private async void OnWindowLoaded(object sender, RoutedEventArgs e)
     {
-        _monitorClient.ConnectionStateChanged += connected => Dispatcher.Invoke(() => UpdateConnectionBadge(connected));
-        _monitorClient.NodeStatusReceived += evt => Dispatcher.Invoke(() => FlowCanvas.ApplyNodeStatus(evt));
-        _monitorClient.FlowActivityReceived += evt => Dispatcher.Invoke(() => FlowCanvas.PulseWire(evt));
-        _monitorClient.DebugMessageReceived += evt => Dispatcher.Invoke(() => DebugPanel.AppendDebugMessage(evt));
-        _monitorClient.NodeErrorReceived += evt => Dispatcher.Invoke(() => DebugPanel.AppendNodeError(evt));
-
-        await _monitorClient.StartAsync();
+        _monitorClient.ConnectionStateChanged += connected => SafeDispatcherInvoke(() => UpdateConnectionBadge(connected));
+        _monitorClient.NodeStatusReceived += evt => SafeDispatcherInvoke(() => FlowCanvas.ApplyNodeStatus(evt));
+        _monitorClient.FlowActivityReceived += evt => SafeDispatcherInvoke(() => FlowCanvas.PulseWire(evt));
+        _monitorClient.DebugMessageReceived += evt => SafeDispatcherInvoke(() => DebugPanel.AppendDebugMessage(evt));
+        _monitorClient.NodeErrorReceived += evt => SafeDispatcherInvoke(() => DebugPanel.AppendNodeError(evt));
+        // (LK-03) Runner가 다른 연결에 재발급을 알리면(이 창이 재발급을 트리거한 당사자가 아니면)
+        // 스스로 끊고 사용자에게 새 토큰 재입력을 안내한다.
+        _monitorClient.TokenInvalidatedByServer += () => SafeDispatcherInvoke(OnTokenInvalidatedByServer);
 
         // (LK-02b 후속) 이전에 사용자가 선택해둔 Runner 실행 파일 경로가 있으면 불러온다 — "Runner
-        // 실행(배포)" 메뉴를 눌렀을 때 매번 다시 물어보지 않기 위함.
+        // 실행(배포)" 메뉴를 눌렀을 때 매번 다시 물어보지 않기 위함. (LK-03) 이 경로가 같은 PC
+        // 판단 근거이기도 해 아래 토큰 해석보다 먼저 불러와야 한다.
         await _runnerProcessManager.LoadPathAsync(FlowCanvas.DataDirectory);
+
+        // (LK-03) 같은 PC면 Runner 폴더의 runner.token을, 아니면 이전에 저장해둔 캐시 값을 읽어
+        // 인증 헤더를 채운다 — 둘 다 없으면 token은 null로 남아 토큰 없이 연결을 시도한다(그대로
+        // 401로 거부됨, "Runner 토큰 입력" 메뉴로 사용자가 직접 입력 가능).
+        var token = await RunnerTokenCache.ResolveAsync(_runnerProcessManager.RunnerExecutablePath, FlowCanvas.DataDirectory);
+        _monitorClient.SetToken(token);
+
+        await _monitorClient.StartAsync();
+    }
+
+    /// <summary>
+    /// (LK-03) <see cref="EditorMonitorClient.TokenInvalidatedByServer"/> 수신 시 호출됩니다 — 다른
+    /// 연결(다른 Editor 인스턴스 등)에서 토큰이 재발급됐다는 뜻이므로, 이 연결을 정리하고 사용자에게
+    /// "Runner 토큰 입력" 메뉴로 새 토큰을 입력하라고 안내합니다.
+    /// </summary>
+    private async void OnTokenInvalidatedByServer()
+    {
+        await _monitorClient.StopAsync();
+        MessageBox.Show(
+            "다른 곳에서 Runner 토큰이 재발급되어 이 연결이 더 이상 유효하지 않습니다.\n\"파일 → Runner 토큰 입력\" 메뉴로 새 토큰을 입력한 뒤 다시 연결해 주세요.",
+            "토큰 재인증 필요",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// (★ 버그 수정, 2026-08-14 — 사용자가 "프로그램 종료 시 OnWindowLoaded의 익명 메서드에서 예외
+    /// 발생"으로 보고) <see cref="Dispatcher.Invoke(System.Action)"/>를 이 메서드로 감싸 대신
+    /// 호출합니다. <b>근본 원인</b>: <see cref="OnWindowClosed"/>가 <c>_monitorClient.DisposeAsync()</c>를
+    /// 호출하면 내부 <c>HubConnection</c>이 정리되며 <c>Closed</c> 이벤트가 발생하는데(SignalR 클라이언트의
+    /// 잘 알려진 동작 — 의도적인 정상 종료에도 <c>Closed</c>가 발생함), <c>EditorMonitorClient</c> 생성자가
+    /// 이 이벤트를 <c>ConnectionStateChanged?.Invoke(false)</c>로 재발행하도록 이미 연결해뒀습니다(<see cref="Core.EditorMonitorClient"/>
+    /// 참고) — 이 재발행이 <see cref="OnWindowLoaded"/>가 구독해둔 람다(<c>Dispatcher.Invoke(...)</c>)를
+    /// 트리거하는데, 창이 닫히는 시점(마지막 창이 닫히면 기본 <c>ShutdownMode</c>가 곧바로 Application
+    /// 종료를 시작함)과 겹치면 이 창의 <see cref="Dispatcher"/>가 이미 종료를 시작했거나 끝난 상태일 수
+    /// 있어 <c>Dispatcher.Invoke</c> 자체가 예외를 던집니다. <b>수정</b>: <see cref="Dispatcher.HasShutdownStarted"/>/
+    /// <see cref="Dispatcher.HasShutdownFinished"/>를 먼저 확인해 종료 중이면 아무 것도 하지 않고
+    /// 조용히 반환하고(창이 닫히는 중엔 배지·캔버스를 갱신해도 더 이상 아무도 보지 않으므로 안전),
+    /// 그 사이의 아주 좁은 경합(체크 직후·Invoke 직전에 종료가 시작되는 경우)까지 대비해
+    /// <c>Dispatcher.Invoke</c> 호출 자체도 <c>try/catch</c>로 감쌉니다 — <see cref="OnWindowClosed"/>가
+    /// 정리 실패를 조용히 삼키는 것과 동일한 "종료 중 실패는 새삼 알릴 문제가 아니다" 원칙입니다. 5개
+    /// 이벤트(<c>ConnectionStateChanged</c>/<c>NodeStatusReceived</c>/<c>FlowActivityReceived</c>/
+    /// <c>DebugMessageReceived</c>/<c>NodeErrorReceived</c>) 구독이 전부 이 메서드를 거치도록 통일해,
+    /// 지금 재현된 <c>Closed</c> 경로뿐 아니라 창이 닫히는 순간 Runner가 다른 이벤트를 보내는 드문
+    /// 경합에도 동일하게 방어됩니다.
+    /// </summary>
+    private void SafeDispatcherInvoke(Action action)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        try
+        {
+            Dispatcher.Invoke(action);
+        }
+        catch (Exception)
+        {
+            // 위 요약 참고 — 체크 직후 종료가 시작되는 아주 좁은 경합까지 대비한 안전망, 조용히 무시.
+        }
     }
 
     /// <summary>
@@ -369,6 +453,68 @@ public partial class MainWindow : Window
         }
 
         _runnerProcessManager.Stop();
+    }
+
+    /// <summary>
+    /// (LK-03) "파일 → 토큰 재발급" 메뉴 클릭 핸들러입니다. Runner에 연결돼 있어야만 호출할 수
+    /// 있습니다(재발급 자체가 인증된 SignalR 호출 — <c>MonitorHub.ReissueToken</c> XML 문서 참고).
+    /// 성공하면 새 토큰을 <see cref="_monitorClient"/>에 즉시 반영(<see cref="EditorMonitorClient.ReissueTokenAsync"/>가
+    /// 내부에서 <c>SetToken</c>까지 호출)하고 <see cref="RunnerTokenCache.SaveAsync"/>로 로컬에도
+    /// 저장해, 다음 Editor 실행 때(원격 PC라면) 다시 입력할 필요가 없게 합니다.
+    /// </summary>
+    private async void OnReissueTokenClick(object sender, RoutedEventArgs e)
+    {
+        if (!_monitorClient.IsConnected)
+        {
+            MessageBox.Show(
+                "Runner에 연결되어 있지 않아 토큰을 재발급할 수 없습니다. 먼저 연결한 뒤 다시 시도해 주세요.",
+                "토큰 재발급 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var newToken = await _monitorClient.ReissueTokenAsync();
+            await RunnerTokenCache.SaveAsync(FlowCanvas.DataDirectory, newToken);
+            MessageBox.Show(
+                "토큰이 재발급되었습니다. 이전 토큰은 즉시 무효화되었습니다.",
+                "토큰 재발급",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"토큰 재발급 중 오류가 발생했습니다.\n{ex.Message}",
+                "토큰 재발급 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// (LK-03) "파일 → Runner 토큰 입력" 메뉴 클릭 핸들러입니다. <see cref="Views.TokenInputDialog"/>로
+    /// 사용자에게 토큰 값을 직접 입력받아(원격 PC 등 <see cref="RunnerTokenCache"/>가 자동으로 읽지
+    /// 못하는 경우) <see cref="_monitorClient"/>에 반영하고 로컬 캐시에도 저장한 뒤, 곧바로
+    /// 재연결(<see cref="EditorMonitorClient.StopAsync"/>→<see cref="EditorMonitorClient.StartAsync"/>)을
+    /// 시도합니다 — <see cref="EditorMonitorClient.SetToken"/> 자체 문서의 "즉시 반영이 필요하면
+    /// Stop 후 Start" 안내를 그대로 따릅니다.
+    /// </summary>
+    private async void OnEnterTokenClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new TokenInputDialog { Owner = this };
+        if (dialog.ShowDialog() != true || string.IsNullOrWhiteSpace(dialog.EnteredToken))
+        {
+            return;
+        }
+
+        _monitorClient.SetToken(dialog.EnteredToken);
+        await RunnerTokenCache.SaveAsync(FlowCanvas.DataDirectory, dialog.EnteredToken);
+
+        await _monitorClient.StopAsync();
+        await _monitorClient.StartAsync();
     }
 
     /// <summary>

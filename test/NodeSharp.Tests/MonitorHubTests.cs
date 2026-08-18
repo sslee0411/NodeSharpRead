@@ -12,8 +12,18 @@ namespace NodeSharp.Tests;
 /// 대한 단위 테스트입니다. 완료 기준: ① <see cref="CurrentEngineHolder.Engine"/>에 배포된 엔진이 있으면
 /// 그 엔진의 <c>TriggerManualAsync</c>로 위임되는지(실제로 와이어를 타고 전달됨) ② 아직 배포된 적이
 /// 없으면(<c>Engine</c>이 <c>null</c>) 예외 없이 조용히 무시되는지 확인. <c>Hub.Context</c>에 의존하지
-/// 않도록 설계돼(MonitorHub.cs 자체 문서 참고) SignalR 커넥션 없이 <c>new MonitorHub(holder)</c>를
+/// 않도록 설계돼(MonitorHub.cs 자체 문서 참고) SignalR 커넥션 없이 <c>new MonitorHub(holder, tokenStore)</c>를
 /// 직접 생성해 테스트할 수 있습니다.
+/// (LK-03) 생성자가 <see cref="RunnerTokenStore"/>도 받도록 바뀌어 아래 두 테스트가 더미 인스턴스를
+/// 하나씩 추가로 넘깁니다. <see cref="MonitorHub.ReissueToken"/> 자체는 여기서 단위 테스트하지
+/// 않습니다 — 내부에서 <c>Clients.Others.SendAsync(...)</c>를 호출하는데, <c>Hub.Clients</c>는
+/// 실제 SignalR 파이프라인이 인스턴스를 관리할 때만 채워지는 프로퍼티라 이렇게 직접 생성한
+/// 인스턴스로 호출하면 <see cref="NullReferenceException"/>이 납니다(<see cref="TriggerInject"/>가
+/// <c>Hub.Context</c> 대신 <c>CancellationToken.None</c>을 쓰는 것과 같은 이유의 반대 사례 — 이번엔
+/// 피할 방법이 없어 애초에 그 부분만 xUnit 범위 밖으로 남겨둠, LK-02a의 "실제 SignalR 엔드포인트
+/// 기동·연결 자체는 실제 실행 확인 영역" 선례와 동일). 토큰 교체 로직 자체(값 생성·파일 저장·
+/// 이전 값 무효화)는 <c>RunnerTokenStoreTests.cs</c>가 <see cref="RunnerTokenStore"/>를 직접
+/// 단위 테스트합니다.
 /// </summary>
 public class MonitorHubTests
 {
@@ -73,7 +83,7 @@ public class MonitorHubTests
         await engine.DeployAsync(flow, CancellationToken.None);
 
         var holder = new CurrentEngineHolder { Engine = engine };
-        var hub = new MonitorHub(holder);
+        var hub = new MonitorHub(holder, new RunnerTokenStore());
 
         await hub.TriggerInject("n1");
 
@@ -84,7 +94,7 @@ public class MonitorHubTests
     public async Task TriggerInject는_아직_배포된_엔진이_없으면_예외_없이_조용히_무시한다()
     {
         var holder = new CurrentEngineHolder(); // Engine == null
-        var hub = new MonitorHub(holder);
+        var hub = new MonitorHub(holder, new RunnerTokenStore());
 
         var exception = await Record.ExceptionAsync(() => hub.TriggerInject("아무거나"));
 

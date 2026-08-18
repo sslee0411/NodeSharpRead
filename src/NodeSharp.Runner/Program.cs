@@ -25,6 +25,12 @@
 // (LK-02b 후속, 사용자 요청) builder.Services.AddSingleton<CurrentEngineHolder>() 추가 —
 // MonitorHub.TriggerInject(Editor→Runner 첫 제어 채널)가 "지금 배포된 엔진"에 접근할 통로.
 // Worker도 같은 인스턴스를 주입받아 배포/재배포마다 갱신한다(CurrentEngineHolder 자체 문서 참고).
+// (LK-03) builder.Services.AddSingleton<RunnerTokenStore>() 추가 — 02번 문서 7번 탭 카드6의
+// RunnerAuthOptions/TokenAuthMiddleware를 실제로 배선한다. app.Build() 직후 RunnerTokenStore를
+// 꺼내 LoadOrCreateAsync로 runner.token을 준비(없으면 최초 생성)해두고, app.UseWhen(...)으로
+// "/hubs/monitor" 경로 전체에 TokenAuthMiddleware를 앞세워 협상·연결·모든 Hub 메서드 호출이 유효한
+// X-NodeSharp-Token 없이는 도달하지 못하게 막는다. /health는 이 Step 범위 밖(완료 기준이 SignalR
+// 연결만 요구)이라 계속 인증 없이 열려 있다.
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,6 +65,10 @@ builder.Services.AddSignalR();
 builder.Services.AddSingleton<StatusBroadcaster>();
 builder.Services.AddSingleton<CurrentEngineHolder>();
 
+// 3-2) (LK-03) RunnerTokenStore(현재 유효한 runner.token 값을 들고 있는 진실 공급원, 자체 문서
+//      참고) 등록 — TokenAuthMiddleware가 InvokeAsync 매개변수로 DI 주입받아 매 요청을 검증한다.
+builder.Services.AddSingleton<RunnerTokenStore>();
+
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).
 builder.WebHost.UseUrls("http://localhost:47500");
@@ -66,15 +76,31 @@ builder.WebHost.UseUrls("http://localhost:47500");
 // 5) 위에서 등록한 내용(builder)을 바탕으로 실제 앱(app)을 조립 — 이 시점부터 app이 진짜 실행 가능한 객체가 된다.
 var app = builder.Build();
 
+// 5-1) (LK-03) runner.token을 준비 — 이미 있으면 그 값을 읽고, 최초 기동이면 새로 생성해 파일로
+//      저장한다(RunnerTokenStore 자체 문서 참고). app.RunAsync()로 실제 요청을 받기 시작하기 전에
+//      반드시 끝나 있어야 TokenAuthMiddleware가 처음부터 올바른 값으로 검증할 수 있다.
+var tokenStore = app.Services.GetRequiredService<RunnerTokenStore>();
+await tokenStore.LoadOrCreateAsync(AppContext.BaseDirectory, CancellationToken.None);
+
+// 5-2) (LK-03) "/hubs/monitor" 경로(협상·연결·이 Hub의 모든 메서드 호출 포함) 전체에
+//      TokenAuthMiddleware를 앞세운다 — 어떤 app.Map...()보다도 먼저(코드 순서상) 등록해, 명시적
+//      UseRouting/UseEndpoints가 없는 이 Program.cs의 암묵적 파이프라인에서 라우팅/엔드포인트
+//      실행보다 확실히 앞선 단계에 자리 잡게 한다(TokenAuthMiddleware 클래스 문서의 "SignalR
+//      클라이언트가 보내는 모든 HTTP 요청에 헤더가 실린다" 참고). /health는 경로 조건 밖이라 계속
+//      인증 없이 열려 있다(완료 기준이 SignalR 연결만 요구, LK-03 범위 밖).
+app.UseWhen(
+    ctx => ctx.Request.Path.StartsWithSegments("/hubs/monitor"),
+    branch => branch.UseMiddleware<TokenAuthMiddleware>());
+
 // 6) "/health"라는 주소로 GET 요청이 들어오면, RunnerHealthState의 현재 상태(Snapshot)를
 //    그대로 JSON으로 돌려준다 — 이게 이 파일의 핵심 기능(헬스체크 엔드포인트).
 //    예: 브라우저에서 http://localhost:47500/health 접속하면 이 결과가 보인다.
 app.MapGet("/health", (RunnerHealthState health) => health.Snapshot());
 
-// 6-1) (LK-02a) "/hubs/monitor" 경로로 SignalR 연결을 받는다 — Editor의 EditorMonitorClient(LK-02b)가
-//      이 경로로 접속해 nodeStatus/flowActivity/debugMessage/nodeError 이벤트를 실시간으로 받는다.
-//      인증은 아직 없음(로컬호스트 전용 바인딩으로만 보호 — 토큰 인증은 LK-03 몫, MonitorHub 클래스
-//      문서 참고).
+// 6-1) (LK-02a, LK-03로 인증 추가) "/hubs/monitor" 경로로 SignalR 연결을 받는다 — Editor의
+//      EditorMonitorClient(LK-02b)가 이 경로로 접속해 nodeStatus/flowActivity/debugMessage/
+//      nodeError 이벤트를 실시간으로 받고, TriggerInject/ReissueToken(LK-02b 후속/LK-03)을
+//      호출한다. 위 5-2 미들웨어를 통과한 요청만 여기 도달한다.
 app.MapHub<MonitorHub>("/hubs/monitor");
 
 // 7) 서버를 실제로 켜고, 종료 신호(Ctrl+C 등)가 올 때까지 계속 대기한다.

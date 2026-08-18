@@ -69,6 +69,10 @@
   닫기 버튼의 Grid.Column을 하나씩 뒤로 밀었다). Window.Loaded/Closed에 OnWindowLoaded/
   OnWindowClosed를 새로 연결해 EditorMonitorClient(Core, LK-02b)의 시작/정리를 창 생명주기에 맞췄다
   (자세한 배선은 MainWindow.xaml.cs LK-02b 블록 참고).
+  (LK-03) "파일" 메뉴에 "토큰 재발급"/"Runner 토큰 입력" 2개 항목을 추가했다 — runner.token 기반
+  인증(02번 문서 7번 탭 카드6)을 실제로 조작하는 진입점. 자세한 배선(RunnerTokenCache로 같은 PC/
+  원격 PC 토큰 해석, EditorMonitorClient.SetToken/ReissueTokenAsync 연동, TokenInputDialog 모달)은
+  MainWindow.xaml.cs LK-03 블록 참고.
 -->
 <Window x:Class="NodeSharp.Editor.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -302,6 +306,12 @@
                          대신 그 프로세스를 실행/저장하거나 정지해준다. -->
                     <MenuItem Header="Runner 실행(배포)" Click="OnRunnerDeployClick" />
                     <MenuItem Header="Runner 중지" Click="OnRunnerStopClick" />
+                    <Separator />
+                    <!-- (LK-03) runner.token 기반 인증 — "토큰 재발급"은 이미 연결돼 있어야 호출 가능
+                         (인증된 SignalR 호출), "Runner 토큰 입력"은 같은 PC 자동 인식(RunnerTokenCache)에
+                         실패했을 때(원격 PC 등) 사용자가 직접 값을 넣는 진입점. -->
+                    <MenuItem Header="토큰 재발급" Click="OnReissueTokenClick" />
+                    <MenuItem Header="Runner 토큰 입력" Click="OnEnterTokenClick" />
                 </MenuItem>
                 <MenuItem Header="편집">
                     <MenuItem Header="실행 취소" InputGestureText="Ctrl+Z" Command="{x:Static ApplicationCommands.Undo}" />

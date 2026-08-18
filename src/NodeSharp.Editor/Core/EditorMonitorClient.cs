@@ -39,6 +39,19 @@ namespace NodeSharp.Editor.Core;
 /// 확인했습니다. <c>HubConnection.InvokeAsync</c>로 <c>MonitorHub.TriggerInject</c>(신규)를 호출하는
 /// 첫 사례이며, 이 채널이 열리면서 이 클래스가 처음으로 "요청-응답"(비록 반환값은 없지만) 방향의
 /// SignalR 호출도 겸하게 됐습니다.</item>
+/// <item><b>(LK-03) 인증 헤더 — <see cref="SetToken"/>/<see cref="ReissueTokenAsync"/></b>: 생성자가
+/// 받은(또는 <see cref="SetToken"/>으로 나중에 바꾼) 토큰 값을 <c>X-NodeSharp-Token</c> 헤더로
+/// 실어 Runner의 <c>TokenAuthMiddleware</c>를 통과합니다. <c>HubConnectionBuilder.WithUrl</c>의
+/// 설정 델리게이트는 <c>Build()</c> 시점에 한 번만 실행되지만, 그 델리게이트가 <c>opts.Headers</c>를
+/// 이 클래스가 계속 들고 있는 <see cref="_headers"/> 딕셔너리 "그 자체"로 지정해뒀기 때문에(참조
+/// 공유), <see cref="SetToken"/>으로 내용만 바꿔도 다음 연결 시도부터 새 값이 반영됩니다(
+/// <c>HubConnection</c>을 통째로 다시 만들 필요 없음). <see cref="ReissueTokenAsync"/>는
+/// <c>MonitorHub.ReissueToken</c>을 호출해 새 토큰을 받고 곧바로 <see cref="SetToken"/>까지
+/// 이어서 호출합니다.</item>
+/// <item><b>(LK-03) <see cref="TokenInvalidatedByServer"/></b>: Runner의 <c>MonitorHub.ReissueToken</c>이
+/// (다른 연결에서 트리거돼) <c>Clients.Others</c>로 "tokenReissued"를 보내면 이 이벤트로 재발행합니다
+/// — 이 연결이 그 "다른 연결"이라면 옛 토큰으로는 곧 재연결이 거부될 것이므로, 구독자(<c>MainWindow</c>)가
+/// 스스로 연결을 끊고 사용자에게 새 토큰 재입력을 안내해야 합니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -54,6 +67,12 @@ namespace NodeSharp.Editor.Core;
 public sealed class EditorMonitorClient : IAsyncDisposable
 {
     private const string DefaultUrl = "http://localhost:47500/hubs/monitor";
+    private const string TokenHeaderName = "X-NodeSharp-Token";
+
+    // (LK-03) HubConnectionBuilder.WithUrl의 설정 델리게이트에 opts.Headers = _headers로 이 딕셔너리
+    // "그 자체"를 넘겨두면, Build() 이후 이 딕셔너리 내용만 바꿔도(SetToken) 다음 연결 시도부터
+    // 새 값이 반영된다 — 위 클래스 remarks "인증 헤더" 항목 참고.
+    private readonly Dictionary<string, string> _headers = new();
 
     private readonly HubConnection _connection;
 
@@ -76,14 +95,24 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     public event Action<NodeErrorEvent>? NodeErrorReceived;
 
     /// <summary>
+    /// (LK-03) Runner의 <c>MonitorHub.ReissueToken</c>이 <c>Clients.Others</c>로 "tokenReissued"를
+    /// 보내면 발생 — 위 클래스 remarks "TokenInvalidatedByServer" 항목 참고.
+    /// </summary>
+    public event Action? TokenInvalidatedByServer;
+
+    /// <summary>
     /// <paramref name="runnerUrl"/>(기본 <c>http://localhost:47500/hubs/monitor</c>)로 연결을
     /// 준비합니다 — 이 시점엔 실제 네트워크 연결을 시도하지 않고, <see cref="StartAsync"/> 호출 시에만
-    /// 시도합니다.
+    /// 시도합니다. (LK-03) <paramref name="token"/>이 있으면 <see cref="SetToken"/>으로 미리 인증
+    /// 헤더를 채워둡니다(없으면 생성 이후 <see cref="SetToken"/>을 따로 호출해야 함 — 예: Runner의
+    /// runner.token을 비동기로 읽어야 해 생성자 시점엔 아직 모를 때).
     /// </summary>
-    public EditorMonitorClient(string runnerUrl = DefaultUrl)
+    public EditorMonitorClient(string runnerUrl = DefaultUrl, string? token = null)
     {
+        SetToken(token);
+
         _connection = new HubConnectionBuilder()
-            .WithUrl(runnerUrl)
+            .WithUrl(runnerUrl, opts => opts.Headers = _headers)
             .WithAutomaticReconnect()
             .Build();
 
@@ -91,10 +120,32 @@ public sealed class EditorMonitorClient : IAsyncDisposable
         _connection.On<FlowActivityEvent>("flowActivity", e => FlowActivityReceived?.Invoke(e));
         _connection.On<DebugMessageEvent>("debugMessage", e => DebugMessageReceived?.Invoke(e));
         _connection.On<NodeErrorEvent>("nodeError", e => NodeErrorReceived?.Invoke(e));
+        // (LK-03) Runner의 MonitorHub.ReissueToken이 "호출자를 제외한 다른 연결"에 보내는 알림 —
+        // 이 연결이 그 "다른 연결"이라면 옛 토큰으로는 곧 재연결이 거부되므로 스스로 끊고 사용자에게
+        // 알려야 한다(구독·처리는 호출부 MainWindow 책임, 이 클래스는 재발행만 함).
+        _connection.On("tokenReissued", () => TokenInvalidatedByServer?.Invoke());
 
         _connection.Closed += _ => { ConnectionStateChanged?.Invoke(false); return Task.CompletedTask; };
         _connection.Reconnecting += _ => { ConnectionStateChanged?.Invoke(false); return Task.CompletedTask; };
         _connection.Reconnected += _ => { ConnectionStateChanged?.Invoke(true); return Task.CompletedTask; };
+    }
+
+    /// <summary>
+    /// (LK-03) 인증 헤더(<c>X-NodeSharp-Token</c>)에 쓸 토큰 값을 바꿉니다. 연결돼 있는 도중에
+    /// 호출해도 지금 살아있는 WebSocket이 즉시 재인증되지는 않습니다(다음 연결 시도부터 적용) —
+    /// 즉시 반영이 필요하면 호출부가 <see cref="StopAsync"/> 후 <see cref="StartAsync"/>를 다시
+    /// 호출해야 합니다(위 클래스 remarks "인증 헤더" 항목 참고).
+    /// </summary>
+    public void SetToken(string? token)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            _headers.Remove(TokenHeaderName);
+        }
+        else
+        {
+            _headers[TokenHeaderName] = token;
+        }
     }
 
     /// <summary>
@@ -132,6 +183,22 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     /// </summary>
     public Task TriggerInjectAsync(string nodeId, CancellationToken ct = default) =>
         _connection.InvokeAsync("TriggerInject", nodeId, ct);
+
+    /// <summary>
+    /// (LK-03) Runner의 <c>MonitorHub.ReissueToken</c>을 호출해 새 토큰을 발급받고, 반환받은 값으로
+    /// 곧바로 <see cref="SetToken"/>까지 호출해 다음 재연결부터 새 토큰을 쓰도록 준비합니다. 로컬
+    /// 캐시 파일 저장(<c>RunnerTokenCache.SaveAsync</c>)은 호출부(<c>MainWindow</c>)의 책임입니다 —
+    /// 이 클래스는 <c>Editor.Core</c>의 다른 파일 I/O 클래스와 결합하지 않고 SignalR 통신만 다룹니다.
+    /// 호출 시점에 연결돼 있지 않으면(<see cref="IsConnected"/>가 <c>false</c>) 예외를 던지므로
+    /// (<see cref="TriggerInjectAsync"/>와 동일한 원칙), 호출부가 미리 확인해야 합니다.
+    /// </summary>
+    /// <returns>Runner가 새로 발급한 토큰 값.</returns>
+    public async Task<string> ReissueTokenAsync(CancellationToken ct = default)
+    {
+        var newToken = await _connection.InvokeAsync<string>("ReissueToken", ct);
+        SetToken(newToken);
+        return newToken;
+    }
 
     /// <summary>내부 <see cref="HubConnection"/>을 완전히 정리합니다(위 클래스 remarks의 "구독 해제" 항목).</summary>
     public async ValueTask DisposeAsync()

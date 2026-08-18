@@ -17,6 +17,9 @@ credentials.json
 # 7번 탭 Editor<->Runner 인증 토큰
 runner.token
 
+# LK-03 — Editor가 원격 PC에서 runner.token을 직접 입력했을 때 로컬에 기억해두는 캐시(RunnerTokenCache)
+runner.token.cache
+
 # 7번 탭 TLS 인증서(있는 경우)
 *.pfx
 
