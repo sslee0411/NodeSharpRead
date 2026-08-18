@@ -31,6 +31,10 @@
 // "/hubs/monitor" 경로 전체에 TokenAuthMiddleware를 앞세워 협상·연결·모든 Hub 메서드 호출이 유효한
 // X-NodeSharp-Token 없이는 도달하지 못하게 막는다. /health는 이 Step 범위 밖(완료 기준이 SignalR
 // 연결만 요구)이라 계속 인증 없이 열려 있다.
+// (LK-04) builder.Services.AddSingleton<MsgTraceStore>() 추가 — 02번 문서 7번 탭 카드5의
+// "메시지 단위 추적(Msg Trace)"을 실제로 배선한다. Worker가 이 인스턴스를 attachMonitor 콜백에
+// StatusBroadcaster와 함께 실어 FlowEngine의 EventBus를 구독시키고, MonitorHub.GetMsgTrace가
+// 같은 인스턴스를 DI로 주입받아 조회를 위임한다.
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -68,6 +72,10 @@ builder.Services.AddSingleton<CurrentEngineHolder>();
 // 3-2) (LK-03) RunnerTokenStore(현재 유효한 runner.token 값을 들고 있는 진실 공급원, 자체 문서
 //      참고) 등록 — TokenAuthMiddleware가 InvokeAsync 매개변수로 DI 주입받아 매 요청을 검증한다.
 builder.Services.AddSingleton<RunnerTokenStore>();
+
+// 3-3) (LK-04) MsgTraceStore(msg.Id 기준 FlowActivityEvent 이력 누적소, 자체 문서 참고) 등록 —
+//      Worker가 attachMonitor 콜백에 실어 구독을 시작하고, MonitorHub.GetMsgTrace가 조회를 위임한다.
+builder.Services.AddSingleton<MsgTraceStore>();
 
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).

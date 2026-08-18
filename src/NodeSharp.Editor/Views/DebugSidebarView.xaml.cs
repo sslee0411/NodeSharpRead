@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using NodeSharp.Contracts.Events;
+using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Editor.Views;
 
@@ -31,6 +32,17 @@ namespace NodeSharp.Editor.Views;
 /// CardBrush 등) 어디서도 참조되지 않는 미사용 상태라 그대로 쓰면 리소스를 못 찾을 위험이 있습니다.
 /// <c>FlowCanvasView.RenderFlowTabStrip</c>의 "＋"/"✕"와 동일하게 <see cref="Border"/> +
 /// <c>MouseLeftButtonDown</c>으로 안전하게 구현했습니다.</item>
+/// <item><b>(LK-04) <see cref="AppendNodeError"/> 확장 + <see cref="AppendMsgTrace"/> 신설</b>:
+/// <c>NodeErrorEvent</c>가 노드 이름/타입·예외 타입·msg 스냅샷까지 싣고 오게 되면서(LK-04, 02번
+/// 문서 7번 탭 카드5 "에러 상세 패널") 본문에 그 정보를 모두 펼쳐 보여줍니다 — 별도 팝업/패널을
+/// 새로 만들지 않고 기존 "제목 한 줄 + 본문 텍스트" 항목 안에 다 담는 이유는, 이미 이 사이드바가
+/// "에러 상세"의 절반(예외 메시지·스택트레이스)을 담당하고 있었고 나머지 절반(노드 정보·msg 내용)을
+/// 같은 항목에 이어 붙이는 편이 팝업을 새로 띄우는 것보다 화면 전환 없이 빠르게 훑어볼 수 있어서입니다.
+/// <see cref="AppendMsgTrace"/>는 <c>MainWindow</c>가 <c>NodeErrorEvent</c> 수신 직후 그 <c>MsgId</c>로
+/// <c>EditorMonitorClient.GetMsgTraceAsync</c>를 비동기로 호출해 받아온 경로를 별도 항목으로 이어
+/// 붙입니다(에러 항목 자체를 나중에 수정하는 대신 새 항목을 추가하는 편이 "이미 그려진 UI 요소를
+/// 나중에 다시 찾아 갱신"하는 것보다 단순합니다 — 두 항목 모두 같은 시각·같은 <c>MsgId</c>를 제목에
+/// 표시해 사람이 눈으로 짝지어 볼 수 있으면 충분하다고 판단).</item>
 /// </list>
 /// </remarks>
 public partial class DebugSidebarView : UserControl
@@ -75,8 +87,11 @@ public partial class DebugSidebarView : UserControl
     }
 
     /// <summary>
-    /// Runner가 보낸 <see cref="NodeErrorEvent"/> 하나를 목록 맨 위에 추가합니다(일시정지 중이면 무시,
-    /// <see cref="NodeErrorEvent.StackTrace"/>가 있으면 본문 아래에 함께 표시).
+    /// Runner가 보낸 <see cref="NodeErrorEvent"/> 하나를 목록 맨 위에 추가합니다(일시정지 중이면 무시).
+    /// (LK-04) 본문에 예외 타입/메시지·에러 발생 시점의 Msg 내용(<see cref="NodeErrorEvent.MsgSnapshotJson"/>)까지
+    /// 함께 펼쳐 보여줍니다 — "코드를 보지 않고도 무엇이 잘못됐는지" 바로 확인할 수 있게 하는 것이
+    /// 목표입니다(02번 문서 7번 탭 카드5 "에러 상세 패널" 표). <see cref="NodeErrorEvent.StackTrace"/>가
+    /// 있으면 맨 아래 함께 표시합니다.
     /// </summary>
     public void AppendNodeError(NodeErrorEvent evt)
     {
@@ -85,10 +100,40 @@ public partial class DebugSidebarView : UserControl
             return;
         }
 
-        var body = string.IsNullOrWhiteSpace(evt.StackTrace)
-            ? evt.Message
-            : $"{evt.Message}\n{evt.StackTrace}";
-        AddEntry($"{evt.At:HH:mm:ss} · {evt.NodeId} (오류)", body, isError: true);
+        var body =
+            $"{evt.ExceptionType}: {evt.Message}\n" +
+            $"[Msg] {evt.MsgSnapshotJson}" +
+            (string.IsNullOrWhiteSpace(evt.StackTrace) ? string.Empty : $"\n{evt.StackTrace}");
+        AddEntry($"{evt.At:HH:mm:ss} · {evt.NodeName} ({evt.NodeType}) 오류 · msg {evt.MsgId}", body, isError: true);
+    }
+
+    /// <summary>
+    /// (LK-04) <see cref="AppendNodeError"/>로 이미 표시된 에러의 <paramref name="msgId"/>에 대해
+    /// Runner가 돌려준 <see cref="MsgTrace"/>(<c>EditorMonitorClient.GetMsgTraceAsync</c> 결과)를
+    /// 별도 항목으로 목록에 추가합니다(위 클래스 remarks "AppendMsgTrace 신설" 항목 — 기존 에러
+    /// 항목을 나중에 갱신하는 대신 새 항목을 이어 붙이는 이유 참고). 일시정지 중이면 무시합니다.
+    /// </summary>
+    public void AppendMsgTrace(string msgId, MsgTrace trace)
+    {
+        if (IsPaused)
+        {
+            return;
+        }
+
+        if (trace.Steps.Count == 0)
+        {
+            return;
+        }
+
+        // "n1 → n2 → n3" 형태로 노드 Id를 순서대로 이어붙인다 — 첫 구간의 출발 노드부터 시작해
+        // 각 구간의 도착 노드를 계속 덧붙이면 전체 경로가 된다.
+        var path = trace.Steps[0].FromNodeId;
+        foreach (var step in trace.Steps)
+        {
+            path += $" → {step.ToNodeId}";
+        }
+
+        AddEntry($"{trace.Steps[^1].At:HH:mm:ss} · Msg Trace · msg {msgId}", path, isError: false);
     }
 
     /// <summary>제목 한 줄 + 본문 텍스트로 된 항목 하나를 목록 맨 위에 추가하고, <see cref="MaxEntries"/>를 넘으면 가장 오래된 항목을 지웁니다.</summary>

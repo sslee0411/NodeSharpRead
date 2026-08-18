@@ -126,7 +126,13 @@ public partial class MainWindow : Window
         _monitorClient.NodeStatusReceived += evt => SafeDispatcherInvoke(() => FlowCanvas.ApplyNodeStatus(evt));
         _monitorClient.FlowActivityReceived += evt => SafeDispatcherInvoke(() => FlowCanvas.PulseWire(evt));
         _monitorClient.DebugMessageReceived += evt => SafeDispatcherInvoke(() => DebugPanel.AppendDebugMessage(evt));
-        _monitorClient.NodeErrorReceived += evt => SafeDispatcherInvoke(() => DebugPanel.AppendNodeError(evt));
+        // (LK-04) 에러 항목은 즉시 추가하고, Msg Trace는 별도 SignalR 왕복(GetMsgTraceAsync)이 필요해
+        // 뒤이어 비동기로 조회한 뒤 도착하는 대로 이어 붙인다 — OnNodeErrorReceivedAsync 참고.
+        _monitorClient.NodeErrorReceived += evt =>
+        {
+            SafeDispatcherInvoke(() => DebugPanel.AppendNodeError(evt));
+            _ = OnNodeErrorReceivedAsync(evt);
+        };
         // (LK-03) Runner가 다른 연결에 재발급을 알리면(이 창이 재발급을 트리거한 당사자가 아니면)
         // 스스로 끊고 사용자에게 새 토큰 재입력을 안내한다.
         _monitorClient.TokenInvalidatedByServer += () => SafeDispatcherInvoke(OnTokenInvalidatedByServer);
@@ -158,6 +164,38 @@ public partial class MainWindow : Window
             "토큰 재인증 필요",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// (LK-04) <see cref="EditorMonitorClient.NodeErrorReceived"/> 수신 직후 호출됩니다 —
+    /// <paramref name="evt"/>.<c>MsgId</c>로 <c>GetMsgTraceAsync</c>를 호출해 이 메시지가 거쳐온 경로를
+    /// 받아와 <see cref="DebugPanel"/>에 이어 붙입니다("Msg Trace로 에러 발생 노드와 해당 시점 Msg
+    /// 내용까지 역추적", 03번 Step맵 LK-04 완료 기준). 연결이 그 사이 끊겼거나(<see cref="EditorMonitorClient.IsConnected"/>가
+    /// <c>false</c>) 조회 자체가 실패해도(예: Runner가 재시작돼 이미 메모리에서 지워짐) 조용히
+    /// 무시합니다 — Trace는 원인 분석을 돕는 보조 정보일 뿐, 이미 <see cref="DebugSidebarView.AppendNodeError"/>가
+    /// 표시한 예외 메시지·Msg 스냅샷만으로도 "무엇이 잘못됐는지"는 이미 확인 가능하므로 Trace 조회
+    /// 실패가 사용자에게 별도 오류로 보일 필요는 없습니다(<c>EditorMonitorClient</c> "실패 격리"
+    /// 원칙과 동일한 정신).
+    /// </summary>
+    private async Task OnNodeErrorReceivedAsync(NodeErrorEvent evt)
+    {
+        if (!_monitorClient.IsConnected)
+        {
+            return;
+        }
+
+        try
+        {
+            var trace = await _monitorClient.GetMsgTraceAsync(evt.MsgId);
+            if (trace is not null)
+            {
+                SafeDispatcherInvoke(() => DebugPanel.AppendMsgTrace(evt.MsgId, trace));
+            }
+        }
+        catch (Exception)
+        {
+            // 위 XML 문서 참고 — Trace는 보조 정보라 조회 실패를 사용자에게 별도로 알리지 않는다.
+        }
     }
 
     /// <summary>

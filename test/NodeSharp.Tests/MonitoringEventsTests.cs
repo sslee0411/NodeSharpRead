@@ -48,7 +48,19 @@ public class MonitoringEventsTests
     [Fact]
     public void NodeErrorEvent_StackTrace가_null이어도_왕복_시_보존된다()
     {
-        var original = new NodeErrorEvent(NodeId: "n1", Message: "기동 실패", StackTrace: null, At: DateTime.UtcNow);
+        // (LK-04) NodeErrorEvent가 노드 정보·예외 타입·msg 스냅샷까지 담도록 확장되었습니다
+        // (FlowEngine.DispatchOneAsync, 03번 Step맵 LK-04). 필드가 늘어도 System.Text.Json
+        // 왕복 검증 방식 자체는 그대로 유효합니다.
+        var original = new NodeErrorEvent(
+            NodeId: "n1",
+            NodeName: "기동노드",
+            NodeType: "function",
+            ExceptionType: "InvalidOperationException",
+            Message: "기동 실패",
+            StackTrace: null,
+            MsgId: "msg-1",
+            MsgSnapshotJson: "{\"payload\":null}",
+            At: DateTime.UtcNow);
 
         var json = JsonSerializer.Serialize(original);
         var restored = JsonSerializer.Deserialize<NodeErrorEvent>(json);

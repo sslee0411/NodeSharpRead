@@ -31,6 +31,9 @@ namespace NodeSharp.Runner;
 /// (LK-02b 후속) 생성자가 <see cref="CurrentEngineHolder"/>도 같은 방식(선택적)으로 주입받습니다 —
 /// 있으면 두 배포 호출 직후 최신 <c>engine</c>을 그 홀더에 기록해, <c>MonitorHub.TriggerInject</c>가
 /// "지금 배포된 엔진"에 접근할 수 있게 합니다(<see cref="CurrentEngineHolder"/> 자체 문서 참고).
+/// (LK-04) 생성자가 <see cref="MsgTraceStore"/>도 같은 방식(선택적)으로 주입받습니다 — 있으면
+/// <see cref="_statusBroadcaster"/>와 함께 같은 <c>attachMonitor</c> 콜백에 실려 두 구독자가 모두
+/// 새 <c>FlowEngine</c>의 이벤트를 받게 됩니다(<see cref="BuildAttachMonitor"/> 참고).
 /// </summary>
 /// <example>
 /// <code>
@@ -50,6 +53,7 @@ public sealed class Worker : BackgroundService
     private readonly DiskSpaceMonitor? _diskSpaceMonitor;
     private readonly StatusBroadcaster? _statusBroadcaster;
     private readonly CurrentEngineHolder? _currentEngineHolder;
+    private readonly MsgTraceStore? _msgTraceStore;
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
@@ -74,13 +78,15 @@ public sealed class Worker : BackgroundService
         ClockDriftMonitor? clockDriftMonitor = null,
         DiskSpaceMonitor? diskSpaceMonitor = null,
         StatusBroadcaster? statusBroadcaster = null,
-        CurrentEngineHolder? currentEngineHolder = null)
+        CurrentEngineHolder? currentEngineHolder = null,
+        MsgTraceStore? msgTraceStore = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
         _diskSpaceMonitor = diskSpaceMonitor;
         _statusBroadcaster = statusBroadcaster;
         _currentEngineHolder = currentEngineHolder;
+        _msgTraceStore = msgTraceStore;
     }
 
     /// <summary>
@@ -107,12 +113,12 @@ public sealed class Worker : BackgroundService
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         var deployer = new FlowDeployer();
 
-        // (LK-02a) _statusBroadcaster가 있으면(DI로 주입됨) 이 콜백을 두 배포 호출 모두에 넘긴다 —
-        // FlowDeployer.CreateEngineWithLogger가 "진짜 새 FlowEngine을 만들 때만" 호출하므로, 아래
-        // RedeployAsync가 기존 engine을 재사용하는 흔한 경우엔 이 콜백이 다시 실행되지 않는다(중복
-        // 구독 방지, StatusBroadcaster 클래스 remarks 참고).
-        Func<IEventBus, IDisposable>? attachMonitor =
-            _statusBroadcaster is null ? null : eventBus => _statusBroadcaster.Subscribe(eventBus);
+        // (LK-02a, LK-04 확장) _statusBroadcaster/_msgTraceStore가 있으면(DI로 주입됨) 이 콜백을 두
+        // 배포 호출 모두에 넘긴다 — FlowDeployer.CreateEngineWithLogger가 "진짜 새 FlowEngine을 만들
+        // 때만" 호출하므로, 아래 RedeployAsync가 기존 engine을 재사용하는 흔한 경우엔 이 콜백이 다시
+        // 실행되지 않는다(중복 구독 방지, StatusBroadcaster 클래스 remarks 참고). 둘 다 없으면(테스트
+        // 등) attachMonitor 자체를 null로 둬 하위 호환을 유지한다.
+        Func<IEventBus, IDisposable>? attachMonitor = BuildAttachMonitor();
 
         FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken, attachMonitor);
         if (engine is not null)
@@ -176,6 +182,48 @@ public sealed class Worker : BackgroundService
             catch (OperationCanceledException)
             {
                 break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// (LK-04) <see cref="_statusBroadcaster"/>·<see cref="_msgTraceStore"/> 중 주입된 것만 골라 하나의
+    /// <c>attachMonitor</c> 콜백으로 묶습니다. 원래 <see cref="_statusBroadcaster"/> 하나만 있을 때는
+    /// 삼항 연산자 한 줄로 충분했지만, 둘 다 될 수 있는 지금은 "둘 다 없으면 콜백 자체가 null(하위
+    /// 호환 유지), 하나 이상 있으면 있는 것만 구독"하는 조합 로직이 필요해 별도 메서드로 뺐습니다.
+    /// </summary>
+    private Func<IEventBus, IDisposable>? BuildAttachMonitor()
+    {
+        if (_statusBroadcaster is null && _msgTraceStore is null)
+        {
+            return null;
+        }
+
+        return eventBus =>
+        {
+            var subscriptions = new List<IDisposable>();
+            if (_statusBroadcaster is not null)
+            {
+                subscriptions.Add(_statusBroadcaster.Subscribe(eventBus));
+            }
+            if (_msgTraceStore is not null)
+            {
+                subscriptions.Add(_msgTraceStore.Subscribe(eventBus));
+            }
+            return new CompositeMonitorSubscription(subscriptions);
+        };
+    }
+
+    /// <summary>여러 <see cref="IDisposable"/> 구독(<see cref="StatusBroadcaster"/>/<see cref="MsgTraceStore"/>)을 하나로 묶어 한 번에 해제하는 얇은 래퍼(<c>StatusBroadcaster.CompositeSubscription</c>과 동일한 역할, Worker 레벨에서 둘을 합칠 때 필요).</summary>
+    private sealed class CompositeMonitorSubscription : IDisposable
+    {
+        private readonly List<IDisposable> _inner;
+        public CompositeMonitorSubscription(List<IDisposable> inner) => _inner = inner;
+        public void Dispose()
+        {
+            foreach (var d in _inner)
+            {
+                d.Dispose();
             }
         }
     }

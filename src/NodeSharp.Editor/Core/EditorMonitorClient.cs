@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using NodeSharp.Contracts.Events;
+using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Editor.Core;
 
@@ -52,6 +53,10 @@ namespace NodeSharp.Editor.Core;
 /// (다른 연결에서 트리거돼) <c>Clients.Others</c>로 "tokenReissued"를 보내면 이 이벤트로 재발행합니다
 /// — 이 연결이 그 "다른 연결"이라면 옛 토큰으로는 곧 재연결이 거부될 것이므로, 구독자(<c>MainWindow</c>)가
 /// 스스로 연결을 끊고 사용자에게 새 토큰 재입력을 안내해야 합니다.</item>
+/// <item><b>(LK-04) <see cref="GetMsgTraceAsync"/></b>: <see cref="NodeErrorReceived"/>로 에러를 받은
+/// 호출부(<c>MainWindow</c>)가 그 이벤트의 <c>MsgId</c>로 Runner의 <c>MonitorHub.GetMsgTrace</c>를
+/// 호출해 "이 메시지가 어디서 왔는지" 경로를 받아올 때 씁니다. <see cref="TriggerInjectAsync"/>와
+/// 동일하게 연결돼 있지 않으면 예외를 던집니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -199,6 +204,18 @@ public sealed class EditorMonitorClient : IAsyncDisposable
         SetToken(newToken);
         return newToken;
     }
+
+    /// <summary>
+    /// (LK-04) <paramref name="msgId"/>(보통 <see cref="NodeErrorEvent.MsgId"/>)로 Runner의
+    /// <c>MonitorHub.GetMsgTrace</c>를 호출해, 그 메시지가 지금까지 거쳐온 전체 경로를 받아옵니다.
+    /// Runner가 한 번도 추적한 적이 없으면(예: Runner 재시작으로 메모리가 비워짐) <c>null</c>을
+    /// 반환합니다 — 예외가 아니라 정상적인 "모른다" 응답이므로 호출부가 별도 처리 없이 그냥 표시를
+    /// 생략하면 됩니다. 연결돼 있지 않으면(<see cref="IsConnected"/>가 <c>false</c>) 예외를 던지므로
+    /// (<see cref="TriggerInjectAsync"/>와 동일한 원칙), 호출부가 미리 확인하거나 예외를 처리해야
+    /// 합니다.
+    /// </summary>
+    public Task<MsgTrace?> GetMsgTraceAsync(string msgId, CancellationToken ct = default) =>
+        _connection.InvokeAsync<MsgTrace?>("GetMsgTrace", msgId, ct);
 
     /// <summary>내부 <see cref="HubConnection"/>을 완전히 정리합니다(위 클래스 remarks의 "구독 해제" 항목).</summary>
     public async ValueTask DisposeAsync()

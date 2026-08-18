@@ -77,7 +77,19 @@ public class StatusBroadcasterTests
         bus.Publish(new NodeStatusEvent("n1", "green", "dot", "정상", at));
         bus.Publish(new FlowActivityEvent("n1", 0, "n2", "m1", at));
         bus.Publish(new DebugMessageEvent("n3", "디버그", "{}", at));
-        bus.Publish(new NodeErrorEvent("n1", "실패", null, at));
+        // (LK-04) NodeErrorEvent가 노드정보·예외타입·msg 스냅샷을 담도록 확장(FlowEngine.DispatchOneAsync,
+        // 03번 Step맵 LK-04) — 이 테스트는 StatusBroadcaster가 필드 내용과 무관하게 "nodeError" 메서드로
+        // 그대로 중계하는지만 보므로 값 자체는 더미로 채운다.
+        bus.Publish(new NodeErrorEvent(
+            NodeId: "n1",
+            NodeName: "테스트노드",
+            NodeType: "function",
+            ExceptionType: "InvalidOperationException",
+            Message: "실패",
+            StackTrace: null,
+            MsgId: "m1",
+            MsgSnapshotJson: "{}",
+            At: at));
 
         var sent = hubContext.ClientsFake.AllProxy.Sent;
         Assert.Equal(4, sent.Count);

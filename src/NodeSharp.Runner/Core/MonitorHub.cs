@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Runner.Core;
 
@@ -28,18 +29,25 @@ namespace NodeSharp.Runner.Core;
 /// 트리거를 지원하는지는 <c>IManuallyTriggerable</c>/<c>FlowEngine</c> 쪽 책임 — 이 Hub는 전혀 모릅니다).</item>
 /// <item><b>(LK-03) <see cref="ReissueToken"/></b>: Editor "파일 → 토큰 재발급" 메뉴가 호출하는
 /// 두 번째 클라이언트→서버 메서드입니다 — 자체 문서 참고.</item>
+/// <item><b>(LK-04) <see cref="GetMsgTrace"/></b>: <c>NodeErrorEvent</c>를 받은 Editor가 "이 메시지가
+/// 어디서 왔는지" 역추적하려고 호출하는 세 번째 클라이언트→서버 메서드입니다 — 자체 문서 참고.</item>
 /// </list>
 /// </remarks>
 public sealed class MonitorHub : Hub
 {
     private readonly CurrentEngineHolder _engineHolder;
     private readonly RunnerTokenStore _tokenStore;
+    private readonly MsgTraceStore _msgTraceStore;
 
-    /// <summary>DI가 <see cref="AddSingleton{TService}"/>로 등록된 <see cref="CurrentEngineHolder"/>/<see cref="RunnerTokenStore"/>를 자동으로 주입합니다.</summary>
-    public MonitorHub(CurrentEngineHolder engineHolder, RunnerTokenStore tokenStore)
+    /// <summary>
+    /// DI가 <see cref="AddSingleton{TService}"/>로 등록된 <see cref="CurrentEngineHolder"/>/
+    /// <see cref="RunnerTokenStore"/>/<see cref="MsgTraceStore"/>(LK-04)를 자동으로 주입합니다.
+    /// </summary>
+    public MonitorHub(CurrentEngineHolder engineHolder, RunnerTokenStore tokenStore, MsgTraceStore msgTraceStore)
     {
         _engineHolder = engineHolder;
         _tokenStore = tokenStore;
+        _msgTraceStore = msgTraceStore;
     }
 
     /// <summary>
@@ -79,4 +87,17 @@ public sealed class MonitorHub : Hub
         await Clients.Others.SendAsync("tokenReissued");
         return newToken;
     }
+
+    /// <summary>
+    /// (LK-04) Editor가 <c>NodeErrorEvent</c>를 받은 뒤(또는 사용자가 직접 요청했을 때) 그 이벤트의
+    /// <c>MsgId</c>로 이 메서드를 호출해, 해당 메시지가 지금까지 거쳐온 전체 경로(<see cref="MsgTrace"/>)를
+    /// 요청합니다. <see cref="MsgTraceStore.GetTrace"/>에 그대로 위임만 합니다 — 이 Hub는 Trace를
+    /// 어떻게 누적하는지 전혀 모릅니다(<see cref="TriggerInject"/>가 <see cref="CurrentEngineHolder"/>에
+    /// 위임만 하는 것과 동일한 얇은 창구 원칙). 한 번도 추적된 적이 없거나(예: msg.Id 오타) 상한을
+    /// 넘어 이미 제거됐으면 <c>null</c>을 반환합니다 — 이 Hub는 오류를 구분해 알리지 않습니다(완료
+    /// 기준 범위 밖, <see cref="TriggerInject"/>와 동일한 원칙).
+    /// </summary>
+    /// <param name="msgId">추적할 메시지의 고유 식별자(<c>Msg.Id</c>, <c>NodeErrorEvent.MsgId</c>와 동일).</param>
+    /// <returns>메시지가 거쳐온 경로, 또는 추적된 적 없으면 <c>null</c>.</returns>
+    public Task<MsgTrace?> GetMsgTrace(string msgId) => Task.FromResult(_msgTraceStore.GetTrace(msgId));
 }

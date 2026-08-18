@@ -61,7 +61,12 @@ namespace NodeSharp.Runtime;
 /// 찾았지만 생성자에서 예외를 던지는 경우 등도 포함). 2단계(기동)에서는 <c>OnStartAsync</c>가 예외를
 /// 던지면(예: 잘못된 IP 주소) 그 노드만 <see cref="FailedNodeIds"/>에 기록하고 나머지 노드는 계속
 /// 정상 기동합니다 — "설정 오류 하나가 전체 시스템을 멈추면 안 된다"는 원칙(3번 탭 카드6). 두 단계
-/// 모두 <c>NodeErrorEvent</c> 발행은 <c>EventBus</c>(<c>RT-07</c>)가 아직 없어 범위 밖입니다.
+/// 모두 <c>NodeErrorEvent</c> 발행은 (RT-04a 설계 당시) <c>EventBus</c>(<c>RT-07</c>)가 아직 없어
+/// 범위 밖이었습니다. (LK-04 갱신) <c>EventBus</c>는 이미 갖춰졌지만, 이 두 단계(배포 시점의 생성·
+/// 기동 실패)는 여전히 <c>NodeErrorEvent</c>를 발행하지 않습니다 — LK-04가 다루는 것은 "배포된 뒤
+/// 정상 운영 중 메시지를 처리하다 발생하는 예외"(<see cref="DispatchOneAsync"/> 참고)이고, 배포
+/// 자체의 실패는 이미 <see cref="FailedNodeIds"/>/<see cref="MissingNode"/>로 드러나 있어 배포 화면에서
+/// 바로 보이므로 별도 실시간 이벤트가 시급하지 않다고 판단해 이번 Step 범위 밖으로 남겼습니다.
 /// </para>
 /// <para>
 /// (★ RT-03) <see cref="DeployAsync(FlowDefinition, DeployMode, CancellationToken)"/>는 02번 문서 3번 탭
@@ -608,6 +613,15 @@ public sealed class FlowEngine
     /// (사용자가 Editor에서 지정한 값), 배포 정보를 찾을 수 없으면 <see cref="IFlowNode.MaxConcurrency"/>
     /// 기본 구현(1)으로 대체합니다. 대상 <see cref="NodeConfig.Id"/>가 <see cref="Nodes"/>에 없으면 게이트를
     /// 거치지 않고 조용히 완료합니다.
+    /// (LK-04) <c>OnInputAsync</c> 호출을 <c>try/catch</c>로 감쌉니다 — <c>RT-04a</c> 설계 당시 "여러
+    /// 대상 중 하나의 <c>OnInputAsync</c>가 예외를 일으키면 다른 대상에게 계속 전달돼야 하는지는 이
+    /// Step 범위 밖"으로 명시적으로 미뤄뒀던 부분입니다(이 메서드 자체 XML 문서 이전 버전 참고). 이제
+    /// 예외를 여기서 흡수하고 <see cref="NodeErrorEvent"/>를 발행합니다 — 한 노드의 실패가 같은 배치의
+    /// 다른 Wire·다른 메시지 처리를 막지 않는다는 <c>RT-02b</c>/<c>RT-03</c> "예외 하나가 전체를 막지
+    /// 않는다" 원칙을 메시지 라우팅 경로까지 확장한 것입니다. <c>OnInputAsync</c>에 넘기기 <b>직전</b>의
+    /// <c>Msg.Clone()</c> 스냅샷(<see cref="Msg.ToJson"/>)을 미리 떠 두는 이유: 노드가 처리 도중 필드를
+    /// 바꾸다가 예외를 던지면 그 시점의 값은 "부분적으로 바뀐 상태"라 원인 분석에 오히려 혼란을 주므로,
+    /// "이 노드가 실제로 받았던 값"을 그대로 기록합니다.
     /// </summary>
     private async Task DispatchOneAsync(Wire wire, Msg msg, CancellationToken ct)
     {
@@ -628,7 +642,30 @@ public sealed class FlowEngine
         await gate.WaitAsync(ct);
         try
         {
-            await target.OnInputAsync(msg.Clone(), BuildContext(wire.TargetNodeId, target), ct);
+            // (LK-04) OnInputAsync 호출 "직전" 상태를 스냅샷 — 위 메서드 XML 문서 참고.
+            var clone = msg.Clone();
+            var msgSnapshotJson = clone.ToJson();
+            try
+            {
+                await target.OnInputAsync(clone, BuildContext(wire.TargetNodeId, target), ct);
+            }
+            catch (Exception ex) when (ct.IsCancellationRequested is false)
+            {
+                // (LK-04) 취소 요청에 의한 예외(OperationCanceledException 등)는 "노드 오류"가 아니라
+                // 정상적인 종료 절차이므로 NodeErrorEvent로 보고하지 않는다 — when 절이 ct가 아직
+                // 취소되지 않은 경우에만 이 catch를 타도록 걸러낸다(취소된 상태면 재throw되어 위쪽
+                // 호출자의 취소 처리로 그대로 흘러간다).
+                _eventBus.Publish(new NodeErrorEvent(
+                    NodeId: wire.TargetNodeId,
+                    NodeName: target.Name,
+                    NodeType: target.Type,
+                    ExceptionType: ex.GetType().Name,
+                    Message: ex.Message,
+                    StackTrace: ex.StackTrace,
+                    MsgId: clone.Id,
+                    MsgSnapshotJson: msgSnapshotJson,
+                    At: DateTime.UtcNow));
+            }
         }
         finally
         {
