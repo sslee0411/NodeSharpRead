@@ -1,17 +1,56 @@
 <!--
   StructureView.xaml
   ====================
-  (ED-B2a) 본문 우측에 항상 보이는 구조 설정 뷰 자리표시자(02번 문서 8번 탭 카드15 "항상 분할
-  도킹" 확정 설계) — 장비→PLC→디바이스맵→태그→스케일→알람 6단계 트리 등 실제 구조 설정 내용은
-  Phase 9(구조 설정, Device Tree/PLC)에서 채워진다. 지금은 빈 화면.
+  (ED-B2a) 본문 우측에 항상 보이는 구조 설정 뷰 자리표시자였던 화면(02번 문서 8번 탭 카드15 "항상
+  분할 도킹" 확정 설계) — 이제 (ED-D01) 장비→PLC→디바이스맵→태그→스케일→알람 6단계 고정 트리를
+  실제로 렌더링한다.
+  (ED-D01) 이 프로젝트는 WPF 기본 컨트롤(TabControl/ComboBox 등)이 Background/Foreground 속성을
+  무시하고 SystemColors 크롬을 그대로 쓰는 문제를 이미 두 번 겪었다(MainWindow.xaml EC-11
+  버그 수정, NodePropertyDialog PropCombo 버그 수정) — 같은 부류의 위험을 피하려고 TreeView 대신
+  DebugSidebarView(LK-02b)와 동일한 "Border+StackPanel을 코드비하인드에서 직접 그리는" 패턴을
+  그대로 재사용한다(계층은 각 행의 왼쪽 여백(들여쓰기)으로 표현 — HierarchicalDataTemplate 아님).
+  상단 "+ 장비" 버튼도 FlowCanvasView.RenderFlowTabStrip의 "＋"/"✕"와 동일하게 네이티브 Button
+  대신 Border+MouseLeftButtonDown으로 구현한다. 트리 행의 우클릭 컨텍스트 메뉴(추가/삭제)는 WPF
+  기본 ContextMenu를 그대로 쓴다 — MainWindow.xaml 상단 메뉴(파일/편집/보기)도 지금까지 드롭다운
+  항목 자체를 재스킨하지 않은 채로 써왔으므로(이 프로젝트에서 아직 버그로 지적된 적 없음) 새로운
+  테마 위험을 추가하지 않는다.
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.StructureView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <Grid Background="{DynamicResource ControlBackgroundBrush}">
-        <TextBlock Text="구조 설정 — Phase 9(Device Tree, PLC)까지 빈 화면"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 루트(1단계, 장비) 추가 버튼 — DebugSidebarView 일시정지/지우기 버튼과 동일한 Border+Click 패턴. -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10,10,10,4">
+            <Border x:Name="AddDeviceButton"
+                    Background="Transparent"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="8,3"
+                    Cursor="Hand">
+                <TextBlock Text="+ 장비" Foreground="{DynamicResource PrimaryTextBrush}" FontSize="11" />
+            </Border>
+        </StackPanel>
+
+        <TextBlock x:Name="EmptyHint"
+                   Grid.Row="1"
+                   Text="등록된 장비가 없습니다. 위 &quot;+ 장비&quot; 버튼으로 시작하세요."
                    Foreground="{DynamicResource SecondaryTextBrush}"
+                   TextWrapping="Wrap"
+                   Margin="10"
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center" />
+
+        <ScrollViewer x:Name="TreeScroll"
+                      Grid.Row="1"
+                      Visibility="Collapsed"
+                      VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="TreePanel" Margin="4,0,4,10" />
+        </ScrollViewer>
     </Grid>
 </UserControl>
