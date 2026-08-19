@@ -36,8 +36,14 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="StructureTreeNode.Children"/>이 그대로 달려 있으므로 자동으로 함께 사라짐). 되돌리기는
 /// 이 Step 범위 밖입니다(캔버스 쪽 <c>CommandHistory</c>/Undo·Redo는 플로우 캔버스 전용이라 이
 /// 트리에는 아직 연결돼 있지 않음 — 필요해지면 별도 Step).</item>
-/// <item><b>이름 변경</b>: 행 이름 텍스트를 더블클릭하거나 컨텍스트 메뉴 "이름 변경"으로 시작합니다.
-/// Enter 또는 포커스를 잃으면 커밋되고, 빈 문자열이면 이전 이름을 그대로 유지합니다.</item>
+/// <item><b>빠른 이름 변경</b>: 컨텍스트 메뉴 "이름 변경"으로 시작하는 인라인 편집 — Enter 또는
+/// 포커스를 잃으면 커밋되고, 빈 문자열이면 이전 이름을 그대로 유지합니다.</item>
+/// <item><b>(ED-D02a/b) 속성 편집</b>: 행을 더블클릭하거나 컨텍스트 메뉴 "속성 편집"을 누르면
+/// <see cref="StructureNodePropertyDialog"/>가 모달로 뜹니다 — <see cref="FlowCanvasView"/>가
+/// 캔버스 노드 카드를 더블클릭하면 <see cref="NodePropertyDialog"/>를 띄우는 것(EC-03)과 동일한
+/// 앱 전체 관례입니다. 다이얼로그가 "완료"로 닫히면(<see cref="OpenPropertyDialog"/> 참고)
+/// 노드가 그 자리에서 이미 수정된 상태이므로 <see cref="RenderTree"/>로 이름 변경 등을 즉시
+/// 반영합니다(완료 기준 "값 변경 후 저장하면 트리에 즉시 반영").</item>
 /// </list>
 /// </remarks>
 public partial class StructureView : UserControl
@@ -221,7 +227,7 @@ public partial class StructureView : UserControl
         {
             if (e.ClickCount == 2)
             {
-                BeginRename(node);
+                OpenPropertyDialog(node);
                 e.Handled = true;
             }
         };
@@ -271,6 +277,10 @@ public partial class StructureView : UserControl
             menu.Items.Add(new Separator());
         }
 
+        var propertyItem = new MenuItem { Header = "속성 편집" };
+        propertyItem.Click += (_, _) => OpenPropertyDialog(node);
+        menu.Items.Add(propertyItem);
+
         var renameItem = new MenuItem { Header = "이름 변경" };
         renameItem.Click += (_, _) => BeginRename(node);
         menu.Items.Add(renameItem);
@@ -280,6 +290,22 @@ public partial class StructureView : UserControl
         menu.Items.Add(deleteItem);
 
         return menu;
+    }
+
+    /// <summary>
+    /// (ED-D02a/b) <paramref name="node"/>의 <see cref="StructureNodePropertyDialog"/>를 모달로 띄웁니다.
+    /// "완료"로 닫히면(<see cref="StructureNodePropertyDialog.Saved"/>) 다이얼로그가 이미 <paramref name="node"/>를
+    /// 그 자리에서 수정해뒀으므로 <see cref="RenderTree"/>만 호출해 이름 등 변경 사항을 화면에 즉시
+    /// 반영합니다(완료 기준). "취소"로 닫히면 아무 것도 바뀌지 않았으므로 다시 그리지 않습니다.
+    /// </summary>
+    private void OpenPropertyDialog(StructureTreeNode node)
+    {
+        var dialog = new StructureNodePropertyDialog(node) { Owner = Window.GetWindow(this) };
+        dialog.ShowDialog();
+        if (dialog.Saved)
+        {
+            RenderTree();
+        }
     }
 
     /// <summary>

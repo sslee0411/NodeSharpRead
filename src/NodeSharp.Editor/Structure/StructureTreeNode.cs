@@ -45,6 +45,15 @@ public abstract class StructureTreeNode
 /// <summary>장비(1단계) — 6단계 트리의 루트. 자식으로 <see cref="PlcNode"/>만 허용합니다.</summary>
 public sealed class DeviceNode : StructureTreeNode
 {
+    // (ED-D02a 발견·수정) 02번 설계문서 8번 탭 카드3의 DeviceNode 예시는 PropertySchema에
+    // "model"/"location" 필드만 정의하고 그 값을 담을 실제 C# 프로퍼티는 정의하지 않은 상태였다
+    // — PlcNode(CommType/Host/Port)·DeviceMapNode(StartAddress/LengthBytes) 등 나머지 5개
+    // 클래스는 모두 PropertySchema.Key와 이름이 같은 프로퍼티를 갖고 있는 것과 대조적이다.
+    // StructureNodePropertyDialog(ED-D02a/b)가 PropertyField.Key로 리플렉션 프로퍼티를 찾아 값을
+    // 읽고 쓰므로, 이 프로퍼티가 없으면 "모델명"/"설치 위치" 필드는 편집해도 저장될 곳이 없어
+    // 조용히 무시된다 — 다른 5개 클래스와 동일한 관례로 프로퍼티를 추가해 바로잡는다.
+    public string Model { get; set; } = string.Empty;
+    public string Location { get; set; } = string.Empty;
     public override string IconGlyph => "🏭";
     public override IReadOnlyList<Type> AllowedChildTypes => new[] { typeof(PlcNode) };
     public override IReadOnlyList<PropertyField> PropertySchema => new[]
