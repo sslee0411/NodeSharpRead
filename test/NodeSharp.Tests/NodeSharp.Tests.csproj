@@ -95,6 +95,9 @@
     <!-- NR-11(03번 개발 Step맵.html) — DebugNode(코어 노드 플러그인, Phase 7 마지막)를 실제 FlowEngine
          배포·라우팅 경로로 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Debug\NodeSharp.Nodes.Debug.csproj" />
+    <!-- PD-01a(03번 개발 Step맵.html) — ModbusDriver(IProtocolDriver 1차 구현체)를 FakeModbusTcpSlave
+         로 실제 TCP 왕복 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\drivers\NodeSharp.Drivers.Modbus\NodeSharp.Drivers.Modbus.csproj" />
   </ItemGroup>
 
 </Project>
