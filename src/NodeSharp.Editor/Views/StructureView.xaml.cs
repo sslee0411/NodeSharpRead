@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using NodeSharp.Editor.Core.Config;
 using NodeSharp.Editor.Structure;
 
 namespace NodeSharp.Editor.Views;
@@ -13,10 +14,15 @@ namespace NodeSharp.Editor.Views;
 /// 기반)를 렌더링하고, 각 단계 노드의 추가/삭제/이름 변경을 처리하는 화면
 ///
 /// (ED-D01) 완료 기준("6단계 트리가 StructureTreeNode로 렌더링되고, 각 단계 노드 추가/삭제가 정상
-/// 동작하는지")을 만족합니다. 트리 상태는 이 클래스가 메모리에만 들고 있습니다 — device.json
-/// 저장/로드(ED-D03), 실제 속성 편집 폼(ED-D02a/b), TagRef 연동(ED-D04)은 모두 이후 Step 범위입니다.
+/// 동작하는지")을 만족합니다. 실제 속성 편집 폼은 ED-D02a/b, TagRef 연동은 ED-D04 범위입니다.
 /// (ED-B2a) 02번 문서 8번 탭 카드15의 "항상 분할 도킹" 설계에 따라 <see cref="FlowCanvasView"/>와
 /// GridSplitter를 사이에 두고 항상 동시에 표시됩니다.
+/// (ED-D03) device.json 저장/로드가 추가됐습니다 — <see cref="LoadDeviceTreeAsync"/>가 <see cref="OnLoaded"/>에서
+/// 자동 호출되고(<see cref="FlowCanvasView"/>의 flows.json 자동 로드와 동일한 관례), <see cref="SaveDeviceTreeAsync"/>는
+/// <c>MainWindow</c>의 "파일 → 저장"/Ctrl+S(기존 <c>FlowCanvas.SaveFlowAsync()</c>와 같은 핸들러)가
+/// 함께 호출합니다 — 이 프로젝트는 "저장"을 flows.json/device.json 둘로 나누지 않고 하나의 사용자
+/// 동작(Ctrl+S)으로 통합해 다루는 편이(각 트리마다 별도 저장 버튼을 요구하는 것보다) Node-RED류
+/// 편집기 사용자에게 더 익숙하다고 판단했습니다.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -85,12 +91,77 @@ public partial class StructureView : UserControl
     /// <summary>현재 선택된 노드(단일 선택) — 없으면 null.</summary>
     private StructureTreeNode? _selectedNode;
 
-    /// <summary>XAML 컨트롤을 초기화하고 "+ 장비" 버튼을 연결한 뒤, 빈 트리를 1회 렌더링합니다(WPF 표준 패턴).</summary>
+    /// <summary>(ED-D03) device.json이 저장될 폴더 — <c>FlowCanvasView.DataDirectory</c>와 동일한 관례(기본값
+    /// <see cref="AppContext.BaseDirectory"/>)입니다. <c>MainWindow</c>가 둘 중 어느 쪽도 별도로 지정하지
+    /// 않으므로, 실제로는 항상 같은 기본값을 가리켜 flows.json과 device.json이 같은 폴더에 나란히 저장됩니다.</summary>
+    public string DataDirectory { get; set; } = AppContext.BaseDirectory;
+
+    /// <summary>(ED-D03) device.json 저장/로드 전용 창구 — <see cref="FlowStore"/>와 동일한 얇은 래퍼 패턴.</summary>
+    private readonly DeviceStore _deviceStore = new();
+
+    /// <summary>XAML 컨트롤을 초기화하고 "+ 장비" 버튼을 연결한 뒤, 빈 트리를 1회 렌더링합니다(WPF 표준 패턴). (ED-D03) <see cref="OnLoaded"/>를 구독해 컨트롤이 화면에 뜨는 시점에 device.json을 자동으로 불러옵니다.</summary>
     public StructureView()
     {
         InitializeComponent();
         AddDeviceButton.MouseLeftButtonDown += (_, _) => AddRoot();
         RenderTree();
+        Loaded += OnLoaded;
+    }
+
+    /// <summary>
+    /// (ED-D03) <see cref="FlowCanvasView"/>의 <c>OnLoaded</c>와 동일한 이유로(<c>async void</c> 이벤트
+    /// 핸들러의 처리되지 않은 예외는 앱 전체를 크래시시키는 WPF의 잘 알려진 함정 — v2.53 버그 수정
+    /// 참고) 예외를 여기서 한 번 더 감싸, device.json을 못 읽어도 빈 트리로 계속 사용할 수 있게 합니다.
+    /// </summary>
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await LoadDeviceTreeAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"device.json 불러오기 중 오류가 발생했습니다. 빈 트리로 시작합니다.\n{ex.Message}",
+                "불러오기 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// (ED-D03) <see cref="DataDirectory"/>\device.json을 읽어 저장된 트리가 있으면 <see cref="Devices"/>를
+    /// 그 내용으로 완전히 교체하고 다시 그립니다. 파일이 없거나(최초 실행) 비어 있으면(장비 0개) 아무
+    /// 것도 하지 않습니다(<see cref="FlowStore.LoadAsync"/>가 null이면 그대로 두는 것과 동일한 관례).
+    /// </summary>
+    public async Task LoadDeviceTreeAsync()
+    {
+        var tree = await _deviceStore.LoadAsync(DataDirectory);
+        if (tree is null || tree.Devices.Count == 0)
+        {
+            return;
+        }
+
+        Devices.Clear();
+        foreach (var node in StructureTreeMapper.FromDto(tree))
+        {
+            Devices.Add(node);
+        }
+
+        RenderTree();
+    }
+
+    /// <summary>
+    /// (ED-D03) 지금 메모리에 있는 <see cref="Devices"/>(6단계 트리 전체)를 <see cref="StructureTreeMapper.ToDto"/>로
+    /// <c>DeviceTreeDto</c>로 변환해 <see cref="DataDirectory"/>\device.json에 원자적으로 저장합니다
+    /// (<see cref="DeviceStore.SaveAsync"/> — .tmp에 먼저 전부 쓴 뒤 원본과 한 번에 바꿔치기하므로 저장
+    /// 도중 강제 종료돼도 기존 device.json은 손상되지 않습니다). <c>MainWindow</c>의 "파일 → 저장"
+    /// 메뉴/Ctrl+S가 <c>FlowCanvas.SaveFlowAsync()</c>와 함께 이 메서드를 호출합니다.
+    /// </summary>
+    public async Task SaveDeviceTreeAsync()
+    {
+        var tree = StructureTreeMapper.ToDto(Devices);
+        await _deviceStore.SaveAsync(tree, DataDirectory);
     }
 
     /// <summary>헤더 "+ 장비" — 새 <see cref="DeviceNode"/>를 루트 목록 맨 끝에 추가하고 즉시 이름 변경 상태로 만듭니다.</summary>

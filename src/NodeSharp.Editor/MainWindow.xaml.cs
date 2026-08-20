@@ -382,6 +382,11 @@ public partial class MainWindow : Window
     /// <see cref="RoutedEventArgs"/> 파생이라 같은 델리게이트 반공변성 기법으로 한 메서드가 두 이벤트를
     /// 모두 처리)이 공유하는 저장 핸들러입니다. <c>FlowCanvas.SaveFlowAsync()</c>를 호출해 지금
     /// 캔버스 상태를 flows.json에 원자적으로 저장하고, 성공/실패를 안내 메시지로 알립니다.
+    /// (ED-D03) <c>StructureTab.SaveDeviceTreeAsync()</c>를 이어서 호출해 구조 설정 트리도 device.json에
+    /// 함께 원자적으로 저장합니다 — 이 앱은 "저장" 동작 하나(Ctrl+S)로 flows.json/device.json을 함께
+    /// 다루도록 통합했습니다(각 트리마다 별도 저장 버튼을 두지 않음, StructureView 클래스 remarks 참고).
+    /// 두 파일은 서로 독립적인 저장이므로 각각 별도 try/catch로 감싸 한쪽이 실패해도 다른 쪽 저장은
+    /// 계속 시도합니다.
     /// </summary>
     private async void OnSaveFlowClick(object sender, RoutedEventArgs e)
     {
@@ -393,6 +398,19 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(
                 $"flows.json 저장 중 오류가 발생했습니다.\n{ex.Message}",
+                "저장 실패",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+
+        try
+        {
+            await StructureTab.SaveDeviceTreeAsync();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"device.json 저장 중 오류가 발생했습니다.\n{ex.Message}",
                 "저장 실패",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);

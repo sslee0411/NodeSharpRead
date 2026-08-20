@@ -389,7 +389,9 @@
                             Grid.Column="2"
                             Style="{StaticResource ThemedTabControlStyle}">
                     <TabItem Header="구조 설정">
-                        <views:StructureView />
+                        <!-- (ED-D03) x:Name 추가 — MainWindow.xaml.cs의 OnSaveFlowClick(파일 → 저장/Ctrl+S)이
+                             StructureTab.SaveDeviceTreeAsync()를 호출해 device.json도 함께 저장할 수 있도록. -->
+                        <views:StructureView x:Name="StructureTab" />
                     </TabItem>
                     <TabItem Header="Information">
                         <views:InformationPanelView x:Name="InformationPanel" />
