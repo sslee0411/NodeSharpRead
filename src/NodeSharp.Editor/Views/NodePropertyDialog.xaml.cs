@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using NodeSharp.Contracts.Enums;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Structure;
 using NodeSharp.UI.Themes;
 
 namespace NodeSharp.Editor.Views;
@@ -17,8 +18,11 @@ namespace NodeSharp.Editor.Views;
 /// 4번). "완료"를 누르면 입력값을 모아 새 <see cref="NodeConfig"/>를 만들어(record 불변 —
 /// NodeConfig 자체 문서의 "내용을 바꾸려면 항상 새 인스턴스로 교체" 원칙을 그대로 따름)
 /// <see cref="UpdatedConfig"/>에 담고 <see cref="Window.DialogResult"/>를 true로 닫습니다. "취소"를
-/// 누르면 아무 것도 만들지 않고 닫습니다. TagRef는 이 Step 요구대로 ComboBox로 렌더링하지만, 실제
-/// 태그 목록(구조 설정 데이터)은 Phase 9 이후에나 채워지므로 지금은 빈 콤보박스로 표시됩니다.
+/// 누르면 아무 것도 만들지 않고 닫습니다. TagRef는 ComboBox로 렌더링하되, (ED-D04) 이제
+/// <see cref="TagCatalog.CurrentTags"/>(구조 설정 트리가 항상 최신으로 갱신해두는 정적 스냅샷)를
+/// 실제 선택지로 채웁니다 — 화면에는 사람이 읽는 "장비/PLC/디바이스맵/태그" 경로가 보이지만, 실제
+/// 저장되는 값은 항상 그 태그의 고유 Id입니다(<see cref="CreateInputControl"/>/<see cref="ReadValue"/>
+/// 참고, 태그 이름이 바뀌어도 연동이 끊기지 않는 이유).
 /// (EC-11) 이름 바로 아래에 "설명"(<see cref="NodeConfig.Description"/>) 입력란도 고정 필드로
 /// 함께 제공합니다 — 값이 있으면 캔버스 카드에 문서 배지가 표시되고 클릭 시 팝업으로 이 텍스트를
 /// 그대로 보여줍니다.
@@ -184,9 +188,11 @@ public partial class NodePropertyDialog : Window
 
     /// <summary>
     /// <paramref name="field"/>.Type에 맞는 입력 컨트롤을 만들고 <see cref="_config"/>.Properties의
-    /// 현재 값(없으면 DefaultValue)으로 채웁니다. TagRef/ComboBox는 둘 다 ComboBox로 렌더링합니다
-    /// (이 Step의 완료 기준). Number/CredentialRef/TypedValue는 아직 전용 컨트롤이 없어(각각 후속
-    /// Step 범위) 지금은 TextBox로 대체합니다.
+    /// 현재 값(없으면 DefaultValue)으로 채웁니다. (ED-D04) TagRef는 ComboBox와 렌더링 방식(PropCombo
+    /// 스타일)은 같지만 선택지 출처가 다르므로 별도 분기로 처리합니다 — ComboBox는 <see cref="PropertyField.Options"/>의
+    /// 정적 리터럴 목록을, TagRef는 <see cref="TagCatalog.CurrentTags"/>(구조 설정 트리의 실시간
+    /// 태그 목록)를 선택지로 씁니다. Number/CredentialRef/TypedValue는 아직 전용 컨트롤이 없어(각각
+    /// 후속 Step 범위) 지금은 TextBox로 대체합니다.
     /// </summary>
     private FrameworkElement CreateInputControl(PropertyField field)
     {
@@ -204,7 +210,6 @@ public partial class NodePropertyDialog : Window
                 };
 
             case PropertyFieldType.ComboBox:
-            case PropertyFieldType.TagRef:
                 // (★ 버그 수정, 2026-08-13) 이전엔 Background/Foreground만 직접 지정했는데, WPF
                 // ComboBox의 기본 ControlTemplate(토글 버튼·화살표·팝업 부분)은 이 두 속성을
                 // TemplateBinding으로 반영하지 않아 다크 테마에서도 OS 기본 흰색 상자로 그대로
@@ -232,6 +237,36 @@ public partial class NodePropertyDialog : Window
                     comboBox.SelectedItem = currentValue;
                 }
                 return comboBox;
+
+            case PropertyFieldType.TagRef:
+                // (ED-D04) 이전엔 TagRef가 바로 위 ComboBox 분기를 그대로 공유해 field.Options가
+                // 항상 비어 있었으므로(Options는 정적 리터럴 선택지용이지 태그 목록용이 아님) TagRef는
+                // 항상 빈 콤보박스로 표시됐다(이 클래스 상단 문서의 예전 "지금은 빈 콤보박스로 표시"
+                // 문구 참고). 지금부터는 TagCatalog.CurrentTags(구조 설정 트리가 RenderTree마다
+                // 갱신하는 정적 스냅샷 — 팝업이 아니라 이미 항상 열려있는 "구조 설정" 탭 데이터를
+                // 그대로 재사용, 자세한 판단 경위는 StructureView 클래스 remarks ED-D04 항목·03번
+                // Step맵 ED-D04 항목 참고)를 실제 선택지로 채운다. 화면에 보이는 항목은
+                // TagCatalogEntry(사람이 읽는 "장비/PLC/디바이스맵/태그" 경로, ToString()이 이 값을
+                // 반환)지만, Properties에 실제로 저장/비교되는 값은 항상 TagCatalogEntry.Id(불변
+                // GUID) — ReadValue가 이를 꺼낸다. 이렇게 하면 구조 설정에서 태그 이름만 바꿔도(Id는
+                // 그대로) 이미 선택된 연동이 끊기지 않는다(완료 기준).
+                var tagCombo = new ComboBox
+                {
+                    Style = (Style)FindResource("PropCombo")
+                };
+                foreach (var tag in TagCatalog.CurrentTags)
+                {
+                    tagCombo.Items.Add(tag);
+                }
+                if (currentValue is not null)
+                {
+                    var matchedTag = TagCatalog.CurrentTags.FirstOrDefault(t => t.Id == currentValue);
+                    if (matchedTag is not null)
+                    {
+                        tagCombo.SelectedItem = matchedTag;
+                    }
+                }
+                return tagCombo;
 
             case PropertyFieldType.Password:
                 var passwordBox = new PasswordBox
@@ -269,10 +304,16 @@ public partial class NodePropertyDialog : Window
         }
     }
 
-    /// <summary>입력 컨트롤 하나에서 현재 값을 문자열로 꺼냅니다(컨트롤 종류별로 읽는 방법이 다름).</summary>
+    /// <summary>
+    /// 입력 컨트롤 하나에서 현재 값을 문자열로 꺼냅니다(컨트롤 종류별로 읽는 방법이 다름). (ED-D04)
+    /// TagRef 콤보박스(<see cref="CreateInputControl"/>)는 화면엔 <see cref="TagCatalogEntry"/>(표시
+    /// 경로)가 보이지만 실제로 저장할 값은 그 항목의 Id이므로, 그 경우를 먼저 매칭해 <c>.Id</c>를
+    /// 꺼낸다 — 일반 ComboBox(문자열 항목)의 기존 동작은 그대로 유지된다.
+    /// </summary>
     private static string ReadValue(FrameworkElement control) => control switch
     {
         CheckBox checkBox => (checkBox.IsChecked == true).ToString(),
+        ComboBox { SelectedItem: TagCatalogEntry tagEntry } => tagEntry.Id,
         ComboBox comboBox => comboBox.SelectedItem as string ?? comboBox.Text,
         PasswordBox passwordBox => passwordBox.Password,
         TextBox textBox => textBox.Text,

@@ -847,6 +847,16 @@
       NodeSharp.Nodes.Debug 어셈블리 자체를 볼 수 없어 발생. 위 ItemGroup에 ProjectReference 추가,
       PaletteView.xaml.cs/FlowCanvasView.xaml.cs에 ScanAssembly(typeof(DebugNodeType).Assembly) 호출
       추가(각 클래스 자체 주석 v3.01 항목 참고).
+
+    Step: ED-D04 (03번 개발 Step맵.html, Phase 9 — TagRef 연동)
+    - PlcTagReadNode(TagRef 연동 예시 노드, 첫 구현체)를 EC-01c 규칙대로 팔레트/캔버스가
+      ScanAssembly로 찾아 등록할 수 있도록 위 ItemGroup에 ProjectReference 추가,
+      PaletteView.xaml.cs/FlowCanvasView.xaml.cs에 ScanAssembly(typeof(PlcTagReadNodeType).Assembly)
+      호출 추가(각 클래스 자체 주석 ED-D04 항목 참고). Structure\TagCatalog.cs(신규)·
+      StructureView.xaml.cs(RenderTree)·NodePropertyDialog.xaml.cs(TagRef 콤보박스) 수정으로 실제
+      TagRef 연동(구조 설정 트리 → 캔버스 노드 속성)을 구현 — 자세한 설계 판단 경위(팝업 대신 항상
+      열려있는 구조 설정 탭 재사용, IStructureService 런타임 읽기는 후속 Step으로 범위 축소)는
+      nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj 항목 참고.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -873,6 +883,9 @@
          남긴 "새 노드 타입 프로젝트가 추가될 때마다 이 목록에도 한 줄씩 추가" 규칙을 빠뜨려, Debug
          노드가 팔레트/캔버스 어디에도 나타나지 않던 누락을 보완. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.Debug\NodeSharp.Nodes.Debug.csproj" />
+    <!-- ED-D04: PlcTagReadNode(TagRef 연동 예시 노드)도 EC-01c 규칙대로 팔레트/캔버스가
+         ScanAssembly로 찾아 등록할 수 있도록 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj" />
   </ItemGroup>
 
   <ItemGroup>

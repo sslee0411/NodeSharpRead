@@ -28,6 +28,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Nodes.Debug", "no
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Drivers.Modbus", "drivers\NodeSharp.Drivers.Modbus\NodeSharp.Drivers.Modbus.csproj", "{DDAA58BC-AF28-4DF7-BB35-4CF827DA4E2D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NodeSharp.Nodes.PlcTagRead", "nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj", "{FEFCF7C8-2592-468D-962C-2D30412F95BB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -86,6 +88,10 @@ Global
 		{DDAA58BC-AF28-4DF7-BB35-4CF827DA4E2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DDAA58BC-AF28-4DF7-BB35-4CF827DA4E2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DDAA58BC-AF28-4DF7-BB35-4CF827DA4E2D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FEFCF7C8-2592-468D-962C-2D30412F95BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FEFCF7C8-2592-468D-962C-2D30412F95BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FEFCF7C8-2592-468D-962C-2D30412F95BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FEFCF7C8-2592-468D-962C-2D30412F95BB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

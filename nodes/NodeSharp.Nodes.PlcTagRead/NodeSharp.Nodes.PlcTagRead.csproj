@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Nodes.PlcTagRead
+    ====================
+    PLC 태그 읽기 예시 노드(ED-D04, TagRef 연동 증명용) 코어 플러그인. 02번 설계 문서 1번 탭 폴더
+    구조(nodes\ ← 코어 노드 플러그인, 개별 csproj, Contracts만 참조)에 따라 이 프로젝트는
+    NodeSharp.Contracts 하나만 참조합니다(스케줄러 등 Util 기능이 필요 없음).
+
+    Step: ED-D04 (03번 개발 Step맵.html, Phase 9 — TagRef 연동)
+    - 착수 전 판단(질문 없이 진행 — 확립된 무-질문 운영 방식): 02번 설계문서 9번 탭 카드5의
+      PlcTagReadNode 예시는 ctx.Structure(IStructureService)로 실제 PLC 값을 읽는 완전한 동작을
+      전제하지만, IStructureService는 아직 어디에도 구현돼 있지 않다(ED-D03이 구현을 명시적으로
+      보류한 상태). 이 Step의 완료 기준("태그 이름만 변경해도 TagRef 연동이 끊기지 않는지")은 실제
+      PLC 통신과 무관하게 Id 안정성만 증명하면 충분하므로, ED-D02a("Editor UI만" 범위로 축소된 선례)
+      와 동일한 원칙으로 범위를 좁혀 진행 — 실제 PLC 읽기(IStructureService 도입)는 후속 Step으로
+      명시적으로 미룬다.
+    - 카드5 원본은 태그 선택을 "팝업"으로 서술하지만, 02번 문서의 더 뒤쪽("② 캔버스 → 구조 트리"
+      내비게이션 절)은 이미 항상 열려있는 "구조 설정" 탭(ED-B2a "항상 분할 도킹" 설계)을 그대로 쓰는
+      쪽으로 서술이 바뀌어 있다 — 이 프로젝트의 실제 아키텍처(StructureView가 FlowCanvasView와 항상
+      나란히 도킹됨)와 일치하는 후자를 채택. 새 팝업 창을 만들지 않고, NodeSharp.Editor.Structure.
+      TagCatalog(신규, StructureView.RenderTree가 트리 변경마다 갱신하는 정적 홀더)를
+      NodePropertyDialog(EC-03)의 TagRef 콤보박스가 그대로 읽는 방식으로 구현했다(자세한 경위는 03번
+      Step맵 ED-D04 항목 참고).
+    - PlcTagReadNode.cs 신규 — IFlowNode 직접 구현(카드5의 LssLibNodeAdapterBase는 실제 코드베이스
+      어디에도 없어 InjectNode/SwitchNode 등과 동일한 선례를 따름). 입력 1개·출력 1개, OnInputAsync가
+      실제 PLC 값 대신 TagId를 그대로 payload에 실어 전달(위 범위 축소 근거).
+    - PlcTagReadNodeType.cs 신규 — InjectNodeType과 동일한 관례로 INodeTypeDescriptor 직접 구현.
+      PropertySchema에 "tagId"(PropertyFieldType.TagRef, Required) 필드 1개.
+    - src\NodeSharp.Editor\Structure\TagCatalog.cs 신규, StructureView.xaml.cs(RenderTree)/
+      NodePropertyDialog.xaml.cs(CreateInputControl TagRef 분기, ReadValue) 수정 — TagRef 실제 연동
+      구현. NodeSharp.Editor.csproj/PaletteView.xaml.cs/FlowCanvasView.xaml.cs에 ScanAssembly 배선
+      추가(기존 Inject/Switch/Function/Debug와 동일한 관례).
+    - test\NodeSharp.Tests\PlcTagReadNodeTests.cs 신규, NodeSharp.Tests.csproj ProjectReference 추가
+      — Descriptor 등록·Factory·FlowEngine 배포/라우팅 경로만 xUnit으로 증명(실제 WPF TagRef
+      콤보박스·구조 설정 탭 연동은 사용자의 Windows 실행 확인이 최종 완료 기준 — ED-D01/ED-D02a/
+      ED-D03과 동일한 선례, PlcTagReadNodeTests.cs 클래스 문서 참고).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Nodes.PlcTagRead</RootNamespace>
+    <AssemblyName>NodeSharp.Nodes.PlcTagRead</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 02번 문서 1번 탭 폴더 구조 — 코어 노드 플러그인은 Contracts(+필요시 Util)만 참조. 이 노드는
+         스케줄러 등 Util 기능이 필요 없어 Contracts만 참조합니다. -->
+    <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

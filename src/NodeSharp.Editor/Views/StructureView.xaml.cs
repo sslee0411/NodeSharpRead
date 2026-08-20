@@ -50,6 +50,15 @@ namespace NodeSharp.Editor.Views;
 /// 앱 전체 관례입니다. 다이얼로그가 "완료"로 닫히면(<see cref="OpenPropertyDialog"/> 참고)
 /// 노드가 그 자리에서 이미 수정된 상태이므로 <see cref="RenderTree"/>로 이름 변경 등을 즉시
 /// 반영합니다(완료 기준 "값 변경 후 저장하면 트리에 즉시 반영").</item>
+/// <item><b>(ED-D04) TagRef 연동</b>: <see cref="RenderTree"/>가 호출될 때마다(추가/삭제/이름변경/
+/// 속성편집 — 사실상 트리가 바뀔 때마다) <see cref="TagCatalog.Update"/>로 현재 태그 목록(Id+표시
+/// 경로)을 갱신해둡니다 — 캔버스 노드(<see cref="NodePropertyDialog"/>가 그리는
+/// PropertyFieldType.TagRef 필드)가 이 값을 읽어 태그 선택 콤보박스를 채웁니다. 02번 설계문서 9번
+/// 탭 카드5는 "팝업"으로 태그를 고른다고 서술하지만, 이 프로젝트는 새 팝업 창을 만들지 않고 이미
+/// 항상 열려있는 이 탭(ED-B2a "항상 분할 도킹" 설계)의 데이터를 그대로 재사용하는 쪽을 택했습니다
+/// — 02번 문서 뒤쪽의 "② 캔버스 → 구조 트리" 내비게이션 절도 이미 이 방식(팝업 없음)으로 서술이
+/// 바뀌어 있어, 이 프로젝트의 실제 아키텍처와 일치하는 쪽을 따랐습니다(자세한 판단 경위는 03번 Step맵
+/// ED-D04 항목 참고).</item>
 /// </list>
 /// </remarks>
 public partial class StructureView : UserControl
@@ -227,9 +236,11 @@ public partial class StructureView : UserControl
         return false;
     }
 
-    /// <summary><see cref="Devices"/> 전체를 <see cref="TreePanel"/>에 다시 그립니다 — 추가/삭제/펼침전환/선택마다 호출되는 단일 갱신 지점(EC-05 "데이터를 바꾸고 한 메서드로 화면을 맞춘다" 원칙과 동일).</summary>
+    /// <summary><see cref="Devices"/> 전체를 <see cref="TreePanel"/>에 다시 그립니다 — 추가/삭제/펼침전환/선택마다 호출되는 단일 갱신 지점(EC-05 "데이터를 바꾸고 한 메서드로 화면을 맞춘다" 원칙과 동일). (ED-D04) 그리기 전에 <see cref="TagCatalog"/>도 함께 최신화합니다(클래스 remarks 참고).</summary>
     private void RenderTree()
     {
+        TagCatalog.Update(FlattenTags(Devices));
+
         TreePanel.Children.Clear();
         _rowContentByNode.Clear();
 
@@ -241,6 +252,37 @@ public partial class StructureView : UserControl
         var hasAny = Devices.Count > 0;
         EmptyHint.Visibility = hasAny ? Visibility.Collapsed : Visibility.Visible;
         TreeScroll.Visibility = hasAny ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// (ED-D04) <paramref name="roots"/>(보통 <see cref="Devices"/>) 안의 모든 <see cref="TagNode"/>를
+    /// "장비/PLC/디바이스맵/태그" 형태의 표시 경로와 함께 평탄화합니다 — <see cref="TagCatalog.Update"/>가
+    /// 이 결과로 <see cref="NodePropertyDialog"/>(EC-03)의 TagRef 콤보박스를 채웁니다.
+    /// </summary>
+    private static List<TagCatalogEntry> FlattenTags(IEnumerable<StructureTreeNode> roots)
+    {
+        var result = new List<TagCatalogEntry>();
+
+        void Walk(StructureTreeNode node, string pathPrefix)
+        {
+            var path = pathPrefix.Length == 0 ? node.Name : $"{pathPrefix}/{node.Name}";
+            if (node is TagNode)
+            {
+                result.Add(new TagCatalogEntry(node.Id, path));
+            }
+
+            foreach (var child in node.Children)
+            {
+                Walk(child, path);
+            }
+        }
+
+        foreach (var root in roots)
+        {
+            Walk(root, string.Empty);
+        }
+
+        return result;
     }
 
     /// <summary><paramref name="node"/> 행 1개를 <see cref="TreePanel"/>에 추가하고, 펼쳐져 있으면(<see cref="_expanded"/>) 자식들도 <paramref name="depth"/>+1로 재귀 렌더링합니다.</summary>

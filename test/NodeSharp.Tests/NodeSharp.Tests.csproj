@@ -36,6 +36,10 @@
       AspNetCore.SignalR 네임스페이스)를 손으로 구현한 가짜로 사용하기 위해 아래 FrameworkReference
       추가 — NodeSharp.Runner.csproj가 이미 가진 것과 동일한 참조를 이 프로젝트에도 명시적으로
       추가해, ProjectReference를 통한 전이적 전파에 기대지 않고 확실히 한다.
+
+    Step: ED-D04 (03번 개발 Step맵.html, Phase 9)
+    - PlcTagReadNode(TagRef 연동 예시 노드, 첫 구현체)를 실제 FlowEngine 배포·라우팅 경로로 검증하기
+      위해 nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -98,6 +102,9 @@
     <!-- PD-01a(03번 개발 Step맵.html) — ModbusDriver(IProtocolDriver 1차 구현체)를 FakeModbusTcpSlave
          로 실제 TCP 왕복 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\drivers\NodeSharp.Drivers.Modbus\NodeSharp.Drivers.Modbus.csproj" />
+    <!-- ED-D04(03번 개발 Step맵.html) — PlcTagReadNode(TagRef 연동 예시 노드)를 실제 FlowEngine
+         배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj" />
   </ItemGroup>
 
 </Project>
