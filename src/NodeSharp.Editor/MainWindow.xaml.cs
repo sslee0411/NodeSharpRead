@@ -387,9 +387,30 @@ public partial class MainWindow : Window
     /// 다루도록 통합했습니다(각 트리마다 별도 저장 버튼을 두지 않음, StructureView 클래스 remarks 참고).
     /// 두 파일은 서로 독립적인 저장이므로 각각 별도 try/catch로 감싸 한쪽이 실패해도 다른 쪽 저장은
     /// 계속 시도합니다.
+    /// (ED-D05) 실제 저장(=LK-01 자동 재배포 트리거) 직전에 <see cref="Views.FlowCanvasView.FindBrokenTagRefs"/>로
+    /// TagRef 무결성을 먼저 검사합니다 — 위반이 있으면 목록을 보여주고 "그래도 저장하시겠습니까?"를
+    /// 물어, "아니오"를 선택하면 저장 자체를 하지 않고 메서드를 끝냅니다(완료 기준 "배포를 막거나
+    /// 경고" — 기본은 막되, 사용자가 명시적으로 승인하면 진행할 수 있게 함).
     /// </summary>
     private async void OnSaveFlowClick(object sender, RoutedEventArgs e)
     {
+        var brokenTagRefs = FlowCanvas.FindBrokenTagRefs();
+        if (brokenTagRefs.Count > 0)
+        {
+            var list = string.Join("\n", brokenTagRefs.Select(b =>
+                $"- {(string.IsNullOrWhiteSpace(b.NodeName) ? b.NodeId : b.NodeName)} ({b.FieldKey}: 존재하지 않는 태그 \"{b.MissingTagId}\")"));
+            var choice = MessageBox.Show(
+                $"다음 노드가 더 이상 존재하지 않는 태그를 참조하고 있습니다(구조 설정에서 삭제되었을 수 있습니다):\n\n{list}\n\n" +
+                "그래도 저장하시겠습니까?",
+                "TagRef 연동 끊김",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (choice != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
         try
         {
             await FlowCanvas.SaveFlowAsync();

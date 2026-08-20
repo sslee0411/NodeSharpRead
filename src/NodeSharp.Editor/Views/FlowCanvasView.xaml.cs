@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
+using NodeSharp.Editor.Structure;
 using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.PlcTagRead;
@@ -475,6 +477,56 @@ public partial class FlowCanvasView : UserControl
             .ToList();
 
         await _flowStore.SaveAsync(flows, DataDirectory);
+    }
+
+    /// <summary>
+    /// (ED-D05) 지금 메모리에 있는 <b>모든 탭</b>의 노드(<see cref="_nodeConfigs"/> — <see cref="SaveFlowAsync"/>와
+    /// 동일하게 탭 구분 없이 전부 훑습니다) 중, 그 타입의 PropertySchema에 <see cref="PropertyFieldType.TagRef"/>
+    /// 필드가 있는데 저장된 값이 지금 구조 설정 트리(<see cref="TagCatalog.CurrentTags"/>)에 없는 Id를
+    /// 가리키는 항목을 모두 찾습니다. <c>MainWindow.OnSaveFlowClick</c>이 저장(=LK-01 자동 재배포 트리거)
+    /// 직전에 호출해 사용자에게 경고합니다(완료 기준 "배포 전 검사에 넣으면 찾아내 배포를 막거나 경고").
+    /// 값이 아예 비어 있는 필드는(Required 검증은 별도 범위) 이 검사 대상이 아닙니다 — 여기서는 "값이
+    /// 있는데 그 값이 가리키는 태그가 사라졌는지"만 확인합니다.
+    /// </summary>
+    public IReadOnlyList<BrokenTagRef> FindBrokenTagRefs()
+    {
+        var validTagIds = new HashSet<string>(TagCatalog.CurrentTags.Select(t => t.Id));
+        var broken = new List<BrokenTagRef>();
+
+        foreach (var config in _nodeConfigs.Values)
+        {
+            if (!_registry.Descriptors.TryGetValue(config.Type, out var descriptor))
+            {
+                continue; // 등록 안 된 타입(MissingNode, EC-08)은 이 검사 범위 밖 — PropertySchema 자체를 알 수 없음.
+            }
+
+            foreach (var field in descriptor.PropertySchema)
+            {
+                if (field.Type != PropertyFieldType.TagRef)
+                {
+                    continue;
+                }
+
+                if (!config.Properties.TryGetValue(field.Key, out var raw) || raw is null)
+                {
+                    continue;
+                }
+
+                // NodeConfig.cs remarks가 경고한 대로, flows.json에서 막 불러온 직후에는 문자열이
+                // 아니라 JsonElement로 채워져 있을 수 있어(InjectNodeType.ReadString과 동일한 이유)
+                // 두 경우 모두 안전하게 문자열로 풀어낸다.
+                var tagId = raw is JsonElement je
+                    ? (je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString())
+                    : raw.ToString();
+
+                if (!string.IsNullOrEmpty(tagId) && !validTagIds.Contains(tagId))
+                {
+                    broken.Add(new BrokenTagRef(config.Id, config.Name, field.Key, tagId));
+                }
+            }
+        }
+
+        return broken;
     }
 
     /// <summary>
