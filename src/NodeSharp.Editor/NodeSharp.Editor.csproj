@@ -857,6 +857,15 @@
       TagRef 연동(구조 설정 트리 → 캔버스 노드 속성)을 구현 — 자세한 설계 판단 경위(팝업 대신 항상
       열려있는 구조 설정 탭 재사용, IStructureService 런타임 읽기는 후속 Step으로 범위 축소)는
       nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj 항목 참고.
+
+    Step: ED-D06a (03번 개발 Step맵.html — PLC Write 안전장치)
+    - ED-D05b는 표 순서상 다음이지만 스스로 "★ 실행 순서 주의"로 OP-04 의존 부분을 명시해
+      건너뛰고(경위는 03번 Step맵 ED-D05b 항목 참고), PlcTagWriteNode(범위 검사 + 동시 쓰기 락
+      예시 노드)를 EC-01c 규칙대로 팔레트/캔버스가 ScanAssembly로 찾아 등록할 수 있도록 위
+      ItemGroup에 ProjectReference 추가, PaletteView.xaml.cs/FlowCanvasView.xaml.cs에
+      ScanAssembly(typeof(PlcTagWriteNodeType).Assembly) 호출 추가(각 클래스 자체 주석 ED-D06a
+      항목 참고). 설계 판단 경위는 nodes\NodeSharp.Nodes.PlcTagWrite\NodeSharp.Nodes.PlcTagWrite.csproj
+      항목 참고.
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -886,6 +895,9 @@
     <!-- ED-D04: PlcTagReadNode(TagRef 연동 예시 노드)도 EC-01c 규칙대로 팔레트/캔버스가
          ScanAssembly로 찾아 등록할 수 있도록 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj" />
+    <!-- ED-D06a: PlcTagWriteNode(범위 검사 + 동시 쓰기 락 예시 노드)도 EC-01c 규칙대로 팔레트/캔버스가
+         ScanAssembly로 찾아 등록할 수 있도록 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagWrite\NodeSharp.Nodes.PlcTagWrite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

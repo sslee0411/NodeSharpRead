@@ -4,6 +4,7 @@ using System.Windows.Input;
 using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.PlcTagRead;
+using NodeSharp.Nodes.PlcTagWrite;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
 // (v3.01 버그 수정) "NodeSharp.Nodes.Debug" 네임스페이스 전체를 using하면 이 파일이 나중에
@@ -45,6 +46,7 @@ public partial class PaletteView : UserControl
     /// 추가해야 팔레트에 나타납니다. (FN-01) FunctionNodeType 추가.
     /// (v3.01 버그 수정) NR-11(Debug 노드)이 이 목록에 한 줄 추가하는 것을 빠뜨려 Debug 노드가
     /// 팔레트에 나타나지 않던 누락을 보완 — DebugNodeType 추가. (ED-D04) PlcTagReadNodeType 추가.
+    /// (ED-D06a) PlcTagWriteNodeType 추가.
     /// </summary>
     public PaletteView()
     {
@@ -54,6 +56,7 @@ public partial class PaletteView : UserControl
         _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         _registry.ScanAssembly(typeof(DebugNodeType).Assembly);
         _registry.ScanAssembly(typeof(PlcTagReadNodeType).Assembly);
+        _registry.ScanAssembly(typeof(PlcTagWriteNodeType).Assembly);
         RefreshAllCards();
         ApplyFilter(string.Empty);
     }

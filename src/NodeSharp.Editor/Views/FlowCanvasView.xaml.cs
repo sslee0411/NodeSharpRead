@@ -14,6 +14,7 @@ using NodeSharp.Editor.Structure;
 using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.PlcTagRead;
+using NodeSharp.Nodes.PlcTagWrite;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
 // (v3.01 버그 수정) PaletteView.xaml.cs와 동일한 이유로 네임스페이스 전체 대신 DebugNodeType 타입
@@ -318,12 +319,13 @@ public partial class FlowCanvasView : UserControl
         // PropertySchema 조회(EC-03)·MissingNode 판정(EC-08)이 "등록 안 된 타입"으로 계속 오판한다.
         // (FN-01) FunctionNodeType 추가. (v3.01 버그 수정) NR-11(Debug 노드)이 이 목록에 추가하는
         // 것을 빠뜨려 캔버스에 배치해도 항상 "missing type"(⚠)으로 그려지던 누락을 보완.
-        // (ED-D04) PlcTagReadNodeType 추가.
+        // (ED-D04) PlcTagReadNodeType 추가. (ED-D06a) PlcTagWriteNodeType 추가.
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         _registry.ScanAssembly(typeof(DebugNodeType).Assembly);
         _registry.ScanAssembly(typeof(PlcTagReadNodeType).Assembly);
+        _registry.ScanAssembly(typeof(PlcTagWriteNodeType).Assembly);
         RenderFlowTabStrip();
         Loaded += OnLoaded;
     }

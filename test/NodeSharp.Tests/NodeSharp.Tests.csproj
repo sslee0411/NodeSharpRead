@@ -40,6 +40,11 @@
     Step: ED-D04 (03번 개발 Step맵.html, Phase 9)
     - PlcTagReadNode(TagRef 연동 예시 노드, 첫 구현체)를 실제 FlowEngine 배포·라우팅 경로로 검증하기
       위해 nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj ProjectReference 추가.
+
+    Step: ED-D06a (03번 개발 Step맵.html — PLC Write 안전장치)
+    - PlcTagWriteNode(범위 검사 + 동시 쓰기 락 예시 노드)를 실제 FlowEngine 배포·라우팅 경로 +
+      xUnit 동시성 테스트(WriteAction 주입, 최대 동시 실행 수 측정)로 검증하기 위해
+      nodes\NodeSharp.Nodes.PlcTagWrite\NodeSharp.Nodes.PlcTagWrite.csproj ProjectReference 추가.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
@@ -105,6 +110,9 @@
     <!-- ED-D04(03번 개발 Step맵.html) — PlcTagReadNode(TagRef 연동 예시 노드)를 실제 FlowEngine
          배포·라우팅 경로로 테스트하기 위해 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagRead\NodeSharp.Nodes.PlcTagRead.csproj" />
+    <!-- ED-D06a(03번 개발 Step맵.html) — PlcTagWriteNode(범위 검사 + 동시 쓰기 락 예시 노드)를 실제
+         FlowEngine 배포·라우팅 경로로 테스트하기 위해 추가. -->
+    <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagWrite\NodeSharp.Nodes.PlcTagWrite.csproj" />
   </ItemGroup>
 
 </Project>
