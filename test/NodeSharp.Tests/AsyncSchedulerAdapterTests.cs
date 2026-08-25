@@ -12,6 +12,10 @@ namespace NodeSharp.Tests;
 /// 목록이 섞이지 않게 합니다(EventBusTests와 동일한 원칙). (NR-03b) <see cref="AsyncSchedulerAdapter"/>가
 /// NodeSharp.Runtime에서 NodeSharp.Util.Messaging으로 이동해 <c>using NodeSharp.Runtime;</c>이 더 이상
 /// 필요하지 않습니다 — 동작·시그니처는 그대로입니다.
+/// ★ 수정(2026-08-25, 사용자 Windows dotnet test 실행에서 발견): AsyncSchedulerTests.cs와 동일한 원인
+/// (전체 스위트를 병렬로 돌리면 실행 초반 CLR ThreadPool 예열 지연으로 타이머 콜백이 밀릴 수 있음)으로
+/// 대기 시간이 짧았던 타이밍 테스트가 흔들릴 수 있어, 모든 대기 시간을 큰 폭으로 늘렸습니다 — 자세한
+/// 근거는 AsyncSchedulerTests.cs 클래스 문서 참고. 완료 기준 검증 방향성 자체는 그대로 유지.
 /// </summary>
 public class AsyncSchedulerAdapterTests
 {
@@ -27,9 +31,9 @@ public class AsyncSchedulerAdapterTests
             return Task.CompletedTask;
         });
 
-        await Task.Delay(160);
+        await Task.Delay(1000);
 
-        Assert.True(callCount >= 3, $"160ms 동안 20ms 간격이면 최소 3번은 호출돼야 하는데 {callCount}번 호출됨");
+        Assert.True(callCount >= 3, $"1000ms 동안 20ms 간격이면 최소 3번은 호출돼야 하는데 {callCount}번 호출됨");
     }
 
     [Fact]
@@ -44,10 +48,10 @@ public class AsyncSchedulerAdapterTests
             return Task.CompletedTask;
         });
 
-        await Task.Delay(80);
+        await Task.Delay(400);
         scheduler.Unschedule("owner-2");
         var countAtUnschedule = callCount;
-        await Task.Delay(150);
+        await Task.Delay(400);
 
         Assert.InRange(callCount, countAtUnschedule, countAtUnschedule + 1);   // 진행 중이던 1회는 예외로 허용
     }
@@ -80,10 +84,10 @@ public class AsyncSchedulerAdapterTests
             return Task.CompletedTask;
         });
 
-        await Task.Delay(80);
+        await Task.Delay(400);
         scheduler.Unschedule("owner-3");
         var periodicAtUnschedule = periodicCount;
-        await Task.Delay(150);
+        await Task.Delay(400);
 
         Assert.InRange(periodicCount, periodicAtUnschedule, periodicAtUnschedule + 1);
     }
@@ -91,8 +95,10 @@ public class AsyncSchedulerAdapterTests
     [Fact]
     public async Task ScheduleCron은_조건에_맞는_순간에만_콜백을_호출한다()
     {
-        // "* * * * * *"는 모든 초에 일치하므로, 어댑터의 1초 폴링 주기 특성상 1.1초 정도 지나면
+        // "* * * * * *"는 모든 초에 일치하므로, 어댑터의 1초 폴링 주기 특성상 3초 정도 지나면
         // 최소 1번은 호출돼야 한다(cron 표현식 자체의 매칭은 CronExpressionTests에서 이미 별도 검증).
+        // ★ 수정(2026-08-25): 원래 1.1~1.2초였던 대기가 ThreadPool 예열 지연에 여유가 거의 없어(클래스
+        // 문서 참고) 3초로 확대.
         IScheduler scheduler = new AsyncSchedulerAdapter(new AsyncScheduler());
         var callCount = 0;
 
@@ -102,9 +108,9 @@ public class AsyncSchedulerAdapterTests
             return Task.CompletedTask;
         });
 
-        await Task.Delay(1200);
+        await Task.Delay(3000);
 
-        Assert.True(callCount >= 1, "1.2초 동안 매초 일치하는 cron이 한 번도 호출되지 않음");
+        Assert.True(callCount >= 1, "3초 동안 매초 일치하는 cron이 한 번도 호출되지 않음");
         scheduler.Unschedule("owner-4");
     }
 }

@@ -97,6 +97,21 @@
       사전 예방) — 4필드/7필드로 교체하고 이름도 "필드가_5개도_6개도_아니면..."으로 갱신. 신규 테스트
       2건 추가 — 5필드 "* * * * *"가 6필드 "0 * * * * *"와 동일하게 동작하는지(완료 기준 직접 검증),
       5필드 요일 지정도 정상 동작하는지.
+
+    ★ 수정(2026-08-25, 사용자 Windows dotnet test 실행에서 발견 — RT-08/NR-03b 코드 자체가 아니라
+    테스트 타이밍 여유 문제)
+    - AsyncSchedulerTests.ScheduleRecurring은_간격마다_반복_실행된다()가 "160ms 동안 20ms 간격이면
+      최소 3번은 실행돼야 하는데 0번 실행됨"으로 실패 보고. AsyncScheduler.cs/ScheduledTask.cs 코드를
+      다시 확인했지만 로직 결함은 없음(ScheduledTask 생성자가 즉시 RunLoopAsync를 시작, InitialDelay
+      경과 후 콜백 실행하는 구조 그대로 정상) — 원인은 전체 xUnit 스위트를 한 번에 돌릴 때(여러 테스트
+      클래스가 병렬 실행되고 이 파일의 Task.Delay 타이머 콜백들도 같은 CLR ThreadPool을 공유) 실행
+      초반 ThreadPool이 아직 충분히 예열되지 않아 타이머 콜백이 지연될 수 있다는 것으로 판단(실행
+      경과 시간은 예정대로였는데 콜백만 0번 실행됐다는 보고 내용이 이 가설과 일치). test\NodeSharp.Tests\
+      {AsyncSchedulerTests,AsyncSchedulerAdapterTests}.cs 수정 — 두 파일의 모든 Task.Delay 대기 시간을
+      큰 폭으로 늘림(예: 160ms→1000ms, 80/150ms→400ms, 1.2초→3초) — Interval 자체(20ms)는 그대로 두고
+      대기 예산만 넉넉하게 늘려 ThreadPool 예열 지연을 흡수. 완료 기준이 요구하는 "반복되는지/멈추는지"
+      방향성 검증 로직은 전혀 바꾸지 않음(대기 시간 숫자만 수정). AsyncScheduler.cs/ScheduledTask.cs/
+      AsyncSchedulerAdapter.cs 등 실제 프로덕션 코드는 이 수정에서 전혀 변경하지 않음.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
