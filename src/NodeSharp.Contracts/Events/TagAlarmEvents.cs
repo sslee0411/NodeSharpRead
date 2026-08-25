@@ -67,3 +67,23 @@ public sealed record TagValueUpdatedEvent(string TagId, object? Value, AlarmLeve
 /// </code>
 /// </example>
 public sealed record AlarmRaisedEvent(string TagId, AlarmLevel Level, double Value, DateTime At);
+
+/// <summary>
+/// Class명 : 알람 해제 이벤트
+/// 역활 및 기능 : 활성 알람이 정상 범위로 돌아와 해제됐을 때만 발행되는 이벤트
+///
+/// (ED-D07a) 값이 더 이상 어떤 임계값/비교값 조건도 만족하지 않아 <c>AlarmStateManager</c>의 활성
+/// 알람 목록에서 제거될 때만 발행되는 이벤트입니다. 02번 문서 8번 탭 카드11 원본 스니펫의
+/// "AlarmClearedEvent 발행"이라는 주석뿐이던 자리를 <see cref="AlarmRaisedEvent"/>(v1.64 보강)와
+/// 동일한 근거로 정식 <c>record</c>로 선언했습니다 — 필드 구성은 <see cref="AlarmRaisedEvent"/>에서
+/// 알람 판정 시점의 값·레벨이 의미 없어지므로(더 이상 알람 상태가 아니므로) 그 둘을 빼고 최소화했습니다.
+/// 설계 근거: 02번 문서 8번 탭 카드 11.
+/// </summary>
+/// <remarks>7번 탭 모니터링(캔버스 빨강 배지 해제)이 <see cref="AlarmRaisedEvent"/>와 함께 구독합니다.</remarks>
+/// <example>
+/// <code>
+/// // AlarmStateManager.Evaluate()가 활성 알람이 정상 범위로 돌아왔을 때만 발행
+/// eventBus.Publish(new AlarmClearedEvent(TagId: "tag-1", At: DateTime.UtcNow));
+/// </code>
+/// </example>
+public sealed record AlarmClearedEvent(string TagId, DateTime At);
