@@ -158,6 +158,13 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="_wireLinesByKey"/> 조회용 인덱스)만 읽는 순수 추가 기능입니다. 이 뷰는 여러 Flow 탭의
 /// 데이터를 모두 들고 있지만 화면엔 활성 탭만 그려지므로(<see cref="RedrawActiveTab"/>), 지금 화면에
 /// 없는 노드/와이어의 이벤트는 조용히 무시합니다(과거 상태를 다시 그려주는 것은 이 Step 범위 밖).
+/// (ED-D11b, ★ 완료 기준 — "TagValueUpdatedEvent 구독, 캔버스 노드 위에 실시간 태그 값 오버레이
+/// (초당 5회 스로틀 확인)") 위 2가지에 <see cref="ApplyTagValueUpdate"/>(<see cref="TagValueUpdatedEvent"/>,
+/// CT-05b)를 3번째로 추가했습니다 — PropertySchema에 <see cref="PropertyFieldType.TagRef"/> 필드가
+/// 있고 그 값이 이벤트의 TagId와 일치하는 노드 카드 <b>위쪽</b>에(<see cref="ApplyNodeStatus"/> 배지와
+/// 겹치지 않도록) 값+알람색 배지를 그리며, <see cref="_lastTagOverlayUpdateAt"/>로 TagId별 최소 200ms
+/// (초당 5회) 간격을 둬 화면 갱신만 스로틀합니다(발행 빈도 자체는 <see cref="StatusBroadcaster"/>가
+/// 그대로 중계 — 책임 분리는 그 클래스 문서 참고).
 /// (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") 반대 방향(Editor→Runner)의
 /// 첫 채널도 이 뷰에서 시작합니다 — <see cref="RenderNode"/>가 <c>SupportsManualTrigger</c>인 노드
 /// (지금은 Inject뿐)의 카드 왼쪽에 <see cref="AddManualTriggerButton"/>으로 ▶ 버튼을 그리고, 클릭하면
@@ -331,6 +338,19 @@ public partial class FlowCanvasView : UserControl
     // 요소 보관용(RenderNode의 카드 Child 구조는 손대지 않는 설계, 클래스 자체 주석 LK-02b 항목
     // 참고). RedrawActiveTab이 카드를 다시 그릴 때마다 함께 비운다.
     private readonly Dictionary<string, Border> _nodeStatusBadges = new();
+
+    // (ED-D11b) 태그 값 오버레이 배지 — _nodeStatusBadges와 동일한 패턴(카드 Child 구조를 건드리지
+    // 않는 별개 캔버스 요소, RedrawActiveTab이 다시 그릴 때마다 함께 비움)이되, ApplyNodeStatus가
+    // 카드 "아래"에 그리는 상태 배지와 겹치지 않도록 카드 "위"에 그린다(ApplyTagValueUpdate 참고).
+    private readonly Dictionary<string, Border> _tagValueBadges = new();
+
+    // (ED-D11b, ★ 완료 기준 — "초당 5회 스로틀") TagId별 마지막 화면 갱신 시각. 여러 노드가 같은
+    // TagId를 참조해도 evt.Value는 어차피 동일하므로 TagId 하나로 충분하다 — NodeId별로 따로 관리하면
+    // 같은 태그를 참조하는 노드가 여럿일 때 스로틀 총량이 배로 늘어나는 것을 막기 위함.
+    private readonly Dictionary<string, DateTime> _lastTagOverlayUpdateAt = new();
+
+    // (ED-D11b) 완료 기준이 명시한 "초당 5회" → 최소 갱신 간격 200ms(=1000ms/5).
+    private static readonly TimeSpan TagOverlayThrottleInterval = TimeSpan.FromMilliseconds(200);
 
     // (LK-02b) 와이어 펄스 하이라이트 조회용 — DrawWireLine이 그린 Line을 "출발노드:출력포트->도착노드"
     // 키로 보관한다. FlowActivityEvent(Contracts.Events)에는 도착 포트 정보가 없어 도착 포트까지는
@@ -758,6 +778,9 @@ public partial class FlowCanvasView : UserControl
         // (LK-02b) 카드/와이어와 마찬가지로 전부 다시 그려지므로 이전 배지·와이어 조회 인덱스도 함께 비운다.
         _nodeStatusBadges.Clear();
         _wireLinesByKey.Clear();
+        // (ED-D11b) 태그 값 오버레이 배지도 동일한 이유로 함께 비운다 — _lastTagOverlayUpdateAt(TagId
+        // 기준 스로틀 시각)는 노드/카드가 아니라 TagId에 매인 값이라 탭 재렌더링과 무관하므로 비우지 않는다.
+        _tagValueBadges.Clear();
 
         var tabNodes = _nodeConfigs.Values.Where(n => n.FlowId == _activeFlowId).ToList();
         var tabGroups = _groups.Values.Where(g => IsGroupInFlow(g, _activeFlowId)).ToList();
@@ -1584,6 +1607,115 @@ public partial class FlowCanvasView : UserControl
             timer.Start();
         }
     }
+
+    /// <summary>
+    /// (ED-D11b, ★ 완료 기준 — "TagValueUpdatedEvent 구독, 캔버스 노드 위에 실시간 태그 값
+    /// 오버레이(초당 5회 스로틀 확인)") Runner가 SignalR로 보낸 <see cref="TagValueUpdatedEvent"/>를,
+    /// <see cref="_registry"/>의 PropertySchema에서 <see cref="PropertyFieldType.TagRef"/> 필드 값이
+    /// <paramref name="evt"/>의 <see cref="TagValueUpdatedEvent.TagId"/>와 일치하는 노드(<see cref="FindBrokenTagRefs"/>와
+    /// 동일한 방식으로 찾음 — PlcTagRead/PlcTagWrite 둘 다 "tagId" 필드를 쓰지만, 노드 타입을
+    /// 하드코딩하지 않고 PropertySchema 기반으로 일반화해 향후 TagRef 필드를 쓰는 다른 노드 타입에도
+    /// 그대로 적용됩니다) 카드 위에 작은 값 배지로 반영합니다.
+    /// <see cref="ApplyNodeStatus"/>와 같은 "카드의 Child 구조는 건드리지 않고 별도 캔버스 요소로
+    /// 그린다"는 설계를 따르되, 배지 위치는 카드 <b>위쪽</b>(<c>visual.Top - 18</c>)에 둬
+    /// <see cref="ApplyNodeStatus"/>가 카드 아래에 그리는 상태 배지와 겹치지 않게 했습니다.
+    /// 완료 기준의 "초당 5회 스로틀"은 <see cref="_lastTagOverlayUpdateAt"/>로 TagId별 마지막 갱신
+    /// 시각을 기록해 <see cref="TagOverlayThrottleInterval"/>(200ms) 안에 다시 들어온 이벤트는 화면
+    /// 갱신 없이 조용히 버립니다 — 발행 빈도 자체를 줄이는 게 아니라(그건 <see cref="StatusBroadcaster"/>
+    /// 클래스 문서가 설명하듯 다른 문제) "화면 갱신"만 스로틀하는 방식입니다. 지금 활성 탭에 그려져
+    /// 있지 않은 노드(다른 탭 소속)는 <see cref="ApplyNodeStatus"/>와 동일하게 조용히 무시합니다.
+    /// </summary>
+    public void ApplyTagValueUpdate(TagValueUpdatedEvent evt)
+    {
+        var now = DateTime.UtcNow;
+        if (_lastTagOverlayUpdateAt.TryGetValue(evt.TagId, out var last) && now - last < TagOverlayThrottleInterval)
+        {
+            return;
+        }
+        _lastTagOverlayUpdateAt[evt.TagId] = now;
+
+        foreach (var config in _nodeConfigs.Values)
+        {
+            if (!_nodeVisuals.TryGetValue(config.Id, out var visual))
+            {
+                continue; // 지금 활성 탭에 그려져 있지 않음(ApplyNodeStatus와 동일 원칙).
+            }
+
+            if (!_registry.Descriptors.TryGetValue(config.Type, out var descriptor))
+            {
+                continue; // 등록 안 된 타입(MissingNode, EC-08) — FindBrokenTagRefs와 동일하게 검사 범위 밖.
+            }
+
+            var matches = descriptor.PropertySchema.Any(field =>
+                field.Type == PropertyFieldType.TagRef &&
+                config.Properties.TryGetValue(field.Key, out var raw) &&
+                raw is not null &&
+                ReadTagRefValue(raw) == evt.TagId);
+
+            if (!matches)
+            {
+                continue;
+            }
+
+            if (!_tagValueBadges.TryGetValue(config.Id, out var badge))
+            {
+                badge = new Border
+                {
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Background = (Brush)FindResource("ControlBackgroundBrush"),
+                    Child = new StackPanel { Orientation = Orientation.Horizontal }
+                };
+                Panel.SetZIndex(badge, 2);
+                NodeCanvas.Children.Add(badge);
+                _tagValueBadges[config.Id] = badge;
+            }
+
+            var panel = (StackPanel)badge.Child;
+            panel.Children.Clear();
+            panel.Children.Add(new Ellipse
+            {
+                Width = 8,
+                Height = 8,
+                Fill = ResolveAlarmBrush(evt.Alarm),
+                Margin = new Thickness(0, 0, 4, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            panel.Children.Add(new TextBlock
+            {
+                Text = evt.Value?.ToString() ?? "-",
+                FontSize = 10,
+                Foreground = (Brush)FindResource("SecondaryTextBrush"),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+
+            Canvas.SetLeft(badge, visual.Left);
+            Canvas.SetTop(badge, visual.Top - 18);
+        }
+    }
+
+    /// <summary>
+    /// (ED-D11b) <paramref name="raw"/>(<see cref="NodeConfig.Properties"/>에서 <see cref="PropertyFieldType.TagRef"/>
+    /// 필드 값으로 꺼낸 것)를 문자열 TagId로 안전하게 풀어냅니다 — flows.json에서 막 불러온 직후에는
+    /// <see cref="JsonElement"/>일 수 있다는 <see cref="NodeConfig"/> 자체 문서의 경고와 동일한 이유로,
+    /// <see cref="FindBrokenTagRefs"/>가 쓰는 것과 같은 방어적 변환을 별도 메서드로 뽑아둔 것입니다.
+    /// </summary>
+    private static string? ReadTagRefValue(object raw) => raw is JsonElement je
+        ? (je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString())
+        : raw.ToString();
+
+    /// <summary>
+    /// (ED-D11b) <see cref="TagValueUpdatedEvent.Alarm"/>(없으면 정상)을 배지 점 색으로 바꿉니다 —
+    /// <see cref="ResolveStatusBrush"/>(Node-RED "red"/"green"/... 문자열 기반)와는 별개로, HH/LL을
+    /// 위험(빨강)·H/L을 주의(노랑)·EQ/NE를 정보(파랑)·알람 없음을 정상(초록)으로 매핑하는 단순 규칙입니다.
+    /// </summary>
+    private static Brush ResolveAlarmBrush(AlarmLevel? alarm) => alarm switch
+    {
+        null => Brushes.MediumSeaGreen,
+        AlarmLevel.HH or AlarmLevel.LL => Brushes.IndianRed,
+        AlarmLevel.H or AlarmLevel.L => Brushes.Goldenrod,
+        _ => Brushes.CornflowerBlue
+    };
 
     /// <summary>
     /// (EC-03, EC-06 확장, EC-10 확장, 사용자 요청으로 노드 드래그-이동 확장) 카드를 더블클릭

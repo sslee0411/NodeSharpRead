@@ -6,15 +6,20 @@ namespace NodeSharp.Editor.Core;
 
 /// <summary>
 /// Class명 : Editor 모니터링 클라이언트
-/// 역활 및 기능 : Runner의 SignalR Hub("/hubs/monitor", LK-02a MonitorHub)에 접속해 4가지 모니터링
-/// 이벤트(NodeStatusEvent/FlowActivityEvent/DebugMessageEvent/NodeErrorEvent)를 수신하고, 연결 상태를
-/// bool 이벤트 하나로 단순화해 재발행하는 얇은 창구 클래스
+/// 역활 및 기능 : Runner의 SignalR Hub("/hubs/monitor", LK-02a MonitorHub)에 접속해 5가지 모니터링
+/// 이벤트(NodeStatusEvent/FlowActivityEvent/DebugMessageEvent/NodeErrorEvent/TagValueUpdatedEvent)를
+/// 수신하고, 연결 상태를 bool 이벤트 하나로 단순화해 재발행하는 얇은 창구 클래스
 ///
 /// (LK-02b) 02번 설계 문서 7번 탭 카드3 "EditorMonitorClient"가 그대로 — <see cref="StatusBroadcaster"/>
 /// (Runner, LK-02a)가 <c>Clients.All.SendAsync("nodeStatus"/"flowActivity"/"debugMessage"/"nodeError", ...)</c>로
 /// 보내는 4개 메서드명을 <see cref="HubConnection.On{T}(string, Action{T})"/>으로 그대로 받아 이 클래스
 /// 자신의 C# 이벤트로 재발행합니다 — <c>FlowCanvasView</c>/<c>DebugSidebarView</c>(LK-02b 나머지 작업)는
 /// SignalR 타입(<see cref="HubConnection"/> 등)을 전혀 몰라도 됩니다.
+/// (ED-D11b, ★ 완료 기준 — "TagValueUpdatedEvent 구독, 캔버스 노드 위에 실시간 태그 값 오버레이")
+/// <see cref="StatusBroadcaster"/>(같은 완료 기준으로 함께 수정)가 5번째로 추가한 "tagValueUpdated"
+/// 메서드명을 동일한 패턴으로 <see cref="TagValueReceived"/> 이벤트로 재발행합니다 — 스로틀은 이
+/// 클래스가 아니라 수신 측(<c>FlowCanvasView.ApplyTagValueUpdate</c>)이 담당합니다(위 4개 이벤트와
+/// 동일하게 이 클래스는 "받은 그대로 즉시 재발행"만 하는 얇은 창구 성격을 유지).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -100,6 +105,13 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     public event Action<NodeErrorEvent>? NodeErrorReceived;
 
     /// <summary>
+    /// (ED-D11b) Runner가 "tagValueUpdated"로 보낸 <see cref="TagValueUpdatedEvent"/> 수신 시 발생 —
+    /// 구독부(<c>MainWindow</c>)가 <c>FlowCanvasView.ApplyTagValueUpdate</c>로 그대로 넘겨 캔버스에
+    /// 오버레이합니다.
+    /// </summary>
+    public event Action<TagValueUpdatedEvent>? TagValueReceived;
+
+    /// <summary>
     /// (LK-03) Runner의 <c>MonitorHub.ReissueToken</c>이 <c>Clients.Others</c>로 "tokenReissued"를
     /// 보내면 발생 — 위 클래스 remarks "TokenInvalidatedByServer" 항목 참고.
     /// </summary>
@@ -125,6 +137,8 @@ public sealed class EditorMonitorClient : IAsyncDisposable
         _connection.On<FlowActivityEvent>("flowActivity", e => FlowActivityReceived?.Invoke(e));
         _connection.On<DebugMessageEvent>("debugMessage", e => DebugMessageReceived?.Invoke(e));
         _connection.On<NodeErrorEvent>("nodeError", e => NodeErrorReceived?.Invoke(e));
+        // (ED-D11b) StatusBroadcaster가 5번째로 추가한 "tagValueUpdated" — 위 4개와 동일한 패턴.
+        _connection.On<TagValueUpdatedEvent>("tagValueUpdated", e => TagValueReceived?.Invoke(e));
         // (LK-03) Runner의 MonitorHub.ReissueToken이 "호출자를 제외한 다른 연결"에 보내는 알림 —
         // 이 연결이 그 "다른 연결"이라면 옛 토큰으로는 곧 재연결이 거부되므로 스스로 끊고 사용자에게
         // 알려야 한다(구독·처리는 호출부 MainWindow 책임, 이 클래스는 재발행만 함).

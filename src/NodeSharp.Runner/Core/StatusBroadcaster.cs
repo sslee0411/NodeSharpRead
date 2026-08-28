@@ -6,7 +6,7 @@ namespace NodeSharp.Runner.Core;
 
 /// <summary>
 /// Class명 : 상태 브로드캐스터
-/// 역활 및 기능 : FlowEngine의 EventBus에 발행되는 4가지 모니터링 이벤트를 SignalR Hub로 그대로 중계하는 클래스
+/// 역활 및 기능 : FlowEngine의 EventBus에 발행되는 5가지 모니터링 이벤트를 SignalR Hub로 그대로 중계하는 클래스
 ///
 /// (LK-02a) 02번 설계 문서 7번 탭 카드2 <c>StatusBroadcaster</c>가 그대로 — <see cref="IEventBus"/>에
 /// 발행되는 <see cref="NodeStatusEvent"/>/<see cref="FlowActivityEvent"/>/<see cref="DebugMessageEvent"/>/
@@ -14,6 +14,13 @@ namespace NodeSharp.Runner.Core;
 /// <c>Clients.All.SendAsync(...)</c>합니다. <c>NodeStatusConsoleLogger</c>(RN-02, "IEventBus를
 /// 구독해 한 가지 형태로만 내보내는 얇은 구독자")와 동일한 성격의 클래스이며, 콘솔 대신 SignalR로
 /// 내보낸다는 점만 다릅니다.
+/// (ED-D11b, ★ 완료 기준 — "TagValueUpdatedEvent 구독, 캔버스 노드 위에 실시간 태그 값 오버레이")
+/// <see cref="TagAlarmEvents.TagValueUpdatedEvent"/>(CT-05b, PLC 태그 값이 바뀔 때 발행)를 5번째
+/// 이벤트로 추가 구독해 "tagValueUpdated"로 중계합니다 — 스로틀(초당 5회)은 이 클래스가 아니라
+/// 수신 측(Editor의 <c>FlowCanvasView.ApplyTagValueUpdate</c>)이 담당합니다(이 클래스는 항상
+/// 있는 그대로 즉시 중계만 하는 "얇은 창구"라는 기존 성격을 그대로 유지하기 위함 — 발행 빈도
+/// 자체를 줄이는 것과 "화면 갱신을 스로틀하는 것"은 다른 문제이고, 후자만 이번 완료 기준이
+/// 요구하므로 화면을 그리는 쪽에서 처리하는 편이 책임 분리에 맞다고 판단).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -56,8 +63,8 @@ public sealed class StatusBroadcaster
     public StatusBroadcaster(IHubContext<MonitorHub> hub) => _hub = hub;
 
     /// <summary>
-    /// <paramref name="eventBus"/>에 발행되는 4가지 모니터링 이벤트를 구독해 SignalR로 중계합니다.
-    /// 반환된 <see cref="IDisposable"/>을 <c>Dispose()</c>하면 4개 구독을 한 번에 해제합니다
+    /// <paramref name="eventBus"/>에 발행되는 5가지 모니터링 이벤트를 구독해 SignalR로 중계합니다.
+    /// 반환된 <see cref="IDisposable"/>을 <c>Dispose()</c>하면 5개 구독을 한 번에 해제합니다
     /// (<see cref="IEventBus"/> XML 문서의 "구독은 반드시 해제" 규칙).
     /// </summary>
     public IDisposable Subscribe(IEventBus eventBus)
@@ -68,6 +75,7 @@ public sealed class StatusBroadcaster
             eventBus.Subscribe<FlowActivityEvent>(e => Broadcast("flowActivity", e)),
             eventBus.Subscribe<DebugMessageEvent>(e => Broadcast("debugMessage", e)),
             eventBus.Subscribe<NodeErrorEvent>(e => Broadcast("nodeError", e)),
+            eventBus.Subscribe<TagValueUpdatedEvent>(e => Broadcast("tagValueUpdated", e)),
         };
         return new CompositeSubscription(subscriptions);
     }

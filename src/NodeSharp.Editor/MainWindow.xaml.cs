@@ -54,9 +54,10 @@ namespace NodeSharp.Editor;
 /// (LK-02b) 네 번째 탭 "Debug"(<see cref="Views.DebugSidebarView"/>)와 타이틀바 연결 상태 배지
 /// (<c>ConnectionStatusText</c>)가 추가되면서, <see cref="OnWindowLoaded"/>(<see cref="Window.Loaded"/>)가
 /// <see cref="EditorMonitorClient"/>(Core, Runner의 "/hubs/monitor" SignalR Hub 클라이언트)를 만들어
-/// 4가지 이벤트(<see cref="NodeStatusEvent"/>/<see cref="FlowActivityEvent"/>/<see cref="DebugMessageEvent"/>/
-/// <see cref="NodeErrorEvent"/>)와 연결 상태 변화를 각각 <c>FlowCanvas.ApplyNodeStatus</c>/
-/// <c>FlowCanvas.PulseWire</c>/<c>DebugPanel.AppendDebugMessage</c>/<c>DebugPanel.AppendNodeError</c>/
+/// 5가지 이벤트(<see cref="NodeStatusEvent"/>/<see cref="FlowActivityEvent"/>/<see cref="DebugMessageEvent"/>/
+/// <see cref="NodeErrorEvent"/>/<see cref="TagValueUpdatedEvent"/>)와 연결 상태 변화를 각각
+/// <c>FlowCanvas.ApplyNodeStatus</c>/<c>FlowCanvas.PulseWire</c>/<c>DebugPanel.AppendDebugMessage</c>/
+/// <c>DebugPanel.AppendNodeError</c>/<c>FlowCanvas.ApplyTagValueUpdate</c>(ED-D11b, 5번째)/
 /// <see cref="UpdateConnectionBadge"/>에 연결한 뒤 <c>StartAsync()</c>합니다. SignalR 콜백은 SignalR
 /// 자체 스레드에서 오므로(WPF UI 스레드가 아님) 전부 <see cref="Dispatcher.Invoke(System.Action)"/>로
 /// 감쌉니다 — 감싸지 않으면 UI 요소를 다른 스레드에서 건드리는 WPF 규칙 위반으로 예외가 납니다.
@@ -133,6 +134,8 @@ public partial class MainWindow : Window
             SafeDispatcherInvoke(() => DebugPanel.AppendNodeError(evt));
             _ = OnNodeErrorReceivedAsync(evt);
         };
+        // (ED-D11b) 5번째 이벤트 — 스로틀(초당 5회)은 FlowCanvasView.ApplyTagValueUpdate 내부가 담당.
+        _monitorClient.TagValueReceived += evt => SafeDispatcherInvoke(() => FlowCanvas.ApplyTagValueUpdate(evt));
         // (LK-03) Runner가 다른 연결에 재발급을 알리면(이 창이 재발급을 트리거한 당사자가 아니면)
         // 스스로 끊고 사용자에게 새 토큰 재입력을 안내한다.
         _monitorClient.TokenInvalidatedByServer += () => SafeDispatcherInvoke(OnTokenInvalidatedByServer);
