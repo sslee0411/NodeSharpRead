@@ -2,7 +2,7 @@ namespace NodeSharp.Runner.Core;
 
 /// <summary>
 /// Class명 : 플로우 파일 감시기
-/// 역활 및 기능 : flows.json.signal 파일 변경을 FileSystemWatcher로 감지해 디바운스 후 재배포 콜백을 호출하는 클래스
+/// 역활 및 기능 : 지정된 .signal 파일 변경을 FileSystemWatcher로 감지해 디바운스 후 콜백을 호출하는 클래스
 ///
 /// (LK-01) Editor(<c>NodeSharp.Editor.Core.Config.JsonWriteService.WriteSignalAsync</c>, EC-04)가
 /// flows.json을 저장할 때마다 남기는 <c>flows.json.signal</c> 파일 변경을 <see cref="FileSystemWatcher"/>로
@@ -10,6 +10,11 @@ namespace NodeSharp.Runner.Core;
 /// 폴더 구조가 지정한 <c>NodeSharp.Runner\Core\FlowFileWatcher.cs</c> 위치 그대로입니다.
 /// 설계 근거: 02번 문서 1번 탭 폴더 구조, 4번 탭 카드1(Editor/Runner 분리 다이어그램 — "B --
 /// FileSystemWatcher 감지 --&gt; C[Runner]"), 03번 개발 Step맵 Phase 8 LK-01.
+/// (ED-D13) 새 선택적 매개변수 <c>signalFileName</c>(기본값 <c>"flows.json.signal"</c>, 클래스 이름은
+/// 그대로 유지 — 기존 호출부·테스트를 전혀 바꾸지 않는 하위 호환)이 추가돼, <c>Worker</c>가 이
+/// 클래스를 <c>"device.json.signal"</c> 감시에도 그대로 재사용합니다(<c>StructureReloader.ReloadStructureOnlyAsync</c>
+/// 호출용) — 디바운스·재진입 방지·콜백 예외 격리 로직이 신호 파일 종류와 무관하게 동일하므로 새
+/// 클래스를 따로 만들지 않았습니다.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -48,28 +53,30 @@ namespace NodeSharp.Runner.Core;
 /// </example>
 public sealed class FlowFileWatcher : IDisposable
 {
-    private const string SignalFileName = "flows.json.signal";
-
     private readonly FileSystemWatcher _watcher;
     private readonly Func<CancellationToken, Task> _onSignal;
     private readonly TimeSpan _debounce;
+    private readonly string _signalFileName;
     private readonly object _timerLock = new();
     private Timer? _debounceTimer;
     private int _isHandling; // Interlocked 가드 — 0: 유휴, 1: 콜백 실행 중
 
     /// <summary>
     /// <paramref name="directory"/>(보통 Runner 실행 파일 폴더, flows.json이 있는 곳)의
-    /// <c>flows.json.signal</c> 변경을 감시합니다. <paramref name="debounce"/>를 생략하면 300ms를
-    /// 씁니다(위 클래스 remarks 참고) — 테스트에서는 더 짧게 줘서 빠르게 검증합니다.
+    /// <paramref name="signalFileName"/>(기본값 <c>"flows.json.signal"</c>, ED-D13 이후엔
+    /// <c>"device.json.signal"</c>로도 재사용 — 위 클래스 주석 참고) 변경을 감시합니다.
+    /// <paramref name="debounce"/>를 생략하면 300ms를 씁니다(위 클래스 remarks 참고) — 테스트에서는
+    /// 더 짧게 줘서 빠르게 검증합니다.
     /// </summary>
-    public FlowFileWatcher(string directory, Func<CancellationToken, Task> onSignal, TimeSpan? debounce = null)
+    public FlowFileWatcher(string directory, Func<CancellationToken, Task> onSignal, TimeSpan? debounce = null, string signalFileName = "flows.json.signal")
     {
         _onSignal = onSignal;
         _debounce = debounce ?? TimeSpan.FromMilliseconds(300);
+        _signalFileName = signalFileName; // (ED-D13) 아래 HandleAsync 오류 로그에서 어느 신호였는지 구분하는 용도.
 
         Directory.CreateDirectory(directory); // 폴더 자체가 아직 없으면 FileSystemWatcher 생성자가 예외를 던짐 — 최초 실행 보호.
 
-        _watcher = new FileSystemWatcher(directory, SignalFileName)
+        _watcher = new FileSystemWatcher(directory, signalFileName)
         {
             NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime | NotifyFilters.Size,
         };
@@ -113,7 +120,7 @@ public sealed class FlowFileWatcher : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] flows.json.signal 재배포 처리 중 오류 — 다음 신호에서 재시도됩니다: {ex.Message}");
+            Console.WriteLine($"[{DateTime.UtcNow:HH:mm:ss}] {_signalFileName} 처리 중 오류 — 다음 신호에서 재시도됩니다: {ex.Message}");
         }
         finally
         {

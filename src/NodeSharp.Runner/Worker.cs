@@ -34,6 +34,9 @@ namespace NodeSharp.Runner;
 /// (LK-04) 생성자가 <see cref="MsgTraceStore"/>도 같은 방식(선택적)으로 주입받습니다 — 있으면
 /// <see cref="_statusBroadcaster"/>와 함께 같은 <c>attachMonitor</c> 콜백에 실려 두 구독자가 모두
 /// 새 <c>FlowEngine</c>의 이벤트를 받게 됩니다(<see cref="BuildAttachMonitor"/> 참고).
+/// (ED-D13) 초기 배포 직후 두 번째 <see cref="FlowFileWatcher"/>(<c>signalFileName: "device.json.signal"</c>)를
+/// 추가로 만들어, 구조 설정만 저장됐을 때는 <see cref="FlowDeployer"/>를 전혀 거치지 않고
+/// <see cref="StructureReloader.ReloadStructureOnlyAsync"/>만 호출합니다(<see cref="_deviceFileWatcher"/> 참고).
 /// </summary>
 /// <example>
 /// <code>
@@ -57,6 +60,9 @@ public sealed class Worker : BackgroundService
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
+
+    /// <summary>(ED-D13) <c>"device.json.signal"</c> 전용 두 번째 감시자 — <see cref="_flowFileWatcher"/>와 동일하게 <see cref="Dispose"/>에서 함께 정리합니다.</summary>
+    private FlowFileWatcher? _deviceFileWatcher;
 
     /// <summary>
     /// (RN-04a) DI로 <see cref="RunnerHealthState"/>를 주입받습니다 — 배포에 성공했을 때
@@ -149,6 +155,15 @@ public sealed class Worker : BackgroundService
             }
         });
 
+        // (ED-D13) device.json.signal 변경 감지 — FlowEngine을 전혀 건드리지 않는 "가벼운" 재로드
+        // (StructureReloader 클래스 문서 참고). FlowFileWatcher를 그대로 재사용하되 signalFileName만
+        // 바꿔 별도 FileSystemWatcher 인스턴스로 감시한다(위 flowFileWatcher와 독립적으로 동작).
+        var deviceTreeHolder = new CurrentDeviceTreeHolder();
+        _deviceFileWatcher = new FlowFileWatcher(
+            baseDirectory,
+            ct => StructureReloader.ReloadStructureOnlyAsync(baseDirectory, deviceTreeHolder, ct),
+            signalFileName: "device.json.signal");
+
         var diskSpaceMonitor = _diskSpaceMonitor ?? new DiskSpaceMonitor(baseDirectory);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -231,11 +246,13 @@ public sealed class Worker : BackgroundService
     /// <summary>
     /// (LK-01) <see cref="ExecuteAsync"/>가 만든 <see cref="_flowFileWatcher"/>를 정리합니다 —
     /// 해제하지 않으면 프로세스 종료 전까지 <see cref="FileSystemWatcher"/>가 계속 살아있게 됩니다
-    /// (공통 규칙 ② — 구독/리소스는 반드시 해제).
+    /// (공통 규칙 ② — 구독/리소스는 반드시 해제). (ED-D13) <see cref="_deviceFileWatcher"/>도 동일한
+    /// 이유로 함께 정리합니다.
     /// </summary>
     public override void Dispose()
     {
         _flowFileWatcher?.Dispose();
+        _deviceFileWatcher?.Dispose();
         base.Dispose();
     }
 }

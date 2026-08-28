@@ -267,6 +267,28 @@ namespace NodeSharp.Editor.Views;
 /// Area 글리프(피커로 고른 아이콘)든 이모지(EC-19처럼 직접 타이핑)든 상관없이 WPF가 각각 올바른
 /// 폰트로 자동 대체해 그린다는 점에 근거합니다(하나의 문자열을 통째로 FA 폰트로 지정하면 이모지
 /// 부분에서 폴백이 덜 확실해지는 위험을 피하기 위함).
+/// (ED-D13, ★ 완료 기준 — "SaveAndDeployAsync + Undo 공유") 조사 결과 기존에는 Ctrl+S 한 번마다
+/// flows.json/device.json이 항상 함께 저장되고, Runner는 <c>flows.json.signal</c> 하나만 감시해
+/// 구조만 바뀌어도 매번 전체 재배포가 실행됐으며(자세한 배경은 <c>NodeSharp.Runner.Core.StructureReloader</c>
+/// 클래스 주석 참고), <see cref="IEditorCommand"/>가 애초에 열어둔 "구조 트리 커맨드 공유" 설계는
+/// 아직 아무도 쓰지 않고 있었습니다. 이번 Step은 두 가지를 더합니다: (1) <see cref="_lastSavedFlowsJson"/>과
+/// <see cref="BuildFlowDefinitionsForSave"/>로 <see cref="SaveFlowAsync"/>가 실제로 내용이 달라졌을
+/// 때만 flows.json/신호를 쓰도록 하고(<see cref="Views.StructureView"/>의 <c>SaveDeviceTreeAsync</c>도
+/// 동일한 방식으로 device.json에 대해 짝을 맞춤 — 그 클래스 주석 참고), (2) <see cref="History"/>
+/// 프로퍼티로 이 뷰의 <see cref="_history"/>를 밖으로 노출해 <c>MainWindow</c>가
+/// <c>StructureTab.History = FlowCanvas.History;</c>로 연결하면 구조 트리 커맨드도 캔버스와 같은
+/// Undo/Redo 스택을 공유합니다.
+/// (ED-D14, ★ 완료 기준 — "30초 경과 시 스냅샷이 생성되고, 비정상 종료 후 재기동 시 복구
+/// 다이얼로그가 표시되는지 확인") <c>NodeSharp.Editor.Core.AutosaveService</c>가 30초마다
+/// <see cref="GetAutosaveSnapshotIfDirty"/>(<see cref="SaveFlowAsync"/>와 동일한
+/// <see cref="_lastSavedFlowsJson"/> 비교를 재사용, 실제 저장은 하지 않음)를 호출해 변경이 있으면
+/// <c>.autosave\flows.autosave.json</c>에 기록합니다. <c>MainWindow</c> 생성자가 이 뷰의
+/// <see cref="Loaded"/>가 발생하기 전에 <c>AutosaveService.CheckAndPromptRecovery</c>로 비정상 종료
+/// 흔적을 먼저 확인해, 사용자가 "복구"를 선택하면 <see cref="PendingAutosaveOverrideJson"/>을 채워둡니다
+/// — <see cref="LoadFlowAsync"/>가 이 값을 원본 flows.json보다 우선 적용하고, 복구된 경우에는 정식
+/// 저장 전까지 계속 Dirty 상태를 유지하도록 <see cref="_lastSavedFlowsJson"/>을 일부러 채우지 않습니다.
+/// 자세한 설계 근거(왜 원안의 <c>EditorSessionState</c> 대신 이 뷰의 기존 더티 판정을 재사용했는지
+/// 등)는 <c>AutosaveService</c> 클래스 자체 주석 참고.
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -287,6 +309,20 @@ public partial class FlowCanvasView : UserControl
     // EC-04 flows.json 저장/로드 전용 창구(순수 System.IO 래퍼, 클래스 자체 주석 참고).
     private readonly FlowStore _flowStore = new();
     private bool _flowLoaded;
+
+    // (ED-D13) 마지막으로 실제 flows.json에 저장한 내용의 JSON 직렬화 스냅샷 — SaveFlowAsync가
+    // 매번 파일·신호를 새로 쓰지 않고 "정말 내용이 바뀌었을 때만" 쓰도록 비교하는 용도(클래스 자체
+    // 주석의 ED-D13 단락 참고). LoadFlowAsync가 끝난 직후, 그리고 SaveFlowAsync가 실제로 저장할
+    // 때마다 갱신됩니다. 아직 한 번도 로드/저장하지 않았으면 null입니다.
+    private string? _lastSavedFlowsJson;
+
+    /// <summary>
+    /// (ED-D14) <c>MainWindow</c> 생성자의 <c>AutosaveService.CheckAndPromptRecovery</c>가 사용자의
+    /// "복구" 선택을 반영해 <see cref="Loaded"/> 발생 전에 채워두는 값 — 값이 있으면
+    /// <see cref="LoadFlowAsync"/>가 <see cref="_flowStore"/>의 원본 flows.json 대신 이 JSON을 그대로
+    /// 적용합니다(클래스 자체 주석의 ED-D14 단락 참고).
+    /// </summary>
+    public string? PendingAutosaveOverrideJson { get; set; }
 
     // (EC-05) 모든 Flow 탭의 데이터를 함께 담는 전역 딕셔너리 — NodeConfig.FlowId로 소속 탭을 구분한다.
     // 노드 Id는 탭이 달라도 항상 전역적으로 유일해야 한다(Wire.SourceNodeId/TargetNodeId가 탭 구분 없이
@@ -482,11 +518,36 @@ public partial class FlowCanvasView : UserControl
     /// 함께 채운 뒤, 노드 Id("n1", "n2"...)·탭 Id("f1", "f2"...)·그룹 Id("g1", "g2"...) 각각 가장
     /// 큰 순번 다음 값으로 <see cref="_nextNodeSeq"/>/<see cref="_nextFlowTabSeq"/>/<see cref="_nextGroupSeq"/>를
     /// 재계산해(불러온 것과 겹치지 않도록), 첫 번째 탭으로 <see cref="SwitchToFlow"/>를 호출해
-    /// 화면을 그립니다.
+    /// 화면을 그립니다. (ED-D14) <see cref="PendingAutosaveOverrideJson"/>이 채워져 있으면 원본
+    /// flows.json 대신 그 내용을 적용하고, 손상됐으면(JSON 파싱 실패) 조용히 원본 로드로 폴백합니다.
     /// </summary>
     private async Task LoadFlowAsync()
     {
-        var flows = await _flowStore.LoadAsync(DataDirectory);
+        List<FlowDefinition>? flows;
+        var isRecoveredFromAutosave = false;
+
+        if (PendingAutosaveOverrideJson is { } overrideJson)
+        {
+            try
+            {
+                flows = JsonSerializer.Deserialize<List<FlowDefinition>>(overrideJson);
+                isRecoveredFromAutosave = flows is not null;
+            }
+            catch (JsonException)
+            {
+                flows = null; // 손상된 autosave — 아래에서 원본 로드로 폴백.
+            }
+
+            if (!isRecoveredFromAutosave)
+            {
+                flows = await _flowStore.LoadAsync(DataDirectory);
+            }
+        }
+        else
+        {
+            flows = await _flowStore.LoadAsync(DataDirectory);
+        }
+
         if (flows is null || flows.Count == 0)
         {
             return;
@@ -569,7 +630,38 @@ public partial class FlowCanvasView : UserControl
             _nextGroupSeq = maxGroupSeq + 1;
         }
 
+        if (isRecoveredFromAutosave)
+        {
+            // (ED-D14) 자동저장 복구 직후에는 일부러 _lastSavedFlowsJson을 채우지 않는다 — null로
+            // 남겨둬야 다음 SaveFlowAsync 호출(Ctrl+S)이 "내용이 그대로"로 오판하지 않고 실제로
+            // flows.json에 반영한다(완료 기준 "복구 후 정식 저장 전까지 Dirty 유지").
+        }
+        else
+        {
+            // (ED-D13) 방금 로드한 내용을 "마지막 저장 스냅샷"으로 미리 채워둔다 — 로드 직후 사용자가
+            // 아무것도 바꾸지 않고 바로 Ctrl+S를 눌러도(예: 실수) SaveFlowAsync가 "내용이 그대로"임을
+            // 알아채고 flows.json.signal을 새로 쓰지 않도록 하기 위함(클래스 자체 주석 ED-D13 단락 참고).
+            _lastSavedFlowsJson = JsonSerializer.Serialize(BuildFlowDefinitionsForSave());
+        }
+
         SwitchToFlow(_flowTabs[0].Id);
+    }
+
+    /// <summary>
+    /// (ED-D13) <see cref="SaveFlowAsync"/>와 <see cref="LoadFlowAsync"/> 뒤의 초기 스냅샷 계산이
+    /// 똑같이 쓰는 "지금 메모리 상태를 저장용 FlowDefinition 목록으로 모으는" 로직을 하나로 뽑아둔
+    /// 헬퍼입니다(기존 <see cref="SaveFlowAsync"/> 본문 그대로, 동작 변경 없음).
+    /// </summary>
+    private List<FlowDefinition> BuildFlowDefinitionsForSave()
+    {
+        return _flowTabs
+            .Select(tab => new FlowDefinition(
+                tab.Id,
+                tab.Name,
+                _nodeConfigs.Values.Where(n => n.FlowId == tab.Id).ToList(),
+                _wires.Where(w => IsWireInFlow(w, tab.Id)).ToList(),
+                Groups: _groups.Values.Where(g => IsGroupInFlow(g, tab.Id)).ToList()))
+            .ToList();
     }
 
     /// <summary>
@@ -579,19 +671,38 @@ public partial class FlowCanvasView : UserControl
     /// 판단해 포함) 목록으로 만든 뒤 <see cref="DataDirectory"/>\flows.json에 원자적으로 저장합니다
     /// (<see cref="FlowStore.SaveAsync"/>). <c>MainWindow</c>의 "파일 → 저장" 메뉴/Ctrl+S가 이
     /// 메서드를 호출합니다.
+    /// (ED-D13) 저장 전 <see cref="BuildFlowDefinitionsForSave"/> 결과를 JSON으로 직렬화해
+    /// <see cref="_lastSavedFlowsJson"/>과 비교하고, 내용이 똑같으면(사용자가 아무 것도 바꾸지 않고
+    /// Ctrl+S를 다시 눌렀거나, StructureView 쪽만 바뀐 경우 등) 실제 파일 쓰기·<c>flows.json.signal</c>
+    /// 갱신 자체를 건너뜁니다 — <see cref="NodeSharp.Runner.Core.FlowFileWatcher"/>가 신호를 못 받으므로
+    /// <c>FlowDeployer.RedeployAsync</c>(전체 재배포)도 불필요하게 실행되지 않습니다(클래스 자체 주석
+    /// ED-D13 단락 참고).
     /// </summary>
     public async Task SaveFlowAsync()
     {
-        var flows = _flowTabs
-            .Select(tab => new FlowDefinition(
-                tab.Id,
-                tab.Name,
-                _nodeConfigs.Values.Where(n => n.FlowId == tab.Id).ToList(),
-                _wires.Where(w => IsWireInFlow(w, tab.Id)).ToList(),
-                Groups: _groups.Values.Where(g => IsGroupInFlow(g, tab.Id)).ToList()))
-            .ToList();
+        var flows = BuildFlowDefinitionsForSave();
+        var json = JsonSerializer.Serialize(flows);
+        if (json == _lastSavedFlowsJson)
+        {
+            return;
+        }
 
         await _flowStore.SaveAsync(flows, DataDirectory);
+        _lastSavedFlowsJson = json;
+    }
+
+    /// <summary>
+    /// (ED-D14) <c>AutosaveService</c>가 30초마다 호출합니다 — <see cref="SaveFlowAsync"/>와 완전히
+    /// 동일한 더티 판정(<see cref="BuildFlowDefinitionsForSave"/> 결과를 <see cref="_lastSavedFlowsJson"/>과
+    /// 비교)만 재사용하고, 실제 <see cref="_flowStore"/> 저장은 절대 하지 않습니다 — 정식 저장(원본
+    /// flows.json)과 자동저장(.autosave 폴더)이 완전히 분리돼야 하기 때문입니다(클래스 자체 주석의
+    /// ED-D14 단락 참고). 마지막 저장 내용과 같으면(변경 없음) <c>null</c>을 돌려줘 호출자가 디스크
+    /// I/O 자체를 건너뛸 수 있게 합니다.
+    /// </summary>
+    public string? GetAutosaveSnapshotIfDirty()
+    {
+        var json = JsonSerializer.Serialize(BuildFlowDefinitionsForSave());
+        return json == _lastSavedFlowsJson ? null : json;
     }
 
     /// <summary>
@@ -2192,6 +2303,19 @@ public partial class FlowCanvasView : UserControl
 
     /// <summary>(EC-07) <c>MainWindow</c>가 "편집 → 다시 실행"/Ctrl+Y의 활성화 여부를 판단하는 데 씁니다.</summary>
     public bool CanRedo => _history.CanRedo;
+
+    /// <summary>
+    /// (ED-D13) 캔버스 커맨드가 쌓이는 바로 그 <see cref="_history"/> 인스턴스를 그대로 밖으로
+    /// 노출합니다 — <see cref="IEditorCommand"/> 문서가 처음부터 예고한 "캔버스 커맨드와 구조 트리
+    /// 커맨드가 같은 <see cref="CommandHistory"/> 스택을 공유"를 실현하는 지점입니다.
+    /// <c>MainWindow</c> 생성자가 <c>StructureTab.History = FlowCanvas.History;</c>로 한 번 연결해두면,
+    /// 구조 트리에서 추가/삭제/이름변경을 해도 캔버스와 똑같은 Undo 스택에 쌓여 Ctrl+Z/Ctrl+Y로
+    /// 캔버스·구조 트리 조작을 순서 상관없이 섞어서 되돌릴 수 있습니다 — <c>MainWindow</c>의 기존
+    /// <c>OnUndoClick</c>/<c>OnRedoClick</c>/<c>OnUndoCanExecute</c>/<c>OnRedoCanExecute</c>는 여전히
+    /// <see cref="Undo"/>/<see cref="Redo"/>/<see cref="CanUndo"/>/<see cref="CanRedo"/>만 호출하므로
+    /// 전혀 손댈 필요가 없습니다(둘 다 결국 같은 <see cref="_history"/>를 보고 있기 때문).
+    /// </summary>
+    public CommandHistory History => _history;
 
     /// <summary>
     /// (EC-10) 지금 Ctrl+클릭으로 선택된 노드 2개 이상을(<see cref="_selectedNodeIds"/>) 새

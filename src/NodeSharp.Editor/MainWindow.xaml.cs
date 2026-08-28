@@ -83,6 +83,13 @@ namespace NodeSharp.Editor;
 /// (<see cref="OnEnterTokenClick"/>, <see cref="Views.TokenInputDialog"/> 모달 사용) 2개 항목과,
 /// 다른 연결에서 재발급이 트리거됐을 때 이 연결도 스스로 끊도록 하는 <see cref="OnTokenInvalidatedByServer"/>
 /// (<see cref="EditorMonitorClient.TokenInvalidatedByServer"/> 구독)가 함께 추가됐습니다.
+/// (ED-D14, ★ 완료 기준 — "30초 경과 시 스냅샷이 생성되고, 비정상 종료 후 재기동 시 복구
+/// 다이얼로그가 표시되는지 확인") 생성자가 신규 <see cref="AutosaveService"/>(Core)를 만들어
+/// <c>CheckAndPromptRecovery()</c>(비정상 종료 흔적 확인 + 필요 시 복구 모달)를 먼저 호출하고
+/// <c>Start()</c>로 30초 주기 자동저장을 시작합니다 — <see cref="OnWindowClosed"/>가 창을 정상적으로
+/// 닫을 때 <c>Dispose()</c>·<c>ClearOnCleanExit()</c>로 정리합니다. 설계 근거(왜 02번 문서 8번 탭
+/// 카드17 원안의 통합 <c>EditorSessionState</c> 대신 각 뷰의 기존 더티 판정을 재사용했는지 등)는
+/// <see cref="AutosaveService"/> 클래스 자체 주석 참고.
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -93,13 +100,25 @@ public partial class MainWindow : Window
     // (LK-02b 후속, 사용자 요청) "Runner 실행(배포)"/"Runner 중지" 메뉴가 쓰는 프로세스 관리자.
     private readonly RunnerProcessManager _runnerProcessManager = new();
 
+    // (ED-D14) 30초 주기 자동저장·크래시 복구 서비스 — 생성자에서 FlowCanvas/StructureTab이 만들어진
+    // 뒤에야 구성 가능해 필드 초기화식이 아니라 생성자 본문에서 대입한다(아래 생성자 참고).
+    private readonly AutosaveService _autosaveService;
+
     /// <summary>
     /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-11) <c>FlowCanvas</c>는
     /// <c>InitializeComponent</c> 직후 이미 생성돼 있으므로(x:Name 필드), <see cref="Window.Loaded"/>를
     /// 기다리지 않고 바로 <c>SelectionChanged</c>를 구독합니다. (EC-12) <c>ExplorerPanel</c>의
     /// <c>QueryChanged</c>/<c>ResultActivated</c>도 같은 방식으로 함께 구독합니다. (ED-D12)
     /// <c>StructureTab.TagNodeSelected</c>도 동일하게 여기서 구독해 <c>FlowCanvas.HighlightNodesByTagRef</c>로
-    /// 연결합니다.
+    /// 연결합니다. (ED-D13) <c>StructureTab.History</c>에 <c>FlowCanvas.History</c>를 그대로 대입해
+    /// 캔버스·구조 트리 커맨드가 같은 Undo/Redo 스택을 공유하게 합니다(이 창의 기존
+    /// <c>OnUndoClick</c>/<c>OnRedoClick</c>/<c>OnUndoCanExecute</c>/<c>OnRedoCanExecute</c>는 계속
+    /// <c>FlowCanvas.Undo()</c>/<c>Redo()</c>/<c>CanUndo</c>/<c>CanRedo</c>만 호출하므로 손댈 필요가
+    /// 없습니다 — 이제 그 프로퍼티들이 구조 트리 커맨드까지 포함한 같은 스택을 가리킵니다). (ED-D14)
+    /// <see cref="_autosaveService"/>를 만든 직후 <c>CheckAndPromptRecovery()</c>를 먼저 호출합니다
+    /// — <c>FlowCanvas</c>/<c>StructureTab</c>의 <see cref="Window.Loaded"/>는 이 생성자가 끝난
+    /// 뒤에야 발생하므로, 복구 다이얼로그(있다면)와 <c>PendingAutosaveOverrideJson</c> 설정이 항상
+    /// 두 뷰의 자동 로드보다 먼저 끝나 있음이 보장됩니다(<c>AutosaveService</c> 클래스 자체 주석 참고).
     /// </summary>
     public MainWindow()
     {
@@ -113,6 +132,17 @@ public partial class MainWindow : Window
         // (ED-D12) 구조 트리에서 태그를 선택하면(또는 선택 해제하면) 캔버스 쪽에 그대로 반영 —
         // SignalR과 무관한 순수 UI 이벤트라 위 3개와 마찬가지로 Window.Loaded를 기다리지 않는다.
         StructureTab.TagNodeSelected += tagId => FlowCanvas.HighlightNodesByTagRef(tagId);
+        // (ED-D13) 구조 트리 커맨드(추가/삭제/이름변경)가 캔버스와 같은 CommandHistory 스택에 쌓이도록
+        // 연결 — FlowCanvas.History는 이 시점에 이미 생성돼 있다(EC-11과 동일한 이유로 Loaded를
+        // 기다릴 필요 없음).
+        StructureTab.History = FlowCanvas.History;
+
+        // (ED-D14) 자동저장·크래시 복구 — CheckAndPromptRecovery()는 두 뷰의 Loaded가 발생하기 전에
+        // 반드시 끝나야 하므로(위 클래스 문서 참고) Start()보다 먼저, 그리고 InitializeComponent()
+        // 직후인 지금 이 자리에서 동기적으로 호출한다.
+        _autosaveService = new AutosaveService(FlowCanvas, StructureTab, Dispatcher);
+        _autosaveService.CheckAndPromptRecovery();
+        _autosaveService.Start();
     }
 
     /// <summary>
@@ -258,7 +288,11 @@ public partial class MainWindow : Window
     /// (LK-02b) 창이 닫힐 때 <see cref="_monitorClient"/>를 정리합니다(<see cref="EditorMonitorClient"/>
     /// 클래스 remarks의 "구독 해제" 항목). <see cref="Window.Closed"/> 핸들러는 <c>async void</c>만
     /// 가능해(반환값을 기다려줄 호출자가 없음) 실패해도 프로세스 종료를 막지 않도록 예외를 삼킵니다
-    /// (창을 닫는 도중의 정리 실패가 사용자에게 새삼 알릴 만한 문제는 아니라고 판단).
+    /// (창을 닫는 도중의 정리 실패가 사용자에게 새삼 알릴 만한 문제는 아니라고 판단). (ED-D14) 이어서
+    /// <see cref="_autosaveService"/>를 멈추고 <c>.autosave</c> 스냅샷을 지웁니다 — 지금 이 핸들러
+    /// 자체가 "정상 종료" 경로이므로(크래시·강제 종료면 애초에 이 핸들러가 실행되지 않음), 다음 시작
+    /// 때 <c>AutosaveService.CheckAndPromptRecovery</c>가 복구를 제안하지 않게 됩니다(카드17 표
+    /// "정상 종료 시" 항목, <c>AutosaveService</c> 클래스 자체 주석 참고).
     /// </summary>
     private async void OnWindowClosed(object? sender, EventArgs e)
     {
@@ -269,6 +303,16 @@ public partial class MainWindow : Window
         catch
         {
             // (위 요약 참고) 창을 닫는 중의 정리 실패는 조용히 무시한다.
+        }
+
+        try
+        {
+            _autosaveService.Dispose();
+            _autosaveService.ClearOnCleanExit();
+        }
+        catch
+        {
+            // 위와 동일한 이유 — 창을 닫는 중의 정리 실패는 조용히 무시한다.
         }
     }
 

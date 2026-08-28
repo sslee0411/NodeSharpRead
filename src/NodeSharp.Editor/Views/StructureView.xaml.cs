@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
 using NodeSharp.Editor.Structure;
 
@@ -28,6 +31,32 @@ namespace NodeSharp.Editor.Views;
 /// <c>FlowCanvasView.HighlightNodesByTagRef</c>로 연결해 그 태그를 참조하는 캔버스 노드를 잠깐
 /// 강조합니다("② 캔버스 → 구조 트리" 역방향인 <see cref="FlowCanvasView"/>의 TagRef override
 /// 조회(EC-19)와 짝을 이루는 "① 구조 트리 → 캔버스" 방향).
+/// (ED-D13, ★ 완료 기준 — "SaveAndDeployAsync + Undo 공유") 위 <c>remarks</c>의 "삭제 — 되돌리기는
+/// 이 Step 범위 밖입니다"는 이제 지난 이야기입니다: <see cref="AddRoot"/>/<see cref="AddChild"/>/
+/// <see cref="DeleteNode"/>/<see cref="CommitRename"/> 4개 모두 직접 <see cref="Devices"/>를 바꾸는
+/// 대신 <see cref="ExecuteOrDirect"/>를 거쳐 <see cref="AddStructureNodeCommand"/>/
+/// <see cref="DeleteStructureNodeCommand"/>/<see cref="RenameStructureNodeCommand"/>(모두
+/// <see cref="IEditorCommand"/> 구현체, <see cref="FlowCanvasView"/>의 기존 중첩 커맨드 클래스와
+/// 동일한 패턴)로 실행되며, <see cref="History"/> 프로퍼티(<c>MainWindow</c>가
+/// <c>StructureTab.History = FlowCanvas.History;</c>로 채워줌)가 설정돼 있으면
+/// <see cref="FlowCanvasView"/>와 <b>같은</b> <c>CommandHistory</c> 스택에 쌓여 Ctrl+Z/Ctrl+Y로
+/// 캔버스·구조 트리 조작을 순서 상관없이 섞어 되돌릴 수 있습니다(<see cref="History"/>가 아직
+/// 연결되지 않았으면 <see cref="ExecuteOrDirect"/>가 <c>command.Do()</c>만 직접 호출해 이전과 동일하게
+/// 동작 — 하위 호환). 또한 <see cref="SaveDeviceTreeAsync"/>가 <see cref="_lastSavedDeviceJson"/>과
+/// 비교해 실제로 내용이 달라진 경우에만 device.json/신호를 쓰도록 바뀌어(짝을 이루는
+/// <see cref="FlowCanvasView.SaveFlowAsync"/>와 동일한 이유 — 그 클래스 주석의 ED-D13 단락 참고),
+/// 구조만 저장할 때 <c>NodeSharp.Runner.Core.StructureReloader</c>가 <c>FlowEngine</c>을 건드리지
+/// 않는 가벼운 재로드만 수행하게 됩니다.
+/// (ED-D14, ★ 완료 기준 — "30초 경과 시 스냅샷이 생성되고, 비정상 종료 후 재기동 시 복구
+/// 다이얼로그가 표시되는지 확인") <c>NodeSharp.Editor.Core.AutosaveService</c>가 30초마다
+/// <see cref="GetAutosaveSnapshotIfDirty"/>(<see cref="SaveDeviceTreeAsync"/>와 동일한
+/// <see cref="_lastSavedDeviceJson"/> 비교를 재사용, 실제 저장은 하지 않음)를 호출해 변경이 있으면
+/// <c>.autosave\device.autosave.json</c>에 기록합니다. <c>MainWindow</c> 생성자가 이 뷰의
+/// <see cref="Loaded"/>가 발생하기 전에 <c>AutosaveService.CheckAndPromptRecovery</c>로 비정상 종료
+/// 흔적을 먼저 확인해, 사용자가 "복구"를 선택하면 <see cref="PendingAutosaveOverrideJson"/>을 채워둡니다
+/// — <see cref="LoadDeviceTreeAsync"/>가 이 값을 원본 device.json보다 우선 적용하고, 복구된 경우에는
+/// 정식 저장 전까지 계속 Dirty 상태를 유지하도록 <see cref="_lastSavedDeviceJson"/>을 일부러 채우지
+/// 않습니다(<see cref="FlowCanvasView"/>와 완전히 동일한 패턴 — 그 클래스 주석 ED-D14 단락 참고).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -44,9 +73,10 @@ namespace NodeSharp.Editor.Views;
 /// 1" 등, 타입별 순번)으로 생성된 뒤 곧바로 <see cref="BeginRename"/>으로 이름 입력 상태가 됩니다 —
 /// 기본 이름만으로는 트리에서 서로 구분하기 어렵기 때문입니다.</item>
 /// <item><b>삭제</b>: 컨텍스트 메뉴 "삭제" — 확인 팝업 없이 즉시 제거합니다(자식까지 함께 제거,
-/// <see cref="StructureTreeNode.Children"/>이 그대로 달려 있으므로 자동으로 함께 사라짐). 되돌리기는
-/// 이 Step 범위 밖입니다(캔버스 쪽 <c>CommandHistory</c>/Undo·Redo는 플로우 캔버스 전용이라 이
-/// 트리에는 아직 연결돼 있지 않음 — 필요해지면 별도 Step).</item>
+/// <see cref="StructureTreeNode.Children"/>이 그대로 달려 있으므로 자동으로 함께 사라짐). (ED-D13)
+/// Ctrl+Z로 되돌릴 수 있습니다 — <see cref="History"/>가 <see cref="FlowCanvasView"/>와 공유하는
+/// <c>CommandHistory</c>로 연결돼 있으면(클래스 자체 주석의 ED-D13 단락 참고) 그 스택에, 아니면
+/// 이 컨트롤 안에서만 즉시 적용됩니다(<see cref="ExecuteOrDirect"/> 참고).</item>
 /// <item><b>빠른 이름 변경</b>: 컨텍스트 메뉴 "이름 변경"으로 시작하는 인라인 편집 — Enter 또는
 /// 포커스를 잃으면 커밋되고, 빈 문자열이면 이전 이름을 그대로 유지합니다.</item>
 /// <item><b>(ED-D02a/b) 속성 편집</b>: 행을 더블클릭하거나 컨텍스트 메뉴 "속성 편집"을 누르면
@@ -124,6 +154,53 @@ public partial class StructureView : UserControl
     /// <summary>(ED-D03) device.json 저장/로드 전용 창구 — <see cref="FlowStore"/>와 동일한 얇은 래퍼 패턴.</summary>
     private readonly DeviceStore _deviceStore = new();
 
+    /// <summary>
+    /// (ED-D13) 마지막으로 실제 device.json에 저장한 내용의 JSON 직렬화 스냅샷 —
+    /// <see cref="SaveDeviceTreeAsync"/>가 매번 새로 쓰지 않고 "정말 내용이 바뀌었을 때만" 쓰도록
+    /// 비교하는 용도(<see cref="FlowCanvasView"/>의 <c>_lastSavedFlowsJson</c>과 동일한 패턴, 그
+    /// 필드 주석 참고). <see cref="LoadDeviceTreeAsync"/>가 끝난 직후, 그리고 실제로 저장할 때마다
+    /// 갱신됩니다.
+    /// </summary>
+    private string? _lastSavedDeviceJson;
+
+    /// <summary>
+    /// (ED-D14) <c>MainWindow</c> 생성자의 <c>AutosaveService.CheckAndPromptRecovery</c>가 사용자의
+    /// "복구" 선택을 반영해 <see cref="Loaded"/> 발생 전에 채워두는 값 — 값이 있으면
+    /// <see cref="LoadDeviceTreeAsync"/>가 <see cref="_deviceStore"/>의 원본 device.json 대신 이
+    /// JSON을 그대로 적용합니다(<see cref="FlowCanvasView.PendingAutosaveOverrideJson"/>과 동일한
+    /// 패턴, 그 필드 주석 및 <c>AutosaveService</c> 클래스 자체 주석 참고).
+    /// </summary>
+    public string? PendingAutosaveOverrideJson { get; set; }
+
+    /// <summary>
+    /// (ED-D13) <c>MainWindow</c>가 <c>StructureTab.History = FlowCanvas.History;</c>로 채워주는,
+    /// <see cref="FlowCanvasView"/>와 <b>공유하는</b> Undo/Redo 스택입니다(<see cref="IEditorCommand"/>
+    /// 문서가 처음부터 예고한 설계 — 클래스 자체 주석의 ED-D13 단락 참고). 아직 연결되지 않았으면
+    /// (<c>null</c>, 예: 단위 테스트에서 <see cref="StructureView"/>만 단독 생성한 경우)
+    /// <see cref="ExecuteOrDirect"/>가 커맨드를 스택에 올리지 않고 즉시 직접 실행합니다.
+    /// </summary>
+    public CommandHistory? History { get; set; }
+
+    /// <summary>
+    /// (ED-D13) <see cref="AddRoot"/>/<see cref="AddChild"/>/<see cref="DeleteNode"/>/
+    /// <see cref="CommitRename"/>이 공통으로 쓰는 실행 경로 — <see cref="History"/>가 연결돼 있으면
+    /// <see cref="CommandHistory.Execute"/>(Undo 스택에 기록, 50단계 제한, Redo 스택 비우기까지 함께
+    /// 처리 — <see cref="CommandHistory"/> 클래스 주석 참고)로, 아니면 <paramref name="command"/>의
+    /// <see cref="IEditorCommand.Do"/>만 직접 호출합니다(하위 호환 — <see cref="History"/> 미연결
+    /// 시나리오는 실제 동작이 ED-D13 이전과 동일).
+    /// </summary>
+    private void ExecuteOrDirect(IEditorCommand command)
+    {
+        if (History is not null)
+        {
+            History.Execute(command);
+        }
+        else
+        {
+            command.Do();
+        }
+    }
+
     /// <summary>XAML 컨트롤을 초기화하고 "+ 장비" 버튼을 연결한 뒤, 빈 트리를 1회 렌더링합니다(WPF 표준 패턴). (ED-D03) <see cref="OnLoaded"/>를 구독해 컨트롤이 화면에 뜨는 시점에 device.json을 자동으로 불러옵니다.</summary>
     public StructureView()
     {
@@ -158,10 +235,36 @@ public partial class StructureView : UserControl
     /// (ED-D03) <see cref="DataDirectory"/>\device.json을 읽어 저장된 트리가 있으면 <see cref="Devices"/>를
     /// 그 내용으로 완전히 교체하고 다시 그립니다. 파일이 없거나(최초 실행) 비어 있으면(장비 0개) 아무
     /// 것도 하지 않습니다(<see cref="FlowStore.LoadAsync"/>가 null이면 그대로 두는 것과 동일한 관례).
+    /// (ED-D14) <see cref="PendingAutosaveOverrideJson"/>이 채워져 있으면 원본 device.json 대신 그
+    /// 내용을 적용하고, 손상됐으면(JSON 파싱 실패) 조용히 원본 로드로 폴백합니다.
     /// </summary>
     public async Task LoadDeviceTreeAsync()
     {
-        var tree = await _deviceStore.LoadAsync(DataDirectory);
+        DeviceTreeDto? tree;
+        var isRecoveredFromAutosave = false;
+
+        if (PendingAutosaveOverrideJson is { } overrideJson)
+        {
+            try
+            {
+                tree = JsonSerializer.Deserialize<DeviceTreeDto>(overrideJson);
+                isRecoveredFromAutosave = tree is not null;
+            }
+            catch (JsonException)
+            {
+                tree = null; // 손상된 autosave — 아래에서 원본 로드로 폴백.
+            }
+
+            if (!isRecoveredFromAutosave)
+            {
+                tree = await _deviceStore.LoadAsync(DataDirectory);
+            }
+        }
+        else
+        {
+            tree = await _deviceStore.LoadAsync(DataDirectory);
+        }
+
         if (tree is null || tree.Devices.Count == 0)
         {
             return;
@@ -174,6 +277,20 @@ public partial class StructureView : UserControl
         }
 
         RenderTree();
+
+        if (isRecoveredFromAutosave)
+        {
+            // (ED-D14) 자동저장 복구 직후에는 일부러 _lastSavedDeviceJson을 채우지 않는다 — null로
+            // 남겨둬야 다음 SaveDeviceTreeAsync 호출(Ctrl+S)이 "내용이 그대로"로 오판하지 않고 실제로
+            // device.json에 반영한다(완료 기준 "복구 후 정식 저장 전까지 Dirty 유지").
+        }
+        else
+        {
+            // (ED-D13) 방금 로드한 내용을 "마지막 저장 스냅샷"으로 미리 채워둔다 — FlowCanvasView.LoadFlowAsync
+            // 끝의 동일한 처리와 같은 이유(로드 직후 아무 것도 안 바꾸고 Ctrl+S를 눌러도 device.json.signal이
+            // 새로 갱신되지 않도록).
+            _lastSavedDeviceJson = JsonSerializer.Serialize(StructureTreeMapper.ToDto(Devices));
+        }
     }
 
     /// <summary>
@@ -182,29 +299,61 @@ public partial class StructureView : UserControl
     /// (<see cref="DeviceStore.SaveAsync"/> — .tmp에 먼저 전부 쓴 뒤 원본과 한 번에 바꿔치기하므로 저장
     /// 도중 강제 종료돼도 기존 device.json은 손상되지 않습니다). <c>MainWindow</c>의 "파일 → 저장"
     /// 메뉴/Ctrl+S가 <c>FlowCanvas.SaveFlowAsync()</c>와 함께 이 메서드를 호출합니다.
+    /// (ED-D13) 저장 전 직렬화 결과를 <see cref="_lastSavedDeviceJson"/>과 비교해, 내용이 똑같으면
+    /// (구조는 안 바뀌고 Flow만 바뀐 Ctrl+S 등) 실제 파일 쓰기·<c>device.json.signal</c> 갱신을
+    /// 건너뜁니다 — 그 결과 <c>NodeSharp.Runner.Core.FlowFileWatcher</c>(<c>device.json.signal</c> 감시용
+    /// 두 번째 인스턴스, <c>Worker</c>가 생성)가 신호를 못 받으므로 <c>StructureReloader.ReloadStructureOnlyAsync</c>도
+    /// 불필요하게 실행되지 않습니다(짝을 이루는 <see cref="FlowCanvasView.SaveFlowAsync"/>와 완전히
+    /// 동일한 이유 — 그 클래스 주석의 ED-D13 단락 참고).
     /// </summary>
     public async Task SaveDeviceTreeAsync()
     {
         var tree = StructureTreeMapper.ToDto(Devices);
+        var json = JsonSerializer.Serialize(tree);
+        if (json == _lastSavedDeviceJson)
+        {
+            return;
+        }
+
         await _deviceStore.SaveAsync(tree, DataDirectory);
+        _lastSavedDeviceJson = json;
     }
 
-    /// <summary>헤더 "+ 장비" — 새 <see cref="DeviceNode"/>를 루트 목록 맨 끝에 추가하고 즉시 이름 변경 상태로 만듭니다.</summary>
+    /// <summary>
+    /// (ED-D14) <c>AutosaveService</c>가 30초마다 호출합니다 — <see cref="SaveDeviceTreeAsync"/>와
+    /// 완전히 동일한 더티 판정(<see cref="StructureTreeMapper.ToDto"/> 결과를
+    /// <see cref="_lastSavedDeviceJson"/>과 비교)만 재사용하고, 실제 <see cref="_deviceStore"/> 저장은
+    /// 절대 하지 않습니다(<see cref="FlowCanvasView.GetAutosaveSnapshotIfDirty"/>와 동일한 이유 —
+    /// 정식 저장과 자동저장을 완전히 분리). 마지막 저장 내용과 같으면(변경 없음) <c>null</c>을 돌려줘
+    /// 호출자가 디스크 I/O 자체를 건너뛸 수 있게 합니다.
+    /// </summary>
+    public string? GetAutosaveSnapshotIfDirty()
+    {
+        var json = JsonSerializer.Serialize(StructureTreeMapper.ToDto(Devices));
+        return json == _lastSavedDeviceJson ? null : json;
+    }
+
+    /// <summary>
+    /// 헤더 "+ 장비" — 새 <see cref="DeviceNode"/>를 루트 목록 맨 끝에 추가하고 즉시 이름 변경 상태로
+    /// 만듭니다. (ED-D13) <see cref="ExecuteOrDirect"/>를 거쳐 <see cref="AddStructureNodeCommand"/>로
+    /// 실행되므로 Ctrl+Z로 되돌릴 수 있습니다.
+    /// </summary>
     private void AddRoot()
     {
         var node = CreateWithDefaultName(typeof(DeviceNode));
-        Devices.Add(node);
-        RenderTree();
+        ExecuteOrDirect(new AddStructureNodeCommand(this, parent: null, node));
         BeginRename(node);
     }
 
-    /// <summary>컨텍스트 메뉴 "OO 추가" — <paramref name="childType"/> 타입의 새 자식을 <paramref name="parent"/>에 추가하고, 부모를 펼친 뒤 즉시 이름 변경 상태로 만듭니다.</summary>
+    /// <summary>
+    /// 컨텍스트 메뉴 "OO 추가" — <paramref name="childType"/> 타입의 새 자식을 <paramref name="parent"/>에
+    /// 추가하고, 부모를 펼친 뒤 즉시 이름 변경 상태로 만듭니다. (ED-D13) <see cref="ExecuteOrDirect"/>를
+    /// 거쳐 <see cref="AddStructureNodeCommand"/>로 실행되므로 Ctrl+Z로 되돌릴 수 있습니다.
+    /// </summary>
     private void AddChild(StructureTreeNode parent, Type childType)
     {
         var child = CreateWithDefaultName(childType);
-        parent.Children.Add(child);
-        _expanded[parent] = true;
-        RenderTree();
+        ExecuteOrDirect(new AddStructureNodeCommand(this, parent, child));
         BeginRename(child);
     }
 
@@ -217,20 +366,21 @@ public partial class StructureView : UserControl
         return node;
     }
 
-    /// <summary>컨텍스트 메뉴 "삭제" — <paramref name="node"/>를 루트 목록 또는 어느 조상의 <see cref="StructureTreeNode.Children"/>에서 찾아 제거합니다(자식이 있으면 함께 사라짐, 확인 팝업 없음).</summary>
+    /// <summary>
+    /// 컨텍스트 메뉴 "삭제" — <paramref name="node"/>를 루트 목록 또는 어느 조상의
+    /// <see cref="StructureTreeNode.Children"/>에서 찾아 제거합니다(자식이 있으면 함께 사라짐, 확인
+    /// 팝업 없음). (ED-D13) 삭제 전 <see cref="TryFindParent"/>로 원래 위치(부모+인덱스)를 찾아
+    /// <see cref="DeleteStructureNodeCommand"/>로 <see cref="ExecuteOrDirect"/>하므로, Ctrl+Z로
+    /// 되돌리면 정확히 같은 자리(같은 부모, 같은 인덱스)로 복원됩니다.
+    /// </summary>
     private void DeleteNode(StructureTreeNode node)
     {
-        if (!Devices.Remove(node))
+        if (!TryFindParent(node, out var parent, out var index))
         {
-            RemoveFromDescendants(Devices, node);
+            return; // 이미 트리에 없는 노드(방어적 처리) — 조용히 무시.
         }
 
-        if (ReferenceEquals(_selectedNode, node))
-        {
-            _selectedNode = null;
-        }
-
-        RenderTree();
+        ExecuteOrDirect(new DeleteStructureNodeCommand(this, parent, node, index));
     }
 
     /// <summary><paramref name="target"/>을 <paramref name="siblings"/> 또는 그 자손들의 Children에서 재귀적으로 찾아 제거합니다. 찾아서 제거했으면 true.</summary>
@@ -249,6 +399,48 @@ public partial class StructureView : UserControl
             }
         }
 
+        return false;
+    }
+
+    /// <summary>
+    /// (ED-D13) <paramref name="target"/>이 지금 <see cref="Devices"/> 트리 어디에 붙어 있는지(부모
+    /// 노드와 형제 목록 내 인덱스)를 찾습니다 — <see cref="DeleteStructureNodeCommand"/>의 Undo가
+    /// 정확히 원래 자리로 복원하는 데 씁니다. 루트 레벨에 있으면 <paramref name="parent"/>는
+    /// <c>null</c>입니다. 트리 어디에서도 찾지 못하면(이미 삭제됐거나 잘못된 참조) <c>false</c>.
+    /// </summary>
+    private bool TryFindParent(StructureTreeNode target, out StructureTreeNode? parent, out int index)
+    {
+        index = Devices.IndexOf(target);
+        if (index >= 0)
+        {
+            parent = null;
+            return true;
+        }
+
+        return TryFindParentIn(Devices, target, out parent, out index);
+    }
+
+    /// <summary><see cref="TryFindParent"/>의 재귀 본체 — <paramref name="siblings"/>와 그 자손들을 훑습니다.</summary>
+    private static bool TryFindParentIn(IEnumerable<StructureTreeNode> siblings, StructureTreeNode target, out StructureTreeNode? parent, out int index)
+    {
+        foreach (var candidate in siblings)
+        {
+            var childIndex = candidate.Children.IndexOf(target);
+            if (childIndex >= 0)
+            {
+                parent = candidate;
+                index = childIndex;
+                return true;
+            }
+
+            if (TryFindParentIn(candidate.Children, target, out parent, out index))
+            {
+                return true;
+            }
+        }
+
+        parent = null;
+        index = -1;
         return false;
     }
 
@@ -497,14 +689,169 @@ public partial class StructureView : UserControl
         editBox.SelectAll();
     }
 
-    /// <summary><paramref name="newName"/>이 공백이 아니면 <paramref name="node"/>.Name에 반영하고, 어느 쪽이든 <see cref="RenderTree"/>로 편집 상태를 정리합니다.</summary>
+    /// <summary>
+    /// <paramref name="newName"/>이 공백이 아니고 실제로 기존 이름과 다르면 <see cref="RenameStructureNodeCommand"/>로
+    /// <see cref="ExecuteOrDirect"/>해 반영합니다(Ctrl+Z 가능, ED-D13) — 공백이거나 기존 이름과 같으면
+    /// (사용자가 그냥 편집을 열었다 그대로 커밋한 경우 등) Undo 스택에 의미 없는 항목을 남기지 않고
+    /// <see cref="RenderTree"/>로 편집 상태만 정리합니다.
+    /// </summary>
     private void CommitRename(StructureTreeNode node, string newName)
     {
-        if (!string.IsNullOrWhiteSpace(newName))
+        var trimmed = newName.Trim();
+        if (string.IsNullOrEmpty(trimmed) || trimmed == node.Name)
         {
-            node.Name = newName.Trim();
+            RenderTree();
+            return;
         }
 
-        RenderTree();
+        ExecuteOrDirect(new RenameStructureNodeCommand(this, node, oldName: node.Name, newName: trimmed));
+    }
+
+    /// <summary>
+    /// (ED-D13) <see cref="AddRoot"/>/<see cref="AddChild"/>가 만드는, 새 노드 1개를 <see cref="Devices"/>
+    /// 루트 목록(생성자의 <c>parent</c>가 <c>null</c>일 때) 또는 부모의 <see cref="StructureTreeNode.Children"/>에
+    /// 추가하는 커맨드입니다 — <see cref="FlowCanvasView"/>의 기존 <c>AddNodeCommand</c>(중첩 private
+    /// 클래스)와 동일한 패턴을 구조 트리에 그대로 옮긴 것입니다.
+    /// </summary>
+    private sealed class AddStructureNodeCommand : IEditorCommand
+    {
+        private readonly StructureView _owner;
+        private readonly StructureTreeNode? _parent;
+        private readonly StructureTreeNode _node;
+
+        public AddStructureNodeCommand(StructureView owner, StructureTreeNode? parent, StructureTreeNode node)
+        {
+            _owner = owner;
+            _parent = parent;
+            _node = node;
+        }
+
+        public string Description => $"구조 노드 추가: {_node.Name}";
+
+        public void Do()
+        {
+            if (_parent is null)
+            {
+                _owner.Devices.Add(_node);
+            }
+            else
+            {
+                _parent.Children.Add(_node);
+                _owner._expanded[_parent] = true;
+            }
+
+            _owner.RenderTree();
+        }
+
+        public void Undo()
+        {
+            if (_parent is null)
+            {
+                _owner.Devices.Remove(_node);
+            }
+            else
+            {
+                _parent.Children.Remove(_node);
+            }
+
+            if (ReferenceEquals(_owner._selectedNode, _node))
+            {
+                _owner._selectedNode = null;
+            }
+
+            _owner.RenderTree();
+        }
+    }
+
+    /// <summary>
+    /// (ED-D13) <see cref="DeleteNode"/>가 만드는, 노드 1개(및 그 자식 전체 — <see cref="StructureTreeNode.Children"/>이
+    /// 그대로 달려서 함께 제거/복원됨)를 <see cref="Devices"/> 루트 목록 또는 부모의 Children에서
+    /// 제거하는 커맨드입니다. <see cref="Undo"/>는 <see cref="_index"/>(<see cref="TryFindParent"/>가
+    /// 삭제 직전에 기록해둔 원래 인덱스)로 정확히 같은 자리에 다시 끼워 넣습니다.
+    /// </summary>
+    private sealed class DeleteStructureNodeCommand : IEditorCommand
+    {
+        private readonly StructureView _owner;
+        private readonly StructureTreeNode? _parent;
+        private readonly StructureTreeNode _node;
+        private readonly int _index;
+
+        public DeleteStructureNodeCommand(StructureView owner, StructureTreeNode? parent, StructureTreeNode node, int index)
+        {
+            _owner = owner;
+            _parent = parent;
+            _node = node;
+            _index = index;
+        }
+
+        public string Description => $"구조 노드 삭제: {_node.Name}";
+
+        public void Do()
+        {
+            if (_parent is null)
+            {
+                _owner.Devices.Remove(_node);
+            }
+            else
+            {
+                _parent.Children.Remove(_node);
+            }
+
+            if (ReferenceEquals(_owner._selectedNode, _node))
+            {
+                _owner._selectedNode = null;
+            }
+
+            _owner.RenderTree();
+        }
+
+        public void Undo()
+        {
+            var siblings = _parent is null ? _owner.Devices : _parent.Children;
+            var insertAt = Math.Min(_index, siblings.Count);
+            siblings.Insert(insertAt, _node);
+
+            if (_parent is not null)
+            {
+                _owner._expanded[_parent] = true;
+            }
+
+            _owner.RenderTree();
+        }
+    }
+
+    /// <summary>
+    /// (ED-D13) <see cref="CommitRename"/>이 만드는, 노드 1개의 <see cref="StructureTreeNode.Name"/>을
+    /// 바꾸는 커맨드입니다 — <see cref="FlowCanvasView"/>의 <c>EditNodePropertiesCommand</c>와 같은
+    /// "이전 값/이후 값을 각각 보관해두고 Do/Undo에서 그대로 대입" 패턴입니다.
+    /// </summary>
+    private sealed class RenameStructureNodeCommand : IEditorCommand
+    {
+        private readonly StructureView _owner;
+        private readonly StructureTreeNode _node;
+        private readonly string _oldName;
+        private readonly string _newName;
+
+        public RenameStructureNodeCommand(StructureView owner, StructureTreeNode node, string oldName, string newName)
+        {
+            _owner = owner;
+            _node = node;
+            _oldName = oldName;
+            _newName = newName;
+        }
+
+        public string Description => $"구조 노드 이름 변경: {_oldName} → {_newName}";
+
+        public void Do()
+        {
+            _node.Name = _newName;
+            _owner.RenderTree();
+        }
+
+        public void Undo()
+        {
+            _node.Name = _oldName;
+            _owner.RenderTree();
+        }
     }
 }
