@@ -165,6 +165,11 @@ namespace NodeSharp.Editor.Views;
 /// 겹치지 않도록) 값+알람색 배지를 그리며, <see cref="_lastTagOverlayUpdateAt"/>로 TagId별 최소 200ms
 /// (초당 5회) 간격을 둬 화면 갱신만 스로틀합니다(발행 빈도 자체는 <see cref="StatusBroadcaster"/>가
 /// 그대로 중계 — 책임 분리는 그 클래스 문서 참고).
+/// (ED-D12, ★ 완료 기준 — "구조 트리에서 태그 선택 시 사용 중인 캔버스 노드를 하이라이트")
+/// <see cref="HighlightNodesByTagRef"/>가 위 SignalR 3종과는 별개로, 같은 화면(<see cref="Views.StructureView"/>)의
+/// 태그 선택 이벤트를 받아 <see cref="PulseWire"/>와 동일한 "잠깐 강조" 방식으로 해당 TagRef 노드
+/// 카드 테두리를 반짝입니다 — 노드를 찾는 방식(PropertySchema TagRef 스캔)은 <see cref="ApplyTagValueUpdate"/>와
+/// 완전히 같고, "무엇을 트리거로 삼는가"(SignalR 이벤트 vs 구조 트리 선택)만 다릅니다.
 /// (LK-02b 후속, 사용자 요청 — "Inject 노드를 클릭/버튼으로 트리거") 반대 방향(Editor→Runner)의
 /// 첫 채널도 이 뷰에서 시작합니다 — <see cref="RenderNode"/>가 <c>SupportsManualTrigger</c>인 노드
 /// (지금은 Inject뿐)의 카드 왼쪽에 <see cref="AddManualTriggerButton"/>으로 ▶ 버튼을 그리고, 클릭하면
@@ -1716,6 +1721,63 @@ public partial class FlowCanvasView : UserControl
         AlarmLevel.H or AlarmLevel.L => Brushes.Goldenrod,
         _ => Brushes.CornflowerBlue
     };
+
+    /// <summary>
+    /// (ED-D12, ★ 완료 기준 — "구조 트리에서 태그 선택 시 사용 중인 캔버스 노드를 하이라이트")
+    /// <see cref="Views.StructureView.TagNodeSelected"/>가 넘긴 <paramref name="tagId"/>(태그가
+    /// 아닌 다른 노드가 선택됐거나 선택이 해제되면 <c>null</c>)로, <see cref="ApplyTagValueUpdate"/>와
+    /// 동일한 방식(<see cref="_registry"/> PropertySchema에서 <see cref="PropertyFieldType.TagRef"/>
+    /// 필드 값을 스캔)으로 이 태그를 참조하는 캔버스 카드를 찾아 <see cref="PulseWire"/>와 동일한
+    /// "잠깐 강조했다 되돌리는" 방식(1200ms)으로 테두리를 <c>AccentBrush</c>/두께 3으로 바꿨다가
+    /// <see cref="ApplyCardBorder"/>로 원래 상태(선택 &gt; 누락 &gt; 카테고리/색상 override 우선순위,
+    /// 클래스 자체 주석 참고)를 되돌립니다 — 구조 트리 선택이 바뀔 때마다 자연스럽게 사라지므로
+    /// <see cref="ApplyNodeStatus"/>/<see cref="ApplyTagValueUpdate"/>류의 영구 오버레이와 달리 별도
+    /// "지금 하이라이트된 카드" 상태를 추적할 필요가 없습니다. <paramref name="tagId"/>가 비어있거나
+    /// 그 태그를 참조하는 노드가 지금 활성 탭에 없으면 조용히 아무 것도 하지 않습니다.
+    /// </summary>
+    public void HighlightNodesByTagRef(string? tagId)
+    {
+        if (string.IsNullOrEmpty(tagId))
+        {
+            return;
+        }
+
+        foreach (var config in _nodeConfigs.Values)
+        {
+            if (!_nodeCards.TryGetValue(config.Id, out var card))
+            {
+                continue; // 지금 활성 탭에 그려져 있지 않음(ApplyNodeStatus/ApplyTagValueUpdate와 동일 원칙).
+            }
+
+            if (!_registry.Descriptors.TryGetValue(config.Type, out var descriptor))
+            {
+                continue; // 등록 안 된 타입(MissingNode, EC-08) — FindBrokenTagRefs와 동일하게 검사 범위 밖.
+            }
+
+            var matches = descriptor.PropertySchema.Any(field =>
+                field.Type == PropertyFieldType.TagRef &&
+                config.Properties.TryGetValue(field.Key, out var raw) &&
+                raw is not null &&
+                ReadTagRefValue(raw) == tagId);
+
+            if (!matches)
+            {
+                continue;
+            }
+
+            card.BorderBrush = (Brush)FindResource("AccentBrush");
+            card.BorderThickness = new Thickness(3);
+
+            var nodeId = config.Id;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1200) };
+            timer.Tick += (_, _) =>
+            {
+                ApplyCardBorder(nodeId, card);
+                timer.Stop();
+            };
+            timer.Start();
+        }
+    }
 
     /// <summary>
     /// (EC-03, EC-06 확장, EC-10 확장, 사용자 요청으로 노드 드래그-이동 확장) 카드를 더블클릭

@@ -97,7 +97,9 @@ public partial class MainWindow : Window
     /// XAML에서 정의한 컨트롤들을 초기화합니다(WPF 표준 패턴). (EC-11) <c>FlowCanvas</c>는
     /// <c>InitializeComponent</c> 직후 이미 생성돼 있으므로(x:Name 필드), <see cref="Window.Loaded"/>를
     /// 기다리지 않고 바로 <c>SelectionChanged</c>를 구독합니다. (EC-12) <c>ExplorerPanel</c>의
-    /// <c>QueryChanged</c>/<c>ResultActivated</c>도 같은 방식으로 함께 구독합니다.
+    /// <c>QueryChanged</c>/<c>ResultActivated</c>도 같은 방식으로 함께 구독합니다. (ED-D12)
+    /// <c>StructureTab.TagNodeSelected</c>도 동일하게 여기서 구독해 <c>FlowCanvas.HighlightNodesByTagRef</c>로
+    /// 연결합니다.
     /// </summary>
     public MainWindow()
     {
@@ -108,6 +110,9 @@ public partial class MainWindow : Window
         // (LK-02b 후속) FlowCanvas.InjectTriggerRequested는 SignalR을 몰라도 되므로, 이 창이 대신
         // EditorMonitorClient.TriggerInjectAsync를 호출한다(OnInjectTriggerRequested 참고).
         FlowCanvas.InjectTriggerRequested += OnInjectTriggerRequested;
+        // (ED-D12) 구조 트리에서 태그를 선택하면(또는 선택 해제하면) 캔버스 쪽에 그대로 반영 —
+        // SignalR과 무관한 순수 UI 이벤트라 위 3개와 마찬가지로 Window.Loaded를 기다리지 않는다.
+        StructureTab.TagNodeSelected += tagId => FlowCanvas.HighlightNodesByTagRef(tagId);
     }
 
     /// <summary>

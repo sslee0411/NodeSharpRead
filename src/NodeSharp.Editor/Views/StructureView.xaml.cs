@@ -23,6 +23,11 @@ namespace NodeSharp.Editor.Views;
 /// 함께 호출합니다 — 이 프로젝트는 "저장"을 flows.json/device.json 둘로 나누지 않고 하나의 사용자
 /// 동작(Ctrl+S)으로 통합해 다루는 편이(각 트리마다 별도 저장 버튼을 요구하는 것보다) Node-RED류
 /// 편집기 사용자에게 더 익숙하다고 판단했습니다.
+/// (ED-D12) <see cref="TagNodeSelected"/> 이벤트가 추가됐습니다 — 태그 노드를 선택하면 그 TagId를
+/// 실어 발생시키고(선택 해제·다른 노드 선택 시 <c>null</c>), <c>MainWindow</c>가 이를
+/// <c>FlowCanvasView.HighlightNodesByTagRef</c>로 연결해 그 태그를 참조하는 캔버스 노드를 잠깐
+/// 강조합니다("② 캔버스 → 구조 트리" 역방향인 <see cref="FlowCanvasView"/>의 TagRef override
+/// 조회(EC-19)와 짝을 이루는 "① 구조 트리 → 캔버스" 방향).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -99,6 +104,17 @@ public partial class StructureView : UserControl
 
     /// <summary>현재 선택된 노드(단일 선택) — 없으면 null.</summary>
     private StructureTreeNode? _selectedNode;
+
+    /// <summary>
+    /// (ED-D12, ★ 완료 기준 — "구조 트리에서 태그 선택 시 사용 중인 캔버스 노드를 하이라이트")
+    /// <see cref="Select"/>가 호출될 때마다 발생 — 선택된 노드가 <see cref="TagNode"/>이면 그
+    /// <see cref="StructureTreeNode.Id"/>(TagId)를, 그 외(다른 5단계 노드 선택)면 <c>null</c>을
+    /// 전달합니다. <c>MainWindow</c>가 <c>FlowCanvasView.HighlightNodesByTagRef</c>로 그대로 넘겨
+    /// 캔버스 쪽을 반영합니다 — 이 뷰 자신은 <see cref="FlowCanvasView"/>를 몰라도 되는 얇은 이벤트
+    /// 발행만 담당합니다(<c>FlowCanvasView.SelectionChanged</c>가 <c>MainWindow</c>를 거쳐 Information
+    /// 패널에 연결되는 것과 동일한 방향의 "뷰는 서로 직접 참조하지 않는다" 원칙).
+    /// </summary>
+    public event Action<string?>? TagNodeSelected;
 
     /// <summary>(ED-D03) device.json이 저장될 폴더 — <c>FlowCanvasView.DataDirectory</c>와 동일한 관례(기본값
     /// <see cref="AppContext.BaseDirectory"/>)입니다. <c>MainWindow</c>가 둘 중 어느 쪽도 별도로 지정하지
@@ -363,11 +379,16 @@ public partial class StructureView : UserControl
         }
     }
 
-    /// <summary><paramref name="node"/>를 선택 노드로 표시하고 다시 그립니다(선택 배경 갱신).</summary>
+    /// <summary>
+    /// <paramref name="node"/>를 선택 노드로 표시하고 다시 그립니다(선택 배경 갱신). (ED-D12)
+    /// 이어서 <see cref="TagNodeSelected"/>를 발생시켜, <paramref name="node"/>가 <see cref="TagNode"/>이면
+    /// 그 Id를, 아니면 <c>null</c>을 알립니다(클래스 자체 주석 참고).
+    /// </summary>
     private void Select(StructureTreeNode node)
     {
         _selectedNode = node;
         RenderTree();
+        TagNodeSelected?.Invoke(node is TagNode ? node.Id : null);
     }
 
     /// <summary>
