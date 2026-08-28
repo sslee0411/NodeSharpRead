@@ -8,7 +8,9 @@ namespace NodeSharp.Contracts.Interfaces;
 ///
 /// 태그 값의 시계열 이력을 기록·조회하는 계약입니다. 원본(<c>RecordAsync</c>/<c>QueryAsync</c>)과
 /// 사전 집계(<c>RecordAggregateAsync</c>/<c>QueryAggregateAsync</c>) 두 층을 함께 선언합니다(v1.20 확장판).
-/// 설계 근거: 02번 문서 8번 탭 카드 12.
+/// (ED-D10, v1.35 확장) 보관 기간이 지난 데이터를 지우는 <c>PurgeOlderThanAsync</c>/
+/// <c>PurgeAggregateOlderThanAsync</c>도 함께 선언합니다.
+/// 설계 근거: 02번 문서 8번 탭 카드 12·카드 14(Retention).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -17,8 +19,13 @@ namespace NodeSharp.Contracts.Interfaces;
 /// <item><c>TagAggregationJob</c>(<see cref="ISharedServiceNode"/>)이 <see cref="IScheduler"/>로 매시/매일
 /// 배치를 등록해 <c>RecordAggregateAsync</c>를 채웁니다 — 일별 집계는 원본을 다시 스캔하지 않고 같은
 /// 날짜의 시간별 집계를 재활용합니다.</item>
-/// <item>오래된 원본/집계 데이터를 언제까지 보관할지(retention)는 아직 이 인터페이스의 책임 범위가
-/// 아닙니다 — 02번 문서 8번 탭에 "발견한 공백"으로 남아 있으며 별도 Step에서 다룰 예정입니다.</item>
+/// <item>(ED-D10) <c>RetentionSweeper</c>(<see cref="ISharedServiceNode"/>)가 <see cref="IScheduler"/>로
+/// 매일 새벽 배치를 등록해 <c>PurgeOlderThanAsync</c>(원본, <c>RawDataRetention</c> 기준)와
+/// <c>PurgeAggregateOlderThanAsync</c>(집계, <c>AggregatedRetention</c> 기준)를 각각 별도 컷오프로
+/// 호출합니다 — 두 테이블의 보관 기간이 서로 다르므로(원본 30일 vs 집계 1년 기본값) 메서드도 분리되어
+/// 있습니다. 감사 로그(<c>AuditLogRetention</c>) 정리는 이 인터페이스가 아니라 <c>OP-01</c>(감사 로그
+/// 저장소, 아직 <c>⏳ 대기</c>)이 생긴 뒤 별도 델리게이트로 연결됩니다(<c>RetentionSweeper</c> 클래스
+/// remarks 참고).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -32,6 +39,10 @@ namespace NodeSharp.Contracts.Interfaces;
 /// // 3) TagAggregationJob이 매시 정각 시간별 집계를 기록하고, 일일 리포트가 이를 조회
 /// await historian.RecordAggregateAsync("tag-1", periodStart, TimeSpan.FromHours(1), avg: 8.5, min: 8.0, max: 9.1, ct);
 /// IReadOnlyList&lt;TagAggregateRow&gt; hourlyRows = await historian.QueryAggregateAsync("tag-1", dayStart, dayEnd, TimeSpan.FromHours(1), ct);
+///
+/// // 4) RetentionSweeper가 매일 새벽 원본 30일·집계 1년이 지난 데이터를 각각 정리
+/// int rawDeleted = await historian.PurgeOlderThanAsync(DateTime.UtcNow - TimeSpan.FromDays(30), ct);
+/// int aggDeleted = await historian.PurgeAggregateOlderThanAsync(DateTime.UtcNow - TimeSpan.FromDays(365), ct);
 /// </code>
 /// </example>
 public interface ITagHistorian
@@ -47,4 +58,10 @@ public interface ITagHistorian
 
     /// <summary>지정한 구간의 사전 집계 행을 조회합니다. 원본을 다시 스캔하지 않아 대시보드 조회가 빠릅니다.</summary>
     Task<IReadOnlyList<TagAggregateRow>> QueryAggregateAsync(string tagId, DateTime from, DateTime to, TimeSpan periodLength, CancellationToken ct);
+
+    /// <summary>(ED-D10) 모든 태그의 원본 값 중 <paramref name="cutoff"/>보다 이전(<c>AtTicks &lt; cutoff</c>) 것을 전부 삭제합니다. 삭제된 행 수를 반환합니다.</summary>
+    Task<int> PurgeOlderThanAsync(DateTime cutoff, CancellationToken ct);
+
+    /// <summary>(ED-D10) 모든 태그의 사전 집계 행 중 구간 시작 시각이 <paramref name="cutoff"/>보다 이전인 것을 전부 삭제합니다. 삭제된 행 수를 반환합니다.</summary>
+    Task<int> PurgeAggregateOlderThanAsync(DateTime cutoff, CancellationToken ct);
 }

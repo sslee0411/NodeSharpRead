@@ -6,7 +6,8 @@ namespace NodeSharp.Runtime;
 
 /// <summary>
 /// Class명 : SQLite 기반 태그 이력 저장소
-/// 역활 및 기능 : <see cref="ITagHistorian"/>(CT-04c)의 1차 구현체 — 태그 원본 값과 사전 집계 행을 SQLite 파일에 기록·조회
+/// 역활 및 기능 : <see cref="ITagHistorian"/>(CT-04c)의 1차 구현체 — 태그 원본 값과 사전 집계 행을 SQLite
+/// 파일에 기록·조회·(ED-D10) 보관 기간이 지난 행을 삭제
 ///
 /// 02번 설계 문서 8번 탭 카드12가 예고한 "1차 구현(SqliteTagHistorian, NodeSharp.Runtime)은
 /// lssLib.DB.Sqlite를 포팅해 사용" 방침을 따르되, 이 참조 소스인 lssLib 저장소에는
@@ -45,6 +46,13 @@ namespace NodeSharp.Runtime;
 /// 파일이 없으면 SQLite가 새로 만들고, 이미 있으면(재기동 시나리오) 기존 데이터를 그대로 유지한
 /// 채 스키마만 재확인합니다. 대상 경로의 디렉터리가 없으면 생성합니다(예: %AppData%\NodeSharpRead\
 /// history.db처럼 중첩 경로를 바로 넘겨도 되도록).</item>
+/// <item><b>(ED-D10) Purge는 단순 <c>DELETE ... WHERE ... &lt; cutoff</c></b> — <see cref="PurgeOlderThanAsync"/>는
+/// <c>TagHistory</c>, <see cref="PurgeAggregateOlderThanAsync"/>는 <c>TagAggregate</c> 테이블에 각각
+/// 컷오프 이전 행을 그대로 삭제하고 <c>ExecuteNonQueryAsync</c>가 돌려주는 영향받은 행 수를 그대로
+/// 반환합니다. 02번 설계 문서 카드14 의사코드의 "삭제 전 압축 백업 보관"은 그 백업 대상(<c>OP-09</c>
+/// 다세대 백업, 아직 <c>⏳ 대기</c>)이 없어 이 1차 구현 범위 밖입니다 — 완료 기준("보관 기간을 초과한
+/// 데이터가 삭제되는지")은 삭제 자체만 요구하므로 지금은 압축 백업 없이 바로 삭제합니다(근거는
+/// <c>RetentionSweeper</c> 클래스 remarks에도 동일하게 기록).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -197,5 +205,27 @@ public sealed class SqliteTagHistorian : ITagHistorian
         }
 
         return results;
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> PurgeOlderThanAsync(DateTime cutoff, CancellationToken ct)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM TagHistory WHERE AtTicks < $cutoff;";
+        cmd.Parameters.AddWithValue("$cutoff", cutoff.Ticks);
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> PurgeAggregateOlderThanAsync(DateTime cutoff, CancellationToken ct)
+    {
+        await using var conn = new SqliteConnection(_connectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM TagAggregate WHERE PeriodStartTicks < $cutoff;";
+        cmd.Parameters.AddWithValue("$cutoff", cutoff.Ticks);
+        return await cmd.ExecuteNonQueryAsync(ct);
     }
 }

@@ -58,6 +58,20 @@ public class TagAggregationJobTests
                 .ToList();
             return Task.FromResult(result);
         }
+
+        /// <summary>(ED-D10) 이 테스트 파일의 완료 기준과 무관해 최소 구현만 제공 — 실제 삭제 동작 검증은 RetentionSweeperTests가 담당.</summary>
+        public Task<int> PurgeOlderThanAsync(DateTime cutoff, CancellationToken ct)
+        {
+            var removed = _raw.RemoveAll(r => r.At < cutoff);
+            return Task.FromResult(removed);
+        }
+
+        /// <summary>(ED-D10) 위와 동일한 이유로 최소 구현만 제공.</summary>
+        public Task<int> PurgeAggregateOlderThanAsync(DateTime cutoff, CancellationToken ct)
+        {
+            var removed = _aggregates.RemoveAll(a => a.Row.PeriodStart < cutoff);
+            return Task.FromResult(removed);
+        }
     }
 
     /// <summary>등록된 ScheduleCron 호출(ownerId/cron식/콜백)을 모두 기록만 하는 테스트 전용 <see cref="IScheduler"/>(DeviceMapPollerTests.FakeScheduler와 동일한 취지).</summary>

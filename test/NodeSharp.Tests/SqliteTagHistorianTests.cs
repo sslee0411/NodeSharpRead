@@ -244,4 +244,98 @@ public class SqliteTagHistorianTests
     {
         Assert.Throws<ArgumentException>(() => new SqliteTagHistorian(dbPath));
     }
+
+    [Fact]
+    public async Task PurgeOlderThanAsync는_컷오프_이전_원본만_지우고_이후는_유지하며_삭제된_행_수를_반환한다()
+    {
+        var dbPath = NewTempDbPath();
+        try
+        {
+            var historian = new SqliteTagHistorian(dbPath);
+            var now = DateTime.UtcNow;
+
+            await historian.RecordAsync("tag-1", 1.0, now.AddDays(-2), CancellationToken.None);   // 컷오프 이전 → 삭제
+            await historian.RecordAsync("tag-1", 2.0, now.AddDays(-2), CancellationToken.None);   // 컷오프 이전 → 삭제(같은 태그 2건)
+            await historian.RecordAsync("tag-2", 3.0, now, CancellationToken.None);                // 컷오프 이후 → 유지
+
+            var deleted = await historian.PurgeOlderThanAsync(now.AddDays(-1), CancellationToken.None);
+
+            Assert.Equal(2, deleted);
+            Assert.Empty(await historian.QueryAsync("tag-1", now.AddDays(-3), now, CancellationToken.None));
+            Assert.Single(await historian.QueryAsync("tag-2", now.AddDays(-1), now.AddDays(1), CancellationToken.None));
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task PurgeOlderThanAsync는_지울_행이_없으면_0을_반환한다()
+    {
+        var dbPath = NewTempDbPath();
+        try
+        {
+            var historian = new SqliteTagHistorian(dbPath);
+            var now = DateTime.UtcNow;
+            await historian.RecordAsync("tag-1", 1.0, now, CancellationToken.None);
+
+            var deleted = await historian.PurgeOlderThanAsync(now.AddDays(-1), CancellationToken.None);
+
+            Assert.Equal(0, deleted);
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task PurgeAggregateOlderThanAsync는_컷오프_이전_집계만_지우고_이후는_유지하며_삭제된_행_수를_반환한다()
+    {
+        var dbPath = NewTempDbPath();
+        try
+        {
+            var historian = new SqliteTagHistorian(dbPath);
+            var now = DateTime.UtcNow;
+
+            await historian.RecordAggregateAsync("tag-1", now.AddDays(-400), TimeSpan.FromHours(1), 1, 1, 1, CancellationToken.None);   // 컷오프 이전 → 삭제
+            await historian.RecordAggregateAsync("tag-1", now.AddDays(-100), TimeSpan.FromHours(1), 2, 2, 2, CancellationToken.None);   // 컷오프 이후 → 유지
+
+            var deleted = await historian.PurgeAggregateOlderThanAsync(now.AddDays(-365), CancellationToken.None);
+
+            Assert.Equal(1, deleted);
+            var remaining = await historian.QueryAggregateAsync("tag-1", now.AddYears(-2), now, TimeSpan.FromHours(1), CancellationToken.None);
+            var row = Assert.Single(remaining);
+            Assert.Equal(2.0, row.Avg);
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
+
+    [Fact]
+    public async Task Purge_후에도_재기동_시뮬레이션으로_남은_데이터는_그대로_조회된다()
+    {
+        var dbPath = NewTempDbPath();
+        try
+        {
+            var firstProcess = new SqliteTagHistorian(dbPath);
+            var now = DateTime.UtcNow;
+            await firstProcess.RecordAsync("tag-1", 1.0, now.AddDays(-2), CancellationToken.None);
+            await firstProcess.RecordAsync("tag-1", 2.0, now, CancellationToken.None);
+            await firstProcess.PurgeOlderThanAsync(now.AddDays(-1), CancellationToken.None);
+
+            var afterRestart = new SqliteTagHistorian(dbPath);
+            var result = await afterRestart.QueryAsync("tag-1", now.AddDays(-3), now.AddDays(1), CancellationToken.None);
+
+            var row = Assert.Single(result);
+            Assert.Equal(2.0, row.Value);
+        }
+        finally
+        {
+            if (File.Exists(dbPath)) File.Delete(dbPath);
+        }
+    }
 }

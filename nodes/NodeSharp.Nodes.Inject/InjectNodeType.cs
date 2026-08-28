@@ -55,7 +55,10 @@ public static class InjectNodeType
 
         public string Category => "input";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며") 실제 Node-RED의 inject 노드 아이콘
+        // (타이머/시계 모양)과 같은 인상을 주는 이모지 글리프. FlowCanvasView.RenderNode가 카드 라벨
+        // 앞에 그대로 표시한다(위 클래스 주석 EC-18 항목 참고).
+        public string IconGlyph => "⏱";
 
         public int DefaultInputs => 0;
 

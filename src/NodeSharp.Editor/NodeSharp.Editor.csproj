@@ -906,4 +906,14 @@
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- (EC-20, ★ 사용자 요청 — "아이콘의 경우 웹에 공유되어 있는 아이콘을 선택해서 할 수 있도록")
+         Font Awesome Free의 Solid 웹폰트(SIL OFL 1.1 라이선스, Assets\Fonts\FontAwesome-LICENSE.txt
+         참고 — 재배포 허용)를 WPF Resource로 번들해 FontAwesomeIconCatalog.cs가 pack URI
+         ("./Assets/Fonts/#Font Awesome 6 Free Solid")로 읽는다. SDK 스타일 WPF 프로젝트는 *.xaml만
+         암묵적으로 Page로 포함하고 *.ttf 같은 바이너리 자산은 자동 포함하지 않아 명시적으로
+         선언해야 한다(IconPickerDialog.xaml.cs 클래스 주석의 EC-20 항목 참고). -->
+    <Resource Include="Assets\Fonts\FontAwesome6Free-Solid-900.ttf" />
+  </ItemGroup>
+
 </Project>

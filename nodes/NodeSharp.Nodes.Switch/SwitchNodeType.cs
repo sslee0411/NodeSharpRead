@@ -35,7 +35,9 @@ public static class SwitchNodeType
 
         public string Category => "function";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며") 실제 Node-RED의 switch 노드 아이콘
+        // (분기/갈래 모양)과 같은 인상을 주는 이모지 글리프(InjectNodeType.IconGlyph 항목 참고).
+        public string IconGlyph => "🔀";
 
         public int DefaultInputs => 1;
 

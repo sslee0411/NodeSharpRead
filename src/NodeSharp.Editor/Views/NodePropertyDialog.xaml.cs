@@ -31,6 +31,13 @@ namespace NodeSharp.Editor.Views;
 /// <see cref="WindowTitleBarTheme.Apply"/>(DWM API)로 그 네이티브 제목표시줄의 색상만 현재 테마에
 /// 맞춥니다 — 창을 커스텀 타이틀바로 바꾸는 EC-03 판단 자체를 뒤집지는 않습니다(자세한 배경은
 /// <see cref="WindowTitleBarTheme"/> 클래스 문서 참고).
+/// (EC-20, ★ 사용자 요청 — "카드 색상은 색상파레트 에서 선택", "아이콘의 경우 웹에 공유되어 있는
+/// 아이콘을 선택") <see cref="PropertyFieldType.Color"/>/<see cref="PropertyFieldType.Icon"/> 필드는
+/// <see cref="CreatePickerControl"/>이 만드는 "TextBox + 선택... 버튼" 합성 컨트롤(<see cref="Grid"/>)로
+/// 렌더링됩니다 — 버튼을 누르면 각각 <see cref="ColorPickerDialog"/>/<see cref="IconPickerDialog"/>를
+/// 모달로 열어 고른 값을 TextBox에 채우고, TextBox는 그대로 직접 수정도 가능하게 남겨둡니다(EC-19
+/// 방식의 수동 입력과 EC-20의 팔레트 선택 둘 다 지원). <see cref="ReadValue"/>는 이 합성 컨트롤의
+/// <see cref="FrameworkElement.Tag"/>에 담긴 내부 TextBox에서 최종 값을 꺼냅니다.
 /// </summary>
 public partial class NodePropertyDialog : Window
 {
@@ -292,6 +299,24 @@ public partial class NodePropertyDialog : Window
                     Foreground = (Brush)FindResource("PrimaryTextBrush")
                 };
 
+            case PropertyFieldType.Color:
+                // (EC-20) "선택..." 버튼이 ColorPickerDialog를 모달로 열고, 고른 #RRGGBB 값을
+                // TextBox에 채운다 — 취소하면(openPicker가 null 반환) TextBox는 그대로 둔다.
+                return CreatePickerControl(currentValue, "선택...", () =>
+                {
+                    var dialog = new ColorPickerDialog(currentValue) { Owner = this };
+                    return dialog.ShowDialog() == true ? dialog.SelectedHex : null;
+                });
+
+            case PropertyFieldType.Icon:
+                // (EC-20) "선택..." 버튼이 IconPickerDialog를 모달로 열고, 클릭한 아이콘의 글리프를
+                // TextBox에 채운다 — 이모지 등을 TextBox에 직접 타이핑하는 EC-19 방식도 그대로 된다.
+                return CreatePickerControl(currentValue, "선택...", () =>
+                {
+                    var dialog = new IconPickerDialog { Owner = this };
+                    return dialog.ShowDialog() == true ? dialog.SelectedGlyph : null;
+                });
+
             default:
                 // Text/Number/CredentialRef/TypedValue — 전용 컨트롤은 각각 후속 Step 범위라 지금은
                 // 단순 TextBox로 대체한다.
@@ -305,10 +330,57 @@ public partial class NodePropertyDialog : Window
     }
 
     /// <summary>
+    /// (EC-20) <see cref="PropertyFieldType.Color"/>/<see cref="PropertyFieldType.Icon"/> 공용 —
+    /// TextBox(직접 입력 가능) + <paramref name="buttonLabel"/> 버튼(누르면 <paramref name="openPicker"/>가
+    /// 피커 다이얼로그를 열고 결과 문자열을 돌려줌, 취소 시 <c>null</c>)을 한 줄에 담은 합성
+    /// 컨트롤을 만듭니다. 버튼 클릭 결과가 <c>null</c>이 아니면 TextBox에 채우고, <c>null</c>이면
+    /// (취소) TextBox를 그대로 둡니다. 반환된 <see cref="Grid"/>의 <see cref="FrameworkElement.Tag"/>에
+    /// 내부 TextBox를 담아둬 <see cref="ReadValue"/>가 <c>Grid { Tag: TextBox }</c> 패턴으로 최종
+    /// 값을 꺼낼 수 있게 합니다.
+    /// </summary>
+    private Grid CreatePickerControl(string? currentValue, string buttonLabel, Func<string?> openPicker)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var textBox = new TextBox
+        {
+            Text = currentValue ?? string.Empty,
+            Background = (Brush)FindResource("ControlBackgroundBrush"),
+            Foreground = (Brush)FindResource("PrimaryTextBrush")
+        };
+        Grid.SetColumn(textBox, 0);
+
+        var button = new Button
+        {
+            Content = buttonLabel,
+            Margin = new Thickness(6, 0, 0, 0),
+            Padding = new Thickness(8, 0, 8, 0)
+        };
+        Grid.SetColumn(button, 1);
+        button.Click += (_, _) =>
+        {
+            var picked = openPicker();
+            if (picked is not null)
+            {
+                textBox.Text = picked;
+            }
+        };
+
+        grid.Children.Add(textBox);
+        grid.Children.Add(button);
+        grid.Tag = textBox;
+        return grid;
+    }
+
+    /// <summary>
     /// 입력 컨트롤 하나에서 현재 값을 문자열로 꺼냅니다(컨트롤 종류별로 읽는 방법이 다름). (ED-D04)
     /// TagRef 콤보박스(<see cref="CreateInputControl"/>)는 화면엔 <see cref="TagCatalogEntry"/>(표시
     /// 경로)가 보이지만 실제로 저장할 값은 그 항목의 Id이므로, 그 경우를 먼저 매칭해 <c>.Id</c>를
-    /// 꺼낸다 — 일반 ComboBox(문자열 항목)의 기존 동작은 그대로 유지된다.
+    /// 꺼낸다 — 일반 ComboBox(문자열 항목)의 기존 동작은 그대로 유지된다. (EC-20) Color/Icon
+    /// 필드(<see cref="CreatePickerControl"/>이 만든 <see cref="Grid"/>)는 <see cref="FrameworkElement.Tag"/>에
+    /// 담아둔 내부 TextBox에서 값을 꺼낸다 — 일반 TextBox 케이스보다 먼저 매칭해야 하므로 그 위에 둔다.
     /// </summary>
     private static string ReadValue(FrameworkElement control) => control switch
     {
@@ -316,6 +388,7 @@ public partial class NodePropertyDialog : Window
         ComboBox { SelectedItem: TagCatalogEntry tagEntry } => tagEntry.Id,
         ComboBox comboBox => comboBox.SelectedItem as string ?? comboBox.Text,
         PasswordBox passwordBox => passwordBox.Password,
+        Grid { Tag: TextBox innerTextBox } => innerTextBox.Text,
         TextBox textBox => textBox.Text,
         _ => string.Empty
     };

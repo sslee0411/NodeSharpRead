@@ -24,7 +24,9 @@ public static class PlcTagWriteNodeType
 
         public string Category => "structure";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "PLC 부분의 Node는 기존 노드레드와 다름") 읽기 노드
+        // (PlcTagReadNodeType, 인박스)와 짝을 이루는 "태그로 내보낸다(쓰기)" 방향성의 아웃박스 이모지.
+        public string IconGlyph => "📤";
 
         public int DefaultInputs => 1;
 

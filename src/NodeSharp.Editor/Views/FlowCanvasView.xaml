@@ -26,6 +26,29 @@
   Category별 고정 스타일 카탈로그)을 따른다 — 코드비하인드의 RenderNode/ApplyCardBorder 참고.
   (EC-14, ★ 사용자 요청) NodeCanvas에 DragEnter/DragOver/DragLeave를 추가했다 — 팔레트 드래그가
   캔버스에 들어오면 점선 테두리 미리보기(Rectangle)가 마우스를 따라 움직인다.
+  (v3.33, ★ 사용자 요청 — "노드 모양을 기존 노드레드처럼 깔끔하게 이쁘게 변경") NodeCategoryStyle이
+  이제 테두리색뿐 아니라 카드 배경(옅은 파스텔)도 함께 돌려주고, 모서리 반경은 모든 카테고리
+  공통값으로 통일됐다 — 실제 Node-RED 에디터의 "카테고리별 파스텔 색 채움 카드" 모양과 동일하게
+  맞춘 것(EC-13의 모서리 반경 다양화 대신 채택 — 코드비하인드 클래스 주석·NodeCategoryStyle.cs
+  참고).
+  (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며, 커스텀 노드도쉽게 설정할 수 있도록 구조
+  만들어줘 PLC 부분의 Node 는 기존 노드레드와 다름") 코드비하인드 RenderNode가 이제 등록된 노드
+  타입의 IconGlyph를 라벨 앞에 붙여 카드 왼쪽에 표시한다 — 아이콘 계약·빌더(.WithIcon)는 이미
+  있었지만 실제로 소비하는 렌더링이 없던 공백을 메운 것(자세한 내용은 코드비하인드 클래스 주석의
+  EC-18 항목 참고). PLC 노드(PlcTagRead/Write)가 쓰는 "structure" 카테고리가 색상 카탈로그에 없던
+  문제도 함께 발견·수정(NodeCategoryStyle.cs 참고).
+  (EC-19, ★ 사용자 요청 — "노드에 대한 아이콘 및 색상 변경은 어디서 관리하는것인가? 기존 노드래드의
+  경우 UI에서 해당 사항 변경 할 수 있음") EC-18까지는 아이콘·색상 모두 노드 "타입" 단위로만 코드에서
+  정해졌는데, 이제 캔버스의 개별 노드를 더블클릭해 여는 NodePropertyDialog에서 인스턴스별로 아이콘·
+  카드 색상을 직접 지정할 수 있다 — "outputs"(EC-15)와 동일한 관례로 모든 노드 타입에 공통 필드
+  2개(아이콘/카드 색상)가 자동으로 추가된다(자세한 내용은 코드비하인드 클래스 주석의 EC-19 항목 참고).
+  (EC-20, ★ 사용자 요청 — "카드 색상은 색상파레트 에서 선택해서 할수 있도록 해주고, 아이콘의 경우
+  웹에 공유되어 있는 아이콘을 선택해서 할 수 있도록 가능한가?") EC-19의 아이콘/카드 색상 필드가
+  이제 평범한 TextBox 대신 "선택..." 버튼이 딸린 합성 컨트롤로 그려진다 — 버튼을 누르면 각각
+  ColorPickerDialog(앱 내장 색상 스와치 팔레트)/IconPickerDialog(번들된 Font Awesome 웹폰트
+  아이콘 51종 그리드)가 모달로 열려 클릭 한 번으로 값을 채워준다(직접 타이핑하는 기존 방식도
+  그대로 지원, 자세한 내용은 코드비하인드 클래스 주석 및 NodePropertyDialog/ColorPickerDialog/
+  IconPickerDialog 클래스 주석의 EC-20 항목 참고).
 -->
 <UserControl x:Class="NodeSharp.Editor.Views.FlowCanvasView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"

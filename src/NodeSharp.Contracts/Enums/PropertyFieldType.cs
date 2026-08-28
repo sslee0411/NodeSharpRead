@@ -57,5 +57,20 @@ public enum PropertyFieldType
     /// 값의 "출처"와 "실제 값"을 함께 담는 다중 타입 입력 위젯(Node-RED TypedInput). Change/Range/Switch
     /// 노드처럼 값을 고정 문자열이 아니라 msg 필드/Context/환경변수/수식 중에서 선택해 입력할 때 사용합니다.
     /// </summary>
-    TypedValue
+    TypedValue,
+
+    /// <summary>
+    /// (EC-19/EC-20) 16진 색상 코드(#RRGGBB) 입력. <c>NodePropertyDialog</c>는 TextBox 옆에 색상
+    /// 팔레트 선택 버튼(<c>ColorPickerDialog</c>)을 함께 그립니다 — 팔레트에서 고르면 그 값이
+    /// TextBox에 채워지고, 원하면 TextBox에 직접 16진수를 입력해도 됩니다(두 방식 모두 최종적으로
+    /// 같은 문자열 값을 <c>NodeConfig.Properties</c>에 저장).
+    /// </summary>
+    Color,
+
+    /// <summary>
+    /// (EC-19/EC-20) 아이콘 글리프 입력. <c>NodePropertyDialog</c>는 TextBox 옆에 아이콘 선택 버튼
+    /// (<c>IconPickerDialog</c>, Font Awesome 아이콘 세트에서 클릭으로 선택)을 함께 그립니다 —
+    /// <see cref="Color"/>와 동일하게 팔레트 선택과 직접 타이핑(이모지 등) 둘 다 지원합니다.
+    /// </summary>
+    Icon
 }

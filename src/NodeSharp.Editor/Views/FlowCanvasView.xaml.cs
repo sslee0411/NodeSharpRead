@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
@@ -173,6 +174,87 @@ namespace NodeSharp.Editor.Views;
 /// 실행하므로 Ctrl+Z로 되돌릴 수 있습니다. 이 전체 메커니즘은 <see cref="NodeConfig"/>/<c>_nodeConfigs</c>만
 /// 다루고 특정 노드 타입을 전혀 분기하지 않으므로, 지금 등록된 타입은 물론 앞으로 새로 추가되는
 /// 어떤 노드 타입에도 그대로 적용됩니다.
+/// (v3.33, 사용자 요청 — "노드 모양을 기존 노드레드처럼 깔끔하게 이쁘게 변경") <see cref="RenderNode"/>가
+/// EC-13의 카테고리별 테두리 색상·모서리 모양 구분에 더해, 이제 카드 배경 자체도
+/// <see cref="Views.NodeCategoryStyle.Resolve"/>가 돌려주는 옅은 파스텔로 채웁니다(모서리 반경은
+/// 카테고리 무관 통일값으로 대체 — <see cref="Views.NodeCategoryStyle"/> 클래스 주석 참고) — 실제
+/// Node-RED 에디터가 "카테고리별 파스텔 색 채움 카드"로 노드를 구분하는 것과 동일한 모양입니다.
+/// 배경이 채워진 노드는 라벨 텍스트도 <see cref="Views.NodeCategoryStyle.TextBrush"/>(고정 짙은
+/// 회색)로 바꿔 가독성을 지키고, <see cref="AddPortEllipse"/>의 포트 원도 강조색 단색 채움 대신
+/// 옅은 회색 채움+진한 회색 테두리로 바꿔 카드 색이 무엇이든 포트가 항상 또렷하게 보이도록 했습니다
+/// (Node-RED의 포트가 카드 색과 무관하게 항상 중립색인 것과 동일). <see cref="OnCanvasDragEnter"/>의
+/// 점선 드래그 미리보기도 같은 파스텔을 옅은 투명도로 채워 실제 놓일 카드 색을 미리 보여줍니다.
+/// 팔레트 카드(<see cref="Views.PaletteView"/>)는 XAML DataTemplate 기반이라 이번 변경 범위 밖으로
+/// 남겨뒀습니다(원하면 후속 작업으로 별도 진행 — 근거는 README v3.33 항목 참고).
+/// (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며, 커스텀 노드도쉽게 설정할 수 있도록 구조
+/// 만들어줘 PLC 부분의 Node 는 기존 노드레드와 다름") 조사 결과 <see cref="INodeTypeDescriptor.IconGlyph"/>는
+/// 인터페이스에 이미 선언돼 있고 <c>NodeSharp.Registry.NodeTypeDescriptorBuilder&lt;TNode&gt;</c>에도
+/// 이미 <c>WithIcon(...)</c> 메서드가 있었지만(RG-01 최초 선언 당시부터), 실제로는 이 프로젝트의 모든
+/// 노드 타입(Inject/Switch/Function/Debug/PlcTagRead/PlcTagWrite)이 <c>IconGlyph =&gt; string.Empty;</c>로
+/// 비워둔 채였고 <see cref="RenderNode"/>도 이 값을 전혀 읽지 않아, 캔버스 어디에도 아이콘이 그려지지
+/// 않던 것이 "아이콘 부분이 다르다"는 사용자 지적의 실체였습니다 — 즉 "커스텀 노드를 위한 구조"는
+/// 이미 존재했고(계약·빌더 모두), 정작 그 구조를 실제로 소비하는 렌더링 코드가 없었던 공백이었습니다.
+/// 이번 Step은 그 공백만 메웁니다: <see cref="RenderNode"/>가 <c>descriptor.IconGlyph</c>가 비어있지
+/// 않으면 라벨 텍스트 맨 앞에 "{아이콘}  {이름}" 형태로 붙이고 카드 왼쪽으로 붙여 정렬합니다(실제
+/// Node-RED가 카드 왼쪽에 고정 아이콘, 그 오른쪽에 이름을 두는 것과 같은 읽는 순서) — 아이콘이 없는
+/// 경우(누락 타입, 또는 향후 아이콘을 깜빡한 커스텀 노드)는 기존과 동일하게 이름만 가운데 정렬로
+/// 그려 하위 호환을 그대로 유지합니다. 이 렌더링은 특정 노드 타입을 전혀 분기하지 않고
+/// <c>IconGlyph</c> 값 하나만 보므로, 이제 <b>어떤 커스텀 노드든 <c>IconGlyph</c>(직접 구현) 또는
+/// <c>.WithIcon(...)</c>(빌더 사용)로 한 줄만 채우면 캔버스·팔레트(EC-01a부터 이미 <c>IconGlyph</c>를
+/// 바인딩해뒀던 <see cref="Views.PaletteView"/>) 양쪽에 자동으로 아이콘이 나타납니다</b> — 이것이
+/// 사용자가 요청한 "커스텀 노드도 쉽게 설정할 수 있는 구조"입니다. 기존 6개 노드 타입에는 각자의
+/// 실제 Node-RED 아이콘과 같은 인상의 이모지를 새로 지정했고(각 NodeType.cs 파일 참고), Node-RED에
+/// 대응 아이콘이 없는 PLC 전용 노드(PlcTagRead/Write)는 읽기/쓰기 방향을 나타내는 인박스/아웃박스
+/// 이모지로 구분했습니다. 아울러 <c>PlcTagRead</c>/<c>PlcTagWriteNodeType.Category</c>가 실제로 쓰는
+/// <c>"structure"</c> 값이 <see cref="Views.NodeCategoryStyle"/> 카탈로그에 없어(v3.33 배경 채움
+/// 도입 이후 계속 색이 입혀지지 않던 별개의 공백) PLC 노드만 색 없이 그려지던 문제도 함께
+/// 발견·수정했습니다(<see cref="Views.NodeCategoryStyle"/> 클래스 주석의 EC-18 항목 참고) — 이 두
+/// 가지가 합쳐져 사용자가 지적한 "PLC 부분의 Node는 기존 노드레드와 다름"이 해소됩니다.
+/// (EC-19, ★ 사용자 요청 — EC-18 직후 "노드에 대한 아이콘 및 색상 변경은 어디서 관리하는것인가?
+/// 기존 노드래드의 경우 UI에서 해당 사항 변경 할 수 있음") EC-18까지는 아이콘·색상 모두 노드
+/// "타입" 단위로만(소스 코드의 <c>IconGlyph</c>/<see cref="Views.NodeCategoryStyle"/>) 정해졌고,
+/// 캔버스에 놓인 개별 "인스턴스"별로 다르게 지정할 UI가 없었습니다 — 조사 결과 실제 Node-RED도
+/// 색상은 UI로 바꿀 수 없고(노드 제작자가 <c>registerType</c>에 하드코딩), 아이콘만 편집 다이얼로그의
+/// "Appearance" 탭에서 인스턴스별로 바꿀 수 있는 경우가 있다는 것을 확인 — 이번 Step은 그보다
+/// 한 걸음 더 나아가 아이콘·색상 둘 다 <see cref="NodePropertyDialog"/>에서 인스턴스별로 바꿀 수
+/// 있게 합니다(사용자가 AskUserQuestion에서 "아이콘+색상 모두 UI에서 변경 가능하게" 선택). 구현은
+/// EC-15("출력 포트 개수" 필드)와 완전히 동일한 패턴 — <see cref="OpenPropertyDialog"/>가
+/// <see cref="BuildIconField"/>/<see cref="BuildColorField"/> 2개 필드를 모든 노드 타입의
+/// PropertySchema 끝에 자동으로 덧붙여, 각 노드 타입 코드는 전혀 수정하지 않고도 전부 적용됩니다.
+/// 값은 각각 <see cref="NodeConfig.Properties"/>의 <c>"icon"</c>(문자열, 아이콘 글리프 직접 입력)·
+/// <c>"color"</c>(문자열, <c>#RRGGBB</c> 16진 색상 코드) 키에 저장되고, <see cref="RenderNode"/>의
+/// <see cref="ReadIconOverride"/>/<see cref="ReadColorOverride"/>가 이 값을 읽습니다 — 비어있거나
+/// (색상은) 파싱할 수 없으면 기존과 동일하게 노드 타입 기본 아이콘/카테고리 기본 색상으로 되돌아가
+/// 하위 호환을 유지합니다(EC-18까지 만든 노드는 아무것도 바뀌지 않음). 색상은 사용자가 테두리색
+/// 하나만 16진수로 입력하면 <see cref="BlendWithWhite"/>가 배경(파스텔)을 자동으로 계산합니다 —
+/// <see cref="Views.NodeCategoryStyle"/>의 각 카테고리가 (Fill, Border) 한 쌍을 손으로 고른 것과
+/// 달리, 사용자가 매번 두 색을 따로 고르지 않고도 카테고리 카드와 같은 "파스텔 배경 + 진한 테두리"
+/// 느낌을 유지하도록 하기 위함입니다. <see cref="ApplyCardBorder"/>도 이 색상 override를 함께
+/// 반영하도록 수정했습니다(선택/누락 상태가 항상 최우선이라는 EC-08/EC-10/EC-13 우선순위 규칙은
+/// 전혀 바뀌지 않음 — 색상 override는 그 둘 다 아닐 때의 "카테고리 기본색" 자리만 대체). 팔레트
+/// (<see cref="Views.PaletteView"/>)는 노드 "타입"을 보여주는 화면이라 인스턴스별 override가 애초에
+/// 적용될 대상이 없어 이번 범위 밖입니다(EC-17/18과 동일한 이유).
+/// (EC-20, ★ 사용자 요청 — EC-19 직후 "카드 색상은 색상파레트 에서 선택해서 할수 있도록 해주고,
+/// 아이콘의 경우 웹에 공유되어 있는 아이콘을 선택해서 할 수 있도록 가능한가?") EC-19까지는
+/// <see cref="BuildIconField"/>/<see cref="BuildColorField"/> 둘 다 <see cref="PropertyFieldType.Text"/>라
+/// 아이콘·색상 모두 사용자가 직접 문자를 타이핑해야 했습니다 — 이번 Step은 그 두 필드의 Type을
+/// 각각 <see cref="PropertyFieldType.Icon"/>/<see cref="PropertyFieldType.Color"/>로 바꿔
+/// <see cref="NodePropertyDialog"/>가 TextBox 옆에 "선택..." 버튼을 함께 그리게 합니다 — 색상은
+/// <see cref="ColorPickerDialog"/>(앱 내장 스와치 팔레트, 사용자가 AskUserQuestion에서 "앱 내장
+/// 색상 팔레트" 선택), 아이콘은 <see cref="IconPickerDialog"/>(<see cref="FontAwesomeIconCatalog"/>가
+/// 번들해 제공하는 실제 Font Awesome Free 웹폰트 아이콘 51종에서 클릭으로 선택, 사용자가 "실제 웹
+/// 아이콘 폰트 다운로드·번들" 선택)를 모달로 엽니다. 저장되는 값의 형태(Properties의 "icon"/"color"
+/// 문자열)와 <see cref="ReadIconOverride"/>/<see cref="ReadColorOverride"/>/<see cref="RenderNode"/>/
+/// <see cref="ApplyCardBorder"/>의 읽기·렌더링 로직은 EC-19와 완전히 동일합니다 — 이번 Step은
+/// "그 문자열을 어떻게 입력하는가"만 바꿨을 뿐, TextBox에 직접 이모지/16진수를 타이핑하는 기존
+/// 방식도 그대로 계속 됩니다(팔레트 선택은 TextBox 값을 채워줄 뿐인 보조 수단). 다만
+/// <see cref="RenderNode"/>의 라벨 렌더링은 <see cref="TextBlock.Text"/> 단일 문자열 대신
+/// <see cref="TextBlock.Inlines"/>에 아이콘 <see cref="Run"/>(<see cref="FontAwesomeIconCatalog.FontFamily"/>
+/// 명시 지정)과 이름 <see cref="Run"/>(기본 폰트)을 따로 나눠 추가하도록 바꿨습니다 — WPF는 폰트
+/// 폴백을 Run 단위로 적용하므로, 아이콘 Run에 FA 폰트를 명시해도 그 안에 든 문자가 FA의 Private Use
+/// Area 글리프(피커로 고른 아이콘)든 이모지(EC-19처럼 직접 타이핑)든 상관없이 WPF가 각각 올바른
+/// 폰트로 자동 대체해 그린다는 점에 근거합니다(하나의 문자열을 통째로 FA 폰트로 지정하면 이모지
+/// 부분에서 폴백이 덜 확실해지는 위험을 피하기 위함).
 /// </summary>
 public partial class FlowCanvasView : UserControl
 {
@@ -180,6 +262,12 @@ public partial class FlowCanvasView : UserControl
     private const double NodeCardWidth = 120;
     private const double NodeCardHeight = 40;
     private const double PortRadius = 5;
+
+    // (v3.33) 포트 원은 카드 배경색(EC-13 카테고리 파스텔, 위 클래스 주석 참고)이 무엇이든 항상
+    // 또렷하게 보여야 해서 테마·카테고리 모두와 무관한 고정 중립색을 쓴다 — 실제 Node-RED의 포트가
+    // 카드 색과 무관하게 항상 같은 중립색인 것과 동일한 이유.
+    private static readonly Brush PortFillBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xFA, 0xFA));
+    private static readonly Brush PortBorderBrush = new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55));
 
     // EC-03 PropertySchema 조회 전용 — 팔레트(PaletteView)와는 별개 인스턴스(EC-01a와 동일 패턴).
     private readonly NodeTypeRegistry _registry = new(contractsVersion: "1.0.0");
@@ -855,7 +943,13 @@ public partial class FlowCanvasView : UserControl
         }
 
         var category = _registry.Descriptors.TryGetValue(typeName, out var descriptor) ? descriptor.Category : null;
-        var (borderBrush, cornerRadius) = NodeCategoryStyle.Resolve(category);
+        var (fillBrush, borderBrush, cornerRadius) = NodeCategoryStyle.Resolve(category);
+
+        // (v3.33) 실제 놓일 카드의 파스텔 배경색을 옅은 투명도로 미리 보여준다 — 카탈로그에 없는
+        // Category는 이전과 동일하게 투명(윤곽선만 보이는 가이드).
+        var previewFill = fillBrush is SolidColorBrush solid
+            ? new SolidColorBrush(solid.Color) { Opacity = 0.35 }
+            : Brushes.Transparent;
 
         _dragPreview = new Rectangle
         {
@@ -866,7 +960,7 @@ public partial class FlowCanvasView : UserControl
             Stroke = borderBrush ?? (Brush)FindResource("AccentBrush"), // 카탈로그에 없는 Category는 강조색으로 대체(완전 투명보다 눈에 띄어야 가이드 역할을 함)
             StrokeThickness = 2,
             StrokeDashArray = new DoubleCollection { 4, 2 },
-            Fill = Brushes.Transparent,
+            Fill = previewFill,
             IsHitTestVisible = false, // 이 도형이 Drop 이벤트를 가로채지 않도록(NodeCanvas 자체가 받아야 함)
         };
 
@@ -932,15 +1026,66 @@ public partial class FlowCanvasView : UserControl
         var hasDescriptor = _registry.Descriptors.TryGetValue(config.Type, out var descriptor);
         var isMissing = !hasDescriptor;
 
+        // (v3.33) 카드 배경 채움색·모서리 모양을 라벨보다 먼저 구해둔다 — 배경이 채워지는 경우
+        // (categoryFill이 null이 아닐 때)에만 라벨도 고정 짙은 회색(NodeCategoryStyle.TextBrush)으로
+        // 바꿔야 옅은 파스텔 배경 위에서 항상 읽히기 때문이다(알 수 없는 타입은 카테고리 자체가 없어
+        // NodeCategoryStyle.Resolve(null)이 배경 없음(Fallback)을 그대로 돌려준다).
+        var (categoryFill, _, categoryCornerRadius) = NodeCategoryStyle.Resolve(hasDescriptor ? descriptor!.Category : null);
+
+        // (EC-19, ★ 사용자 요청 — "아이콘 및 색상 변경은 UI에서") 이 노드 인스턴스가
+        // NodePropertyDialog(BuildColorField)로 직접 지정한 색상이 있으면 카테고리 기본 배경 대신
+        // 그 색을 옅게 섞은 파스텔로 카드를 채운다 — 비어있거나 파싱 실패하면(ReadColorOverride가
+        // null 반환) 기존과 동일하게 categoryFill을 그대로 쓴다(위 클래스 주석 EC-19 항목 참고).
+        if (!isMissing && ReadColorOverride(config) is { } colorOverride)
+        {
+            categoryFill = new SolidColorBrush(BlendWithWhite(colorOverride, 0.72));
+        }
+
+        // (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며") 등록된 타입에 아이콘 글리프가
+        // 있으면 라벨 맨 앞에 붙이고 카드 왼쪽으로 정렬한다(실제 Node-RED의 "왼쪽 아이콘 → 오른쪽
+        // 이름" 순서). 아이콘이 없으면(누락 타입, 또는 아이콘을 아직 지정하지 않은 커스텀 노드)
+        // 기존과 동일하게 이름만 가운데 정렬로 그려 하위 호환을 유지한다(위 클래스 주석 EC-18 항목 참고).
+        // (EC-19) NodePropertyDialog(BuildIconField)로 이 인스턴스에 직접 지정한 아이콘이 있으면
+        // 노드 타입 기본 아이콘(descriptor.IconGlyph) 대신 그 값을 우선 쓴다.
+        var iconOverride = !isMissing ? ReadIconOverride(config) : string.Empty;
+        var iconGlyph = !string.IsNullOrEmpty(iconOverride)
+            ? iconOverride
+            : !isMissing && hasDescriptor ? descriptor!.IconGlyph : string.Empty;
+        var hasIcon = !string.IsNullOrEmpty(iconGlyph);
+
         var label = new TextBlock
         {
-            Text = isMissing ? $"⚠ {config.Type}" : config.Name,
-            Foreground = (Brush)FindResource(isMissing ? "RedBrush" : "PrimaryTextBrush"),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Foreground = isMissing
+                ? (Brush)FindResource("RedBrush")
+                : categoryFill is not null
+                    ? NodeCategoryStyle.TextBrush
+                    : (Brush)FindResource("PrimaryTextBrush"),
+            HorizontalAlignment = hasIcon ? HorizontalAlignment.Left : HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Margin = new Thickness(4, 4, 4, isMissing ? 0 : 4)
+            Margin = new Thickness(hasIcon ? 8 : 4, 4, 4, isMissing ? 0 : 4)
         };
+
+        // (EC-20, ★ 사용자 요청 — "웹에 공유되어 있는 아이콘을 선택") 아이콘이 있으면 라벨을 "아이콘
+        // Run + 이름 Run" 두 개로 나눠 추가한다(위 클래스 주석 EC-20 항목의 폰트 폴백 근거 참고) —
+        // 아이콘 Run에만 FontAwesomeIconCatalog.FontFamily를 명시해, IconPickerDialog로 고른 FA
+        // 글리프는 그 폰트로, 사용자가 직접 타이핑한 이모지(EC-19 방식)는 WPF의 Run 단위 폰트
+        // 폴백으로 각각 올바르게 렌더링되게 한다. 이름 Run은 기존과 동일하게 폰트를 지정하지 않아
+        // 기본 폰트를 그대로 쓴다. 아이콘이 없거나 누락 타입이면 기존과 동일하게 Text 속성만 쓴다
+        // (하위 호환 — 단순 문자열이면 굳이 Inlines를 쓸 이유가 없음).
+        if (isMissing)
+        {
+            label.Text = $"⚠ {config.Type}";
+        }
+        else if (hasIcon)
+        {
+            label.Inlines.Add(new Run(iconGlyph) { FontFamily = FontAwesomeIconCatalog.FontFamily });
+            label.Inlines.Add(new Run($"  {config.Name}"));
+        }
+        else
+        {
+            label.Text = config.Name;
+        }
 
         // (EC-08) 알 수 없는 타입일 때만 "missing type" 부제목을 라벨 아래에 추가한다(12번 탭 카드2
         // 목업 mock-node의 .t/.s 두 줄 구성과 동일) — 정상 노드는 기존과 동일하게 라벨 한 줄만 표시.
@@ -986,15 +1131,13 @@ public partial class FlowCanvasView : UserControl
             cardContent = overlay;
         }
 
-        // (EC-13) 카테고리별 모서리 모양 — 알 수 없는 타입(isMissing)이면 카테고리 자체가 없어
-        // NodeCategoryStyle.Resolve(null)이 기존 기본값(4)을 그대로 돌려준다.
-        var (_, categoryCornerRadius) = NodeCategoryStyle.Resolve(hasDescriptor ? descriptor!.Category : null);
-
+        // (v3.33) 카테고리 배경 채움(categoryFill, 위에서 이미 구함) — 알 수 없는 타입/카탈로그에 없는
+        // Category는 null이라 기존과 동일하게 테마 ControlBackgroundBrush를 그대로 쓴다.
         var card = new Border
         {
             Width = NodeCardWidth,
             Height = NodeCardHeight,
-            Background = (Brush)FindResource("ControlBackgroundBrush"),
+            Background = categoryFill ?? (Brush)FindResource("ControlBackgroundBrush"),
             CornerRadius = new CornerRadius(categoryCornerRadius),
             Cursor = Cursors.Arrow,
             Tag = config.Id,
@@ -1065,11 +1208,16 @@ public partial class FlowCanvasView : UserControl
     /// </summary>
     private void AddPortEllipse(PortHandle handle, Point center)
     {
+        // (v3.33) 카드 배경이 카테고리별 파스텔로 채워지므로, 포트는 그 색이 무엇이든 항상 또렷하게
+        // 보이도록 고정 중립색(PortFillBrush/PortBorderBrush, 위 클래스 주석 참고)을 쓴다 — 기존
+        // AccentBrush 단색 채움 대신 실제 Node-RED 포트처럼 옅은 채움+진한 테두리로 바뀐다.
         var ellipse = new Ellipse
         {
             Width = PortRadius * 2,
             Height = PortRadius * 2,
-            Fill = (Brush)FindResource("AccentBrush"),
+            Fill = PortFillBrush,
+            Stroke = PortBorderBrush,
+            StrokeThickness = 1,
             Tag = handle,
             Cursor = Cursors.Hand
         };
@@ -1587,9 +1735,81 @@ public partial class FlowCanvasView : UserControl
             return;
         }
 
-        var (categoryBrush, _) = NodeCategoryStyle.Resolve(descriptor.Category);
-        card.BorderBrush = categoryBrush ?? (Brush)FindResource("BorderBrush");
+        var (_, categoryBorderBrush, _) = NodeCategoryStyle.Resolve(descriptor.Category);
+
+        // (EC-19, ★ 사용자 요청 — "아이콘 및 색상 변경은 UI에서") RenderNode의 카드 배경(Fill)
+        // override와 짝을 맞춰, 이 노드 인스턴스가 지정한 색상이 있으면 테두리도 그 색 그대로
+        // 쓴다(카드 주석 EC-19 항목 참고) — 선택(위에서 이미 return)·누락(바로 위에서 이미 return)
+        // 상태가 아닐 때만 도달하는 이 지점에서만 적용되므로 기존 상태 우선순위는 그대로 유지된다.
+        card.BorderBrush = ReadColorOverride(config) is { } colorOverride
+            ? new SolidColorBrush(colorOverride)
+            : categoryBorderBrush ?? (Brush)FindResource("BorderBrush");
         card.BorderThickness = new Thickness(1);
+    }
+
+    /// <summary>
+    /// (EC-19) <paramref name="config"/>.Properties["icon"](<see cref="BuildIconField"/>가 저장하는
+    /// 값)을 문자열로 읽습니다 — 값이 없거나 비어있으면 빈 문자열을 반환해, 호출부가 그대로
+    /// "override 없음"으로 해석하고 노드 타입 기본 아이콘으로 되돌아갈 수 있게 합니다.
+    /// <see cref="ReadOutputsCount"/>와 동일한 이유(<c>NodePropertyDialog</c>가 저장한 값은 문자열,
+    /// flows.json에서 막 불러온 직후에는 <see cref="System.Text.Json.JsonElement"/>일 수 있음)로
+    /// <c>ToString()</c>으로 통일해 읽습니다.
+    /// </summary>
+    private static string ReadIconOverride(NodeConfig config)
+    {
+        if (!config.Properties.TryGetValue("icon", out var raw) || raw is null)
+        {
+            return string.Empty;
+        }
+
+        return raw.ToString() ?? string.Empty;
+    }
+
+    /// <summary>
+    /// (EC-19) <paramref name="config"/>.Properties["color"](<see cref="BuildColorField"/>가 저장하는
+    /// <c>#RRGGBB</c> 16진 문자열)을 <see cref="Color"/>로 파싱합니다 — 값이 없거나 비어있거나
+    /// <see cref="ColorConverter"/>가 유효한 색상 표현으로 인식하지 못하면(오타 등) <c>null</c>을
+    /// 반환해, 호출부(<see cref="RenderNode"/>/<see cref="ApplyCardBorder"/>)가 그대로 "override
+    /// 없음"으로 해석하고 카테고리 기본 색상으로 되돌아갈 수 있게 합니다 — 잘못된 값 하나 때문에
+    /// 캔버스 렌더링 자체가 예외로 죽지 않도록 하는 방어적 파싱입니다.
+    /// </summary>
+    private static Color? ReadColorOverride(NodeConfig config)
+    {
+        if (!config.Properties.TryGetValue("color", out var raw) || raw is null)
+        {
+            return null;
+        }
+
+        var text = raw.ToString();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        try
+        {
+            return ColorConverter.ConvertFromString(text) is Color color ? color : null;
+        }
+        catch (Exception)
+        {
+            // (방어적 파싱) ColorConverter는 형식이 안 맞으면 FormatException을, 일부 극단적인
+            // 입력에는 다른 예외를 던질 수 있어 폭넓게 잡는다 — 사용자가 잘못 입력한 색상 문자열
+            // 하나가 캔버스 전체 렌더링을 멈추게 해서는 안 된다(위 클래스 주석 EC-19 항목 참고).
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// (EC-19) <paramref name="color"/>를 흰색과 <paramref name="whiteRatio"/>(0~1) 비율로 섞어 옅은
+    /// 파스텔 톤을 만듭니다 — 사용자가 테두리색 하나만 지정해도
+    /// <see cref="Views.NodeCategoryStyle"/>의 각 카테고리처럼 "파스텔 배경 + 그보다 진한 테두리"
+    /// 조합이 자동으로 나오게 하기 위함입니다(위 클래스 주석 EC-19 항목 참고, 예: 0.72 = 테두리색
+    /// 28% + 흰색 72%).
+    /// </summary>
+    private static Color BlendWithWhite(Color color, double whiteRatio)
+    {
+        byte Blend(byte channel) => (byte)Math.Round(channel * (1 - whiteRatio) + 255 * whiteRatio);
+        return Color.FromRgb(Blend(color.R), Blend(color.G), Blend(color.B));
     }
 
     /// <summary>
@@ -1672,8 +1892,15 @@ public partial class FlowCanvasView : UserControl
             return;
         }
 
+        // (EC-19, ★ 사용자 요청 — "아이콘 및 색상 변경은 UI에서") "outputs"(EC-15)와 동일한 관례로
+        // "icon"/"color" 2개 필드도 모든 노드 타입에 공통으로 덧붙인다 — 각 노드 타입의
+        // PropertySchema 코드는 전혀 수정하지 않아도 전부 적용된다(위 클래스 주석 EC-19 항목 참고).
         IReadOnlyList<PropertyField> schema = _registry.Descriptors.TryGetValue(config.Type, out var descriptor)
-            ? descriptor.PropertySchema.Append(BuildOutputsField(descriptor.DefaultOutputs)).ToList()
+            ? descriptor.PropertySchema
+                .Append(BuildOutputsField(descriptor.DefaultOutputs))
+                .Append(BuildIconField(descriptor.IconGlyph))
+                .Append(BuildColorField())
+                .ToList()
             : Array.Empty<PropertyField>();
 
         var dialog = new NodePropertyDialog(config, schema)
@@ -1707,6 +1934,51 @@ public partial class FlowCanvasView : UserControl
                    "자동 배분, 그 외 노드는 기본적으로 0번 포트만 사용하므로 직접 그 노드의 코드/설계가 " +
                    "여러 포트를 지원해야 나머지 포트가 실제로 쓰입니다).",
         Example: $"예: \"{defaultOutputs}\"(이 노드 타입의 기본값), \"2\", \"3\"");
+
+    /// <summary>
+    /// (EC-19, ★ 사용자 요청 — "아이콘 및 색상 변경은 UI에서") 어떤 노드 타입에든 공통으로 붙는
+    /// "아이콘" 필드를 만듭니다(<see cref="BuildOutputsField"/>와 동일한 범용 필드 패턴). 값은
+    /// <see cref="NodeConfig.Properties"/>의 <c>"icon"</c> 키에 저장되고, <see cref="RenderNode"/>의
+    /// <see cref="ReadIconOverride"/>가 이 값을 읽어 노드 타입 기본 아이콘(<paramref name="defaultIcon"/>)
+    /// 대신 씁니다. (EC-20, ★ 사용자 요청 — "웹에 공유되어 있는 아이콘을 선택") Type을
+    /// <see cref="PropertyFieldType.Text"/>에서 <see cref="PropertyFieldType.Icon"/>으로 바꿔
+    /// <see cref="NodePropertyDialog"/>가 TextBox 옆에 <see cref="IconPickerDialog"/>를 여는
+    /// "선택..." 버튼을 함께 그리게 합니다 — 저장되는 값의 형태와 <see cref="ReadIconOverride"/>의
+    /// 읽는 방식은 그대로이므로(문자열 하나), 이모지를 TextBox에 직접 타이핑하는 기존 방식도 계속 됩니다.
+    /// </summary>
+    private static PropertyField BuildIconField(string defaultIcon) => new(
+        Key: "icon",
+        Label: "아이콘(선택)",
+        Type: PropertyFieldType.Icon,
+        Required: false,
+        DefaultValue: "",
+        HelpText: "이 노드 카드 왼쪽에 표시할 아이콘을 \"선택...\" 버튼으로 고르거나, 이모지 등 문자를 " +
+                   $"직접 입력합니다. 비워두면 이 노드 타입의 기본 아이콘(\"{defaultIcon}\")을 그대로 씁니다.",
+        Example: "예: \"선택...\" 버튼으로 Font Awesome 아이콘 고르기, \"🔥\"(직접 입력), \"\" (기본 아이콘 유지)");
+
+    /// <summary>
+    /// (EC-19, ★ 사용자 요청 — "아이콘 및 색상 변경은 UI에서") 어떤 노드 타입에든 공통으로 붙는
+    /// "카드 색상" 필드를 만듭니다(<see cref="BuildOutputsField"/>/<see cref="BuildIconField"/>와
+    /// 동일한 범용 필드 패턴). 값은 <see cref="NodeConfig.Properties"/>의 <c>"color"</c> 키에
+    /// 저장되고, <see cref="RenderNode"/>/<see cref="ApplyCardBorder"/>의 <see cref="ReadColorOverride"/>가
+    /// 이 값을 파싱해 테두리색으로, <see cref="BlendWithWhite"/>로 배경(파스텔)까지 함께 계산합니다.
+    /// (EC-20, ★ 사용자 요청 — "카드 색상은 색상파레트 에서 선택") Type을 <see cref="PropertyFieldType.Text"/>에서
+    /// <see cref="PropertyFieldType.Color"/>로 바꿔 <see cref="NodePropertyDialog"/>가 TextBox 옆에
+    /// <see cref="ColorPickerDialog"/>를 여는 "선택..." 버튼을 함께 그리게 합니다 — 저장되는 값의
+    /// 형태와 <see cref="ReadColorOverride"/>의 읽는 방식은 그대로이므로(#RRGGBB 문자열), 16진수를
+    /// TextBox에 직접 입력하는 기존 방식도 계속 됩니다.
+    /// </summary>
+    private static PropertyField BuildColorField() => new(
+        Key: "color",
+        Label: "카드 색상(선택)",
+        Type: PropertyFieldType.Color,
+        Required: false,
+        DefaultValue: "",
+        HelpText: "이 노드 카드의 테두리 색을 \"선택...\" 버튼의 색상 팔레트에서 고르거나, 16진 색상 " +
+                   "코드(#RRGGBB)를 직접 입력합니다 — 배경(파스텔)은 지정한 색을 자동으로 옅게 섞어 " +
+                   "계산되므로 이 칸 하나만 채우면 됩니다. 비워두거나 잘못된 형식을 입력하면 카테고리 " +
+                   "기본 색상을 그대로 씁니다.",
+        Example: "예: \"선택...\" 버튼으로 팔레트에서 고르기, \"#3B82F6\"(직접 입력), \"\" (카테고리 기본색 유지)");
 
     /// <summary>
     /// (EC-07) Ctrl+Z(<c>MainWindow</c>의 <c>ApplicationCommands.Undo</c>)로 <see cref="_history"/>의

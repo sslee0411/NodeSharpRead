@@ -26,7 +26,10 @@ public static class PlcTagReadNodeType
 
         public string Category => "structure";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "PLC 부분의 Node는 기존 노드레드와 다름") 실제 Node-RED에는 대응
+        // 아이콘이 없는 이 프로젝트 고유 노드라, "태그를 받아온다(읽기)"는 방향성을 그대로 나타내는
+        // 인박스 이모지를 새로 정했다 — 쓰기 노드(PlcTagWriteNodeType, 아웃박스)와 짝을 이룬다.
+        public string IconGlyph => "📥";
 
         public int DefaultInputs => 1;
 

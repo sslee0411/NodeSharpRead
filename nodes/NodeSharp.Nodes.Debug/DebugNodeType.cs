@@ -37,7 +37,9 @@ public static class DebugNodeType
 
         public string Category => "common";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며") 실제 Node-RED의 debug 노드 아이콘이
+        // 벌레(ladybug) 모양인 것과 동일한 글리프(InjectNodeType.IconGlyph 항목 참고).
+        public string IconGlyph => "🐞";
 
         public int DefaultInputs => 1;
 

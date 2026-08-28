@@ -53,7 +53,9 @@ public static class FunctionNodeType
 
         public string Category => "function";
 
-        public string IconGlyph => string.Empty;
+        // (EC-18, ★ 사용자 요청 — "노드앞쪽 아이콘부분이 다르며") 실제 Node-RED의 function 노드
+        // 아이콘("ƒ(x)")과 같은 인상을 주는 글리프(InjectNodeType.IconGlyph 항목 참고).
+        public string IconGlyph => "ƒ(x)";
 
         public int DefaultInputs => 1;
 

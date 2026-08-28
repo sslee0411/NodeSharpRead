@@ -50,6 +50,20 @@ public class SecurityHistorianInterfacesTests
         public Task<IReadOnlyList<TagAggregateRow>> QueryAggregateAsync(string tagId, DateTime from, DateTime to, TimeSpan periodLength, CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<TagAggregateRow>>(
                 _aggregates.Where(a => a.TagId == tagId && a.Row.PeriodStart >= from && a.Row.PeriodStart <= to).Select(a => a.Row).ToList());
+
+        /// <summary>(ED-D10) 이 스텁은 이 테스트 파일의 완료 기준과 무관해 최소 구현만 제공 — 실제 삭제 동작 검증은 SqliteTagHistorianTests/RetentionSweeperTests가 담당.</summary>
+        public Task<int> PurgeOlderThanAsync(DateTime cutoff, CancellationToken ct)
+        {
+            var removed = _raw.RemoveAll(r => r.At < cutoff);
+            return Task.FromResult(removed);
+        }
+
+        /// <summary>(ED-D10) 위와 동일한 이유로 최소 구현만 제공.</summary>
+        public Task<int> PurgeAggregateOlderThanAsync(DateTime cutoff, CancellationToken ct)
+        {
+            var removed = _aggregates.RemoveAll(a => a.Row.PeriodStart < cutoff);
+            return Task.FromResult(removed);
+        }
     }
 
     /// <summary>테스트 전용 <see cref="ITagHistorianExporter"/> 스텁 — 마지막 내보내기 호출 인자만 기록.</summary>
