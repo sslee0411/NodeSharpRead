@@ -36,6 +36,28 @@
       ProjectReference 추가.
     - check-xmldoc.py 0건, ModbusDriver.cs/ModbusDriverTests.cs 중괄호 균형 확인, NodeSharpRead.sln에
       새 프로젝트 항목 추가. .NET SDK가 없는 샌드박스라 dotnet build/test는 사용자 로컬 확인 필요.
+
+    Step: PD-01b (03번 개발 Step맵.html, Phase 9 — ModbusDriver RTU 모드 + SharedResourceManager 공유)
+    - ModbusDriver.cs 확장 — RTU 모드(System.IO.Ports.SerialPort, 8N1 고정) + CRC16(다항식 0xA001)
+      프레이밍 추가, ConnectAsync가 더 이상 RTU에서 NotSupportedException을 던지지 않음. CRC 불일치
+      응답은 ModbusException으로 거부. ISharedServiceNode 구현(Id/Config/StartAsync/StopAsync) 추가로
+      RT-10 SharedResourceManager.AcquireAsync를 통한 인스턴스 공유 지원 — LL-05b NetIoNode가 아직
+      ⏳ 대기라 실제 PlcTagReadNode/PlcTagWriteNode 배선 대신 SharedResourceManager 직접 테스트로
+      "같은 PLC 참조 시 인스턴스 1개" 완료 기준을 증명(PD-01a의 범위 축소 원칙과 동일).
+    - System.IO.Ports NuGet 패키지 참조 추가(RTU SerialPort용), InternalsVisibleTo로
+      NodeSharp.Tests에 RtuStreamFactory(테스트 전용 확장점, 실제 COM 포트 없이 CRC16/ADU 프레이밍을
+      xUnit으로 검증하기 위한 가짜 Stream 주입 지점) 공개.
+    - test\NodeSharp.Tests\ModbusDriverRtuTests.cs 신규 — DuplexPairStream(메모리 큐 기반 양방향
+      Stream 페어, TCP 쪽 FakeModbusTcpSlave가 실제 루프백 소켓을 쓰는 것과 동일한 취지로 실제 바이트
+      왕복 경로를 태움) + FakeModbusRtuSlave로 RTU 읽기/쓰기 왕복과 CRC 손상 거부를 검증.
+    - test\NodeSharp.Tests\ModbusDriverSharedResourceTests.cs 신규 — 같은 id로 SharedResourceManager를
+      통해 ModbusDriver를 2번 Acquire해도 인스턴스가 1개만 생성되고 실제로 연결돼 통신 가능한지 검증.
+    - ModbusDriverTests.cs — FakeModbusTcpSlave 접근 제한자를 private → internal로 변경(다른 테스트
+      파일에서 재사용하기 위함, 그 외 기존 테스트 내용은 변경 없음).
+    - check-xmldoc.py 0건, ModbusDriver.cs/ModbusDriverRtuTests.cs/ModbusDriverSharedResourceTests.cs
+      중괄호·괄호 균형 확인(주석의 "// N)" 번호 예제 관례로 인한 코드 외 괄호 불일치는 기존 파일들과
+      동일하게 정상). .NET SDK가 없는 샌드박스라 dotnet build/test는 사용자 로컬 확인 필요 — 확인
+      전까지 PD-01b는 ⏳ 대기 유지.
   -->
 
   <PropertyGroup>
@@ -49,6 +71,17 @@
   <ItemGroup>
     <!-- IProtocolDriver.cs remarks — 드라이버 플러그인은 Contracts만 참조. -->
     <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- (PD-01b) Modbus RTU 모드가 System.IO.Ports.SerialPort로 시리얼 포트를 여는 데 필요. -->
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- (PD-01b) ModbusDriver.RtuStreamFactory(테스트 전용 확장점, internal)를 NodeSharp.Tests가
+         실제 COM 포트 없이 RTU CRC16/ADU 프레이밍을 검증하는 데 쓸 수 있도록 공개. -->
+    <InternalsVisibleTo Include="NodeSharp.Tests" />
   </ItemGroup>
 
 </Project>

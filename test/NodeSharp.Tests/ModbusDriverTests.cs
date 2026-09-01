@@ -102,12 +102,20 @@ public class ModbusDriverTests
     }
 
     [Fact]
-    public async Task ConnectAsync는_RTU_모드에서_NotSupportedException을_던진다()
+    public async Task ConnectAsync는_RTU_모드에서_ComPort가_비어있으면_ArgumentException을_던진다()
     {
+        // (PD-01b, ★ 변경) RTU 모드는 더 이상 무조건 NotSupportedException을 던지지 않고 실제
+        // System.IO.Ports.SerialPort로 연결을 시도합니다 — RTU 프레이밍/CRC 로직 자체는
+        // ModbusDriverRtuTests.cs가 RtuStreamFactory(실제 COM 포트 불필요)로 검증합니다. 이 테스트는
+        // 그 앞단 가드(ComPort 미지정)만 확인합니다: 실제 존재하지 않는 COM 포트 이름(예: "COM3")을
+        // 넘기면 SerialPort.Open()이 실제 OS 호출을 시도해 환경에 따라 FileNotFoundException/
+        // UnauthorizedAccessException 등 플랫폼·환경 종속적인 예외가 나므로(이 샌드박스에서는
+        // FileNotFoundException 확인, 사용자 Windows 로컬에서는 다른 예외가 날 수 있음), 환경과
+        // 무관하게 항상 같은 결과를 보장하는 이 가드 경로만 xUnit으로 검증합니다.
         using var driver = new ModbusDriver(isRtu: true);
 
-        await Assert.ThrowsAsync<NotSupportedException>(
-            () => driver.ConnectAsync(new PlcConnectionConfig(Host: "", Port: 0, ComPort: "COM3"), CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => driver.ConnectAsync(new PlcConnectionConfig(Host: "", Port: 0, ComPort: null), CancellationToken.None));
     }
 
     /// <summary>
@@ -115,8 +123,10 @@ public class ModbusDriverTests
     /// 받아 FC03(Read Holding Registers)/FC06(Write Single Register)/FC16(Write Multiple Registers)
     /// 요청에 실제로 MBAP 프레이밍 응답을 돌려줍니다. <see cref="ModbusDriver"/>가 실제 PLC
     /// 하드웨어 없이도 완료 기준(연결→읽기→쓰기→재읽기 왕복)을 증명할 수 있게 하는 목적입니다.
+    /// (PD-01b, ★ 접근제한자 변경) private → internal — ModbusDriverSharedResourceTests.cs가 RT-10
+    /// SharedResourceManager와 함께 실제로 연결되는 ModbusDriver를 검증할 때 이 슬레이브를 재사용합니다.
     /// </summary>
-    private sealed class FakeModbusTcpSlave : IAsyncDisposable
+    internal sealed class FakeModbusTcpSlave : IAsyncDisposable
     {
         private readonly TcpListener _listener;
         private readonly ushort[] _registers = new ushort[64];
