@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR;
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Models;
 
 namespace NodeSharp.Runner.Core;
@@ -31,6 +32,9 @@ namespace NodeSharp.Runner.Core;
 /// 두 번째 클라이언트→서버 메서드입니다 — 자체 문서 참고.</item>
 /// <item><b>(LK-04) <see cref="GetMsgTrace"/></b>: <c>NodeErrorEvent</c>를 받은 Editor가 "이 메시지가
 /// 어디서 왔는지" 역추적하려고 호출하는 세 번째 클라이언트→서버 메서드입니다 — 자체 문서 참고.</item>
+/// <item><b>(PD-01e) <see cref="SetSimulatedRegister"/></b>: Editor의 <c>SimulatorPanelView</c>가
+/// 이제 <c>VirtualModbusSlave</c>를 직접 들고 있지 않고(Runner가 소유 — 클래스 문서의 "Runner로
+/// 이전 + SignalR 원격제어" 설계 변경 참고) 이 네 번째 클라이언트→서버 메서드로 원격 기입만 합니다.</item>
 /// </list>
 /// </remarks>
 public sealed class MonitorHub : Hub
@@ -38,16 +42,19 @@ public sealed class MonitorHub : Hub
     private readonly CurrentEngineHolder _engineHolder;
     private readonly RunnerTokenStore _tokenStore;
     private readonly MsgTraceStore _msgTraceStore;
+    private readonly SimulationSlaveHolder _simulationSlaveHolder;
 
     /// <summary>
     /// DI가 <see cref="AddSingleton{TService}"/>로 등록된 <see cref="CurrentEngineHolder"/>/
-    /// <see cref="RunnerTokenStore"/>/<see cref="MsgTraceStore"/>(LK-04)를 자동으로 주입합니다.
+    /// <see cref="RunnerTokenStore"/>/<see cref="MsgTraceStore"/>(LK-04)/<see cref="SimulationSlaveHolder"/>
+    /// (PD-01e)를 자동으로 주입합니다.
     /// </summary>
-    public MonitorHub(CurrentEngineHolder engineHolder, RunnerTokenStore tokenStore, MsgTraceStore msgTraceStore)
+    public MonitorHub(CurrentEngineHolder engineHolder, RunnerTokenStore tokenStore, MsgTraceStore msgTraceStore, SimulationSlaveHolder simulationSlaveHolder)
     {
         _engineHolder = engineHolder;
         _tokenStore = tokenStore;
         _msgTraceStore = msgTraceStore;
+        _simulationSlaveHolder = simulationSlaveHolder;
     }
 
     /// <summary>
@@ -100,4 +107,28 @@ public sealed class MonitorHub : Hub
     /// <param name="msgId">추적할 메시지의 고유 식별자(<c>Msg.Id</c>, <c>NodeErrorEvent.MsgId</c>와 동일).</param>
     /// <returns>메시지가 거쳐온 경로, 또는 추적된 적 없으면 <c>null</c>.</returns>
     public Task<MsgTrace?> GetMsgTrace(string msgId) => Task.FromResult(_msgTraceStore.GetTrace(msgId));
+
+    /// <summary>
+    /// (PD-01e) Editor의 <c>SimulatorPanelView</c>가 사용자가 표에서 값을 편집할 때마다 호출합니다.
+    /// <paramref name="plcId"/>(<c>PlcNode.Id</c>)에 대응하는 <c>VirtualModbusSlave</c>가
+    /// <see cref="SimulationSlaveHolder"/>에 등록돼 있으면(시뮬레이션 모드 PLC로 device.json에 저장돼
+    /// 있고, <c>SimulationDeviceBinder</c>가 이미 배선을 마쳤으면) 그 레지스터에 값을 씁니다 — 다음
+    /// <c>DeviceMapPoller</c> 폴링 주기에 <see cref="TagValueUpdatedEvent"/>로 자동 중계됩니다(별도
+    /// 알림을 이 메서드가 직접 보내지 않음, <c>DeviceMapPoller.PollOnceAsync</c>의 "값이 실제로
+    /// 바뀐 태그마다 발행" 규약 그대로). 등록돼 있지 않으면(구조 재로드 경합, 잘못된 plcId 등)
+    /// <see cref="TriggerInject"/>·<see cref="GetMsgTrace"/>와 동일한 원칙으로 조용히 무시합니다.
+    /// </summary>
+    /// <param name="plcId">값을 쓸 대상 PLC(PlcNode.Id).</param>
+    /// <param name="address">Modbus 레지스터 주소(0~65535).</param>
+    /// <param name="value">쓸 값(0~65535) — <see cref="ushort"/> 범위를 벗어나면 조용히 무시합니다.</param>
+    public Task SetSimulatedRegister(string plcId, int address, int value)
+    {
+        if (address is < 0 or > 65535 || value is < 0 or > 65535)
+        {
+            return Task.CompletedTask;
+        }
+
+        _simulationSlaveHolder.TryGet(plcId)?.SetRegister(address, (ushort)value);
+        return Task.CompletedTask;
+    }
 }

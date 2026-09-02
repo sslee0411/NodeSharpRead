@@ -5,19 +5,25 @@ namespace NodeSharp.Nodes.PlcTagRead;
 
 /// <summary>
 /// Class명 : PLC 태그 읽기 노드
-/// 역활 및 기능 : 구조 설정 트리의 태그(TagNode) 하나를 TagRef로 참조해두는 예시 노드 — 실제 PLC 값
-/// 읽기가 아니라 "TagRef 연동"(ED-D04)만 증명하는 자리표시자 동작을 합니다.
+/// 역활 및 기능 : 구조 설정 트리의 태그(TagNode) 하나를 TagRef로 참조해, DeviceMapPoller가 채운
+/// TagValueCache의 실제 최신 값을 msg.payload로 전달하는 노드
 ///
 /// (ED-D04) 02번 설계문서 9번 탭 카드5의 PlcTagReadNode 예시를 좁은 범위로 구현했습니다. 카드5
 /// 원본은 <c>ctx.Structure</c>(<c>IStructureService</c>, 구조 설정 데이터를 Runner가 읽는 런타임
 /// 인터페이스)로 실제 PLC Raw 값을 읽고 스케일까지 적용하는 완전한 동작을 예시하지만,
 /// <c>IStructureService</c>는 아직 어디에도 구현되어 있지 않습니다(Card 7이 설계만 해뒀고, ED-D03이
-/// 구현을 명시적으로 보류한 상태 — 자세한 경위는 03번 Step맵 ED-D04 항목 참고). 이 Step의 완료
+/// 구현을 명시적으로 보류한 상태 — 자세한 경위는 03번 Step맵 ED-D04 항목 참고). 이 Step 당시의 완료
 /// 기준("구조 설정에서 태그 이름만 변경해도 캔버스 노드의 TagRef 연동이 끊기지 않는지 확인")은 실제
-/// PLC 통신 여부와 무관하게 Id 안정성만 증명하면 충분하므로, ED-D02a("Editor UI만" 범위로 축소된
-/// 선례)와 동일한 원칙으로 런타임 PLC 읽기(IStructureService 도입)는 후속 Step으로 미루고, 이
-/// 노드는 msg가 들어올 때마다 지금 연동된 <see cref="TagId"/>를 그대로 msg.payload에 실어 전달하는
-/// 것으로 동작을 한정합니다.
+/// PLC 통신 여부와 무관하게 Id 안정성만 증명하면 충분해, 그때는 <see cref="TagId"/>를 그대로
+/// msg.payload에 실어 전달하는 자리표시자 동작으로 한정했습니다.
+/// (PD-01e, ★ 갱신) <c>ctx.GetTagValue(TagId)</c>(<c>INodeContext</c> 신규 멤버)로 실제 폴링된 값을
+/// 읽어 payload로 전달하도록 바꿨습니다 — <c>IStructureService</c>는 여전히 구현되어 있지 않지만,
+/// PD-01e가 만든 Runner 쪽 시뮬레이션 파이프라인(<c>SimulationDeviceBinder</c>→<c>DeviceMapPoller</c>→
+/// <c>TagValueCache</c>)이 이제 <see cref="TagId"/>가 가리키는 실제(시뮬레이션) 값을 채워주므로, 이
+/// 노드가 그 값을 그대로 돌려주는 것이 자연스럽습니다. 값이 아직 갱신되지 않았으면(시뮬레이션 모드가
+/// 아닌 PLC, 아직 첫 폴링 전 등) <c>null</c>이 그대로 payload가 됩니다 — 이 노드는 오류로 취급하지
+/// 않습니다(호출부가 Switch/Function 노드 등으로 null 여부를 직접 판단하면 됨, <c>DeviceMapPoller.GetCached</c>
+/// 문서의 "아직 한 번도 갱신되지 않았으면 null" 규약과 동일).
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -60,12 +66,12 @@ public sealed class PlcTagReadNode : IFlowNode
     public Task OnStartAsync(INodeContext ctx, CancellationToken ct) => Task.CompletedTask;
 
     /// <summary>
-    /// 실제 PLC 값을 읽지 않고(위 클래스 문서 참고) <see cref="TagId"/>를 그대로 payload에 실어
-    /// 0번 출력 포트로 전달합니다 — TagRef 연동이 유지되고 있음을 눈으로 확인할 수 있는 최소 동작입니다.
+    /// (PD-01e, ★ 갱신) <c>ctx.GetTagValue(TagId)</c>로 얻은 실제(시뮬레이션) 최신 값을 payload에
+    /// 실어 0번 출력 포트로 전달합니다 — 위 클래스 문서의 "null이면 그대로 null" 규약 그대로입니다.
     /// </summary>
     public Task OnInputAsync(Msg msg, INodeContext ctx, CancellationToken ct)
     {
-        var forwarded = new Msg { Payload = TagId };
+        var forwarded = new Msg { Payload = ctx.GetTagValue(TagId) };
         return ctx.RouteAsync(Id, outputPort: 0, forwarded, ct);
     }
 

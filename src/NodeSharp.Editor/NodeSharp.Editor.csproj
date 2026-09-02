@@ -898,6 +898,12 @@
     <!-- ED-D06a: PlcTagWriteNode(범위 검사 + 동시 쓰기 락 예시 노드)도 EC-01c 규칙대로 팔레트/캔버스가
          ScanAssembly로 찾아 등록할 수 있도록 추가. -->
     <ProjectReference Include="..\..\nodes\NodeSharp.Nodes.PlcTagWrite\NodeSharp.Nodes.PlcTagWrite.csproj" />
+    <!-- (PD-01d, ★ 추가) 신규 SimulatorPanelView가 PlcNode(SimulationMode=true)마다
+         VirtualModbusSlave 인스턴스를 직접 만들고 레지스터 값을 읽고/쓰기 위해 참조했었다.
+         (PD-01e, ★ 제거) VirtualModbusSlave 소유권이 Runner(SimulationDeviceBinder)로 옮겨가면서
+         (클래스 문서 "Runner로 이전 + SignalR 원격제어" 참고) SimulatorPanelView.xaml.cs가 더 이상
+         NodeSharp.Drivers.Modbus의 어떤 타입도 직접 참조하지 않아, 이 ProjectReference를 제거했다 —
+         Editor는 이제 SignalR(EditorMonitorClient.SetSimulatedRegisterAsync)로만 레지스터에 접근한다. -->
   </ItemGroup>
 
   <ItemGroup>

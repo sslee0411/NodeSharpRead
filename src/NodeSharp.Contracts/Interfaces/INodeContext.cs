@@ -92,4 +92,17 @@ public interface INodeContext
     /// 보통 <c>Msg.ToJson()</c> 결과입니다.
     /// </summary>
     void Debug(string nodeName, string msgJson);
+
+    /// <summary>
+    /// (PD-01e, ★ 신규) <paramref name="tagId"/>(구조 설정 트리 TagNode.Id)의 최신 폴링 값을 즉시
+    /// 반환합니다(PLC 재통신 없음 — <c>NodeSharp.Runtime.TagValueCache.GetCached</c>와 동일한 성격).
+    /// 이 노드가 그 태그를 폴링하는 <c>DeviceMapPoller</c>와 무관하거나(시뮬레이션 모드가 아닌 PLC 등)
+    /// 아직 한 번도 값이 갱신되지 않았으면 <c>null</c>입니다. 기본 구현이 항상 <c>null</c>을 반환하는
+    /// 이유: <see cref="Flow"/>/<see cref="Global"/> 추가 때와 달리, 이 멤버는 <c>NodeContext</c>(Runtime)
+    /// 뿐 아니라 기존 테스트 스텁 8곳 이상이 <see cref="INodeContext"/>를 직접 구현하고 있어(NR-04/NR-11
+    /// 선례처럼 전부 고치면 이번 Step 범위를 크게 벗어남) 하위 호환을 위해 default 본문을 둡니다 —
+    /// <c>Debug</c>(발행이 핵심 기능이라 강제)와 달리, 태그 값 조회는 "값이 없으면 null"이 이미 정상
+    /// 동작의 일부이므로 default 본문을 주는 쪽이 더 안전합니다.
+    /// </summary>
+    object? GetTagValue(string tagId) => null;
 }

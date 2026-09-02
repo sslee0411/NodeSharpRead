@@ -35,6 +35,10 @@
 // "메시지 단위 추적(Msg Trace)"을 실제로 배선한다. Worker가 이 인스턴스를 attachMonitor 콜백에
 // StatusBroadcaster와 함께 실어 FlowEngine의 EventBus를 구독시키고, MonitorHub.GetMsgTrace가
 // 같은 인스턴스를 DI로 주입받아 조회를 위임한다.
+// (PD-01e) builder.Services.AddSingleton<SimulationSlaveHolder>() 추가 — Worker가 device.json의
+// simulationMode PLC마다 만드는 VirtualModbusSlave를 이 홀더에 등록하고, MonitorHub.SetSimulatedRegister
+// (신규, Editor SimulatorPanelView가 원격 호출)가 같은 인스턴스를 DI로 주입받아 값을 쓴다
+// (CurrentEngineHolder/RunnerTokenStore와 동일한 "Worker가 쓰고 Hub가 읽는" 배선 관례).
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,6 +80,10 @@ builder.Services.AddSingleton<RunnerTokenStore>();
 // 3-3) (LK-04) MsgTraceStore(msg.Id 기준 FlowActivityEvent 이력 누적소, 자체 문서 참고) 등록 —
 //      Worker가 attachMonitor 콜백에 실어 구독을 시작하고, MonitorHub.GetMsgTrace가 조회를 위임한다.
 builder.Services.AddSingleton<MsgTraceStore>();
+
+// 3-4) (PD-01e) SimulationSlaveHolder(현재 시뮬레이션 모드 PLC별 VirtualModbusSlave, 자체 문서 참고)
+//      등록 — Worker(쓰기)와 MonitorHub(읽기, SetSimulatedRegister)가 같은 인스턴스를 나눠 쓴다.
+builder.Services.AddSingleton<SimulationSlaveHolder>();
 
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).

@@ -67,6 +67,14 @@ namespace NodeSharp.Runner;
 /// (<c>Microsoft.AspNetCore.SignalR</c>)은 <c>Core\StatusBroadcaster.cs</c>에만 격리됩니다 — 이 클래스와
 /// <c>NodeSharp.Tests</c>의 <c>FlowDeployerTests</c>는 SignalR을 몰라도 계속 컴파일·테스트됩니다.
 /// </para>
+/// <para>
+/// (PD-01e) <see cref="DeployIfAvailableAsync"/>·<see cref="RedeployAsync"/>·<see cref="CreateEngineWithLogger"/>
+/// 셋 다 새 트레일링 선택적 매개변수 <c>tagValueCache</c>(<c>TagValueCache?</c>, 기본값 <c>null</c>)를
+/// 받습니다 — <c>attachMonitor</c>와 동일한 하위 호환 방식으로 <c>Worker</c>가 <c>DeviceMapPoller</c>들과
+/// 공유하는 <see cref="TagValueCache"/> 인스턴스를 넘기면, <c>CreateEngineWithLogger</c>가 그것을
+/// <c>new FlowEngine(..., tagValueCache: tagValueCache)</c>로 전달해 그 엔진의 모든 <c>NodeContext</c>가
+/// <c>ctx.GetTagValue(tagId)</c>로 같은 캐시를 조회할 수 있게 합니다(<c>PlcTagReadNode</c> 참고).
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -90,7 +98,8 @@ public sealed class FlowDeployer
         IReadOnlyList<StartupStageResult> startupStages,
         INodeRegistry registry,
         CancellationToken ct,
-        Func<IEventBus, IDisposable>? attachMonitor = null)
+        Func<IEventBus, IDisposable>? attachMonitor = null,
+        TagValueCache? tagValueCache = null)
     {
         var flowsStage = startupStages.FirstOrDefault(s => s.FileName == "flows.json");
         if (flowsStage is not { Succeeded: true })
@@ -107,7 +116,7 @@ public sealed class FlowDeployer
             return null;
         }
 
-        var engine = CreateEngineWithLogger(registry, attachMonitor);
+        var engine = CreateEngineWithLogger(registry, attachMonitor, tagValueCache);
         await engine.DeployAsync(merged, DeployMode.Full, ct);
         return engine;
     }
@@ -124,7 +133,8 @@ public sealed class FlowDeployer
         string baseDirectory,
         INodeRegistry registry,
         CancellationToken ct,
-        Func<IEventBus, IDisposable>? attachMonitor = null)
+        Func<IEventBus, IDisposable>? attachMonitor = null,
+        TagValueCache? tagValueCache = null)
     {
         var flowsPath = Path.Combine(baseDirectory, "flows.json");
         if (!File.Exists(flowsPath))
@@ -152,7 +162,7 @@ public sealed class FlowDeployer
             return existingEngine;
         }
 
-        var engine = existingEngine ?? CreateEngineWithLogger(registry, attachMonitor);
+        var engine = existingEngine ?? CreateEngineWithLogger(registry, attachMonitor, tagValueCache);
         await engine.DeployAsync(merged, DeployMode.Full, ct);
         return engine;
     }
@@ -169,9 +179,9 @@ public sealed class FlowDeployer
     /// <c>NodeSharp.Tests</c>는 SignalR 타입을 몰라도 됩니다(순수 콜백 위임 — Runner의 <c>StatusBroadcaster</c>가
     /// 실제 SignalR 의존을 전담).
     /// </summary>
-    private static FlowEngine CreateEngineWithLogger(INodeRegistry registry, Func<IEventBus, IDisposable>? attachMonitor = null)
+    private static FlowEngine CreateEngineWithLogger(INodeRegistry registry, Func<IEventBus, IDisposable>? attachMonitor = null, TagValueCache? tagValueCache = null)
     {
-        var engine = new FlowEngine(registry);
+        var engine = new FlowEngine(registry, tagValueCache: tagValueCache);
         new NodeStatusConsoleLogger().Subscribe(engine.EventBus);
         attachMonitor?.Invoke(engine.EventBus);
         return engine;

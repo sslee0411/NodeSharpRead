@@ -14,8 +14,9 @@ namespace NodeSharp.Tests;
 /// 대한 단위 테스트입니다. 완료 기준: ① <see cref="CurrentEngineHolder.Engine"/>에 배포된 엔진이 있으면
 /// 그 엔진의 <c>TriggerManualAsync</c>로 위임되는지(실제로 와이어를 타고 전달됨) ② 아직 배포된 적이
 /// 없으면(<c>Engine</c>이 <c>null</c>) 예외 없이 조용히 무시되는지 확인. <c>Hub.Context</c>에 의존하지
-/// 않도록 설계돼(MonitorHub.cs 자체 문서 참고) SignalR 커넥션 없이 <c>new MonitorHub(holder, tokenStore, msgTraceStore)</c>를
-/// 직접 생성해 테스트할 수 있습니다.
+/// 않도록 설계돼(MonitorHub.cs 자체 문서 참고) SignalR 커넥션 없이
+/// <c>new MonitorHub(holder, tokenStore, msgTraceStore, simulationSlaveHolder)</c>를 직접 생성해
+/// 테스트할 수 있습니다.
 /// (LK-03) 생성자가 <see cref="RunnerTokenStore"/>도 받도록 바뀌어 아래 테스트들이 더미 인스턴스를
 /// 하나씩 추가로 넘깁니다. <see cref="MonitorHub.ReissueToken"/> 자체는 여기서 단위 테스트하지
 /// 않습니다 — 내부에서 <c>Clients.Others.SendAsync(...)</c>를 호출하는데, <c>Hub.Clients</c>는
@@ -33,6 +34,12 @@ namespace NodeSharp.Tests;
 /// <see cref="GetMsgTrace는_MsgTraceStore로_그대로_위임한다"/> 참고. 누적 로직 자체(FlowActivityEvent
 /// 구독·상한 초과 시 오래된 것부터 제거)는 <c>MsgTraceStoreTests.cs</c>가 <see cref="MsgTraceStore"/>를
 /// 직접 단위 테스트합니다.
+/// (PD-01e) 생성자가 <see cref="SimulationSlaveHolder"/>도 받도록 바뀌어 아래 모든 테스트가 더미
+/// 인스턴스를 하나씩 더 넘깁니다. <see cref="MonitorHub.SetSimulatedRegister"/> 자체는 여기서 단위
+/// 테스트하지 않습니다 — 순수하게 <see cref="SimulationSlaveHolder.TryGet"/> 위임만 하는 얇은
+/// 메서드라(<see cref="MonitorHub.GetMsgTrace"/>와 동일한 성격) 직접 생성한 인스턴스로도 안전하게
+/// 호출할 수는 있지만, 이 테스트 파일의 범위(TriggerInject/ReissueToken/GetMsgTrace)를 넘어서는
+/// 별도 관심사라 추가하지 않았습니다.
 /// </summary>
 public class MonitorHubTests
 {
@@ -92,7 +99,7 @@ public class MonitorHubTests
         await engine.DeployAsync(flow, CancellationToken.None);
 
         var holder = new CurrentEngineHolder { Engine = engine };
-        var hub = new MonitorHub(holder, new RunnerTokenStore(), new MsgTraceStore());
+        var hub = new MonitorHub(holder, new RunnerTokenStore(), new MsgTraceStore(), new SimulationSlaveHolder());
 
         await hub.TriggerInject("n1");
 
@@ -103,7 +110,7 @@ public class MonitorHubTests
     public async Task TriggerInject는_아직_배포된_엔진이_없으면_예외_없이_조용히_무시한다()
     {
         var holder = new CurrentEngineHolder(); // Engine == null
-        var hub = new MonitorHub(holder, new RunnerTokenStore(), new MsgTraceStore());
+        var hub = new MonitorHub(holder, new RunnerTokenStore(), new MsgTraceStore(), new SimulationSlaveHolder());
 
         var exception = await Record.ExceptionAsync(() => hub.TriggerInject("아무거나"));
 
@@ -120,7 +127,7 @@ public class MonitorHubTests
         using var subscription = msgTraceStore.Subscribe(eventBus);
         eventBus.Publish(new FlowActivityEvent("inject-1", 0, "function-1", "msg-1", DateTime.UtcNow));
 
-        var hub = new MonitorHub(new CurrentEngineHolder(), new RunnerTokenStore(), msgTraceStore);
+        var hub = new MonitorHub(new CurrentEngineHolder(), new RunnerTokenStore(), msgTraceStore, new SimulationSlaveHolder());
         var trace = await hub.GetMsgTrace("msg-1");
 
         Assert.NotNull(trace);
@@ -132,7 +139,7 @@ public class MonitorHubTests
     [Fact]
     public async Task GetMsgTrace는_추적된_적_없는_msgId면_null을_반환한다()
     {
-        var hub = new MonitorHub(new CurrentEngineHolder(), new RunnerTokenStore(), new MsgTraceStore());
+        var hub = new MonitorHub(new CurrentEngineHolder(), new RunnerTokenStore(), new MsgTraceStore(), new SimulationSlaveHolder());
 
         var trace = await hub.GetMsgTrace("존재하지-않는-msgId");
 

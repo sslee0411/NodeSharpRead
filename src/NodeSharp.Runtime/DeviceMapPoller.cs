@@ -1,3 +1,4 @@
+using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Interfaces;
 using NodeSharp.Util.Messaging;
 
@@ -64,6 +65,15 @@ public sealed class DeviceMapPoller : ISharedServiceNode
     /// </summary>
     public Func<CancellationToken, Task<IReadOnlyDictionary<string, object?>>>? BlockReadAction { get; set; }
 
+    /// <summary>
+    /// (PD-01e, ★ 신규) 지정하면 <see cref="PollOnceAsync"/>가 값이 실제로 바뀐 태그마다
+    /// <see cref="TagValueUpdatedEvent"/>를 이 버스에 발행합니다(<see cref="TagAlarmEvents"/>의
+    /// "DeviceMapPoller가 폴링 캐시 갱신 직후 이전 값과 다를 때만 발행" 클래스 문서 그대로 구현) —
+    /// 생략(기본값 <c>null</c>)하면 <see cref="Cache"/> 갱신만 하고 아무 것도 발행하지 않습니다(기존
+    /// ED-D06b 테스트·호출부와 완전히 동일하게 동작, 하위 호환).
+    /// </summary>
+    public IEventBus? EventBus { get; init; }
+
     private IScheduler? _activeScheduler;
 
     /// <summary>
@@ -93,7 +103,23 @@ public sealed class DeviceMapPoller : ISharedServiceNode
         var values = await BlockReadAction(ct).ConfigureAwait(false);
         foreach (var tagId in TagIds)
         {
-            if (values.TryGetValue(tagId, out var value))
+            if (!values.TryGetValue(tagId, out var value))
+            {
+                continue;
+            }
+
+            // (PD-01e) EventBus가 있을 때만 "이전 값과 다른지" 비교한다 — 없으면(기존 ED-D06b 호출부)
+            // TryGetCached를 호출할 이유가 없어 예전과 동일하게 Cache.Set만 수행(불필요한 오버헤드 없음).
+            if (EventBus is not null)
+            {
+                var changed = !Cache.TryGetCached(tagId, out var previous) || !Equals(previous, value);
+                Cache.Set(tagId, value);
+                if (changed)
+                {
+                    EventBus.Publish(new TagValueUpdatedEvent(tagId, value, Alarm: null, DateTime.UtcNow));
+                }
+            }
+            else
             {
                 Cache.Set(tagId, value);
             }

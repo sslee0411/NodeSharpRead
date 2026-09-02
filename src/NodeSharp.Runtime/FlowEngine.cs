@@ -345,6 +345,7 @@ public sealed class FlowEngine
     private readonly NodeExecutionGate _gate = new();
     private readonly IContextStore _contextStore;
     private readonly IEventBus _eventBus;
+    private readonly TagValueCache? _tagValueCache;
 
     /// <summary>
     /// (★ RT-03) 직전 <c>DeployAsync</c> 호출에 사용된 <see cref="FlowDefinition"/>입니다. 부분 재배포 모드
@@ -361,11 +362,19 @@ public sealed class FlowEngine
     /// <see cref="EventBusAdapter"/>(<c>EventBus.Instance</c> 감쌈)를 만들어 씁니다. 기존 1-인자 호출부
     /// (<c>RT-01a</c>부터의 모든 테스트)는 그대로 동작합니다(선택적 매개변수라 하위 호환 유지).
     /// </summary>
-    public FlowEngine(INodeRegistry registry, IContextStore? contextStore = null, IEventBus? eventBus = null)
+    /// <remarks>
+    /// (PD-01e, ★ 추가) <paramref name="tagValueCache"/> — <see cref="BuildContext"/>가 만드는
+    /// <c>NodeContext</c>의 <c>GetTagValue</c>가 조회할 대상입니다. 트레일링 선택적 매개변수(기본값
+    /// <c>null</c>)라 기존 호출부(모든 테스트 포함)는 전혀 바뀌지 않아도 그대로 동작합니다 —
+    /// <see cref="IContextStore"/>/<see cref="IEventBus"/>와 마찬가지로 생략하면 태그 값 조회가 항상
+    /// <c>null</c>을 반환할 뿐, 다른 어떤 동작도 바뀌지 않습니다.
+    /// </remarks>
+    public FlowEngine(INodeRegistry registry, IContextStore? contextStore = null, IEventBus? eventBus = null, TagValueCache? tagValueCache = null)
     {
         _registry = registry;
         _contextStore = contextStore ?? new InMemoryContextStore();
         _eventBus = eventBus ?? new EventBusAdapter();
+        _tagValueCache = tagValueCache;
     }
 
     /// <summary>
@@ -737,6 +746,6 @@ public sealed class FlowEngine
     private INodeContext BuildContext(string nodeConfigId, IFlowNode node)
     {
         var flowId = _currentFlow?.Nodes.FirstOrDefault(n => n.Id == nodeConfigId)?.FlowId ?? string.Empty;
-        return new NodeContext(this, _eventBus, _contextStore, flowId, nodeConfigId);
+        return new NodeContext(this, _eventBus, _contextStore, flowId, nodeConfigId, _tagValueCache);
     }
 }

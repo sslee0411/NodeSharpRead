@@ -404,6 +404,14 @@
                     <TabItem Header="Debug">
                         <views:DebugSidebarView x:Name="DebugPanel" />
                     </TabItem>
+                    <!-- (PD-01d, ★ 추가) 다섯 번째 탭 "시뮬레이터" — EC-12/LK-02b와 동일한 "탭만 늘리면
+                         됨" 낮은 리스크 패턴(별도 AskUserQuestion 없이 진행). SimulationMode=true인
+                         PlcNode를 골라 그 VirtualModbusSlave(PD-01c)의 레지스터 값을 사람이 직접
+                         보고/수정하는 화면 — 범위: 사용자 확인("체크박스+패널 UI만 우선 구현",
+                         2026-09-02). 캔버스 PlcTagReadNode 실시간 반영은 PD-01e(후속)로 분리. -->
+                    <TabItem Header="시뮬레이터">
+                        <views:SimulatorPanelView x:Name="SimulatorPanel" />
+                    </TabItem>
                 </TabControl>
             </Grid>
         </Grid>

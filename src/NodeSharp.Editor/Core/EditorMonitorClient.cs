@@ -62,6 +62,9 @@ namespace NodeSharp.Editor.Core;
 /// 호출부(<c>MainWindow</c>)가 그 이벤트의 <c>MsgId</c>로 Runner의 <c>MonitorHub.GetMsgTrace</c>를
 /// 호출해 "이 메시지가 어디서 왔는지" 경로를 받아올 때 씁니다. <see cref="TriggerInjectAsync"/>와
 /// 동일하게 연결돼 있지 않으면 예외를 던집니다.</item>
+/// <item><b>(PD-01e) <see cref="SetSimulatedRegisterAsync"/></b>: <c>SimulatorPanelView</c>가 더 이상
+/// <c>VirtualModbusSlave</c>를 직접 소유하지 않고(Runner로 이전) 이 메서드로 원격 기입만 합니다 —
+/// <see cref="TriggerInjectAsync"/>와 동일한 원칙입니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -230,6 +233,18 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     /// </summary>
     public Task<MsgTrace?> GetMsgTraceAsync(string msgId, CancellationToken ct = default) =>
         _connection.InvokeAsync<MsgTrace?>("GetMsgTrace", msgId, ct);
+
+    /// <summary>
+    /// (PD-01e) <c>SimulatorPanelView</c>가 레지스터 표에서 값을 편집할 때마다 호출합니다 — Runner의
+    /// <c>MonitorHub.SetSimulatedRegister</c>(네 번째 클라이언트→서버 Hub 메서드)에 그대로 위임합니다
+    /// (<see cref="TriggerInjectAsync"/>와 동일한 패턴). 연결돼 있지 않으면 예외를 던지므로(동일한
+    /// 원칙), 호출부가 미리 <see cref="IsConnected"/>를 확인하거나 예외를 처리해야 합니다.
+    /// </summary>
+    /// <param name="plcId">값을 쓸 대상 PLC(PlcNode.Id).</param>
+    /// <param name="address">Modbus 레지스터 주소(0~65535).</param>
+    /// <param name="value">쓸 값(0~65535).</param>
+    public Task SetSimulatedRegisterAsync(string plcId, int address, int value, CancellationToken ct = default) =>
+        _connection.InvokeAsync("SetSimulatedRegister", plcId, address, value, ct);
 
     /// <summary>내부 <see cref="HubConnection"/>을 완전히 정리합니다(위 클래스 remarks의 "구독 해제" 항목).</summary>
     public async ValueTask DisposeAsync()

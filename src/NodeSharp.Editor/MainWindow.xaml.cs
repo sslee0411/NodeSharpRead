@@ -136,6 +136,18 @@ public partial class MainWindow : Window
         // 연결 — FlowCanvas.History는 이 시점에 이미 생성돼 있다(EC-11과 동일한 이유로 Loaded를
         // 기다릴 필요 없음).
         StructureTab.History = FlowCanvas.History;
+        // (PD-01d, ★ 추가) 시뮬레이터 탭이 SimulationMode=true PlcNode를 찾으려면 구조 트리(루트
+        // 컬렉션)가 필요 — StructureTab.Devices는 이 시점에 이미 생성된 ObservableCollection<T>
+        // 인스턴스(내용은 StructureTab의 Window.Loaded에서 비동기로 채워짐)라, 참조만 지금 넘겨주면
+        // 충분하다(EC-11/ED-D12와 동일한 이유로 Loaded를 기다릴 필요 없음 — SimulatorPanelView는
+        // 탭이 실제로 선택될 때 그 시점의 최신 내용을 다시 훑는다, "새로고침" 참고).
+        SimulatorPanel.SetDeviceTree(StructureTab.Devices);
+        // (PD-01e, ★ 추가) 시뮬레이터 탭이 레지스터 값을 편집할 때 Runner에 원격 기입(SignalR)하려면
+        // 이 창이 이미 만든 _monitorClient가 필요하다 — 위 SetDeviceTree와 동일한 이유로 지금 참조만
+        // 넘겨주면 충분하다(_monitorClient.StartAsync()는 아직 호출 전이라 연결 자체는 나중에
+        // OnWindowLoaded에서 이루어지지만, SimulatorPanelView는 호출 시점에 IsConnected만 확인하므로
+        // 문제 없다).
+        SimulatorPanel.SetMonitorClient(_monitorClient);
 
         // (ED-D14) 자동저장·크래시 복구 — CheckAndPromptRecovery()는 두 뷰의 Loaded가 발생하기 전에
         // 반드시 끝나야 하므로(위 클래스 문서 참고) Start()보다 먼저, 그리고 InitializeComponent()

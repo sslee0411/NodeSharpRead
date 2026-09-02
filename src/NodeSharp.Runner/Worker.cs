@@ -37,6 +37,13 @@ namespace NodeSharp.Runner;
 /// (ED-D13) 초기 배포 직후 두 번째 <see cref="FlowFileWatcher"/>(<c>signalFileName: "device.json.signal"</c>)를
 /// 추가로 만들어, 구조 설정만 저장됐을 때는 <see cref="FlowDeployer"/>를 전혀 거치지 않고
 /// <see cref="StructureReloader.ReloadStructureOnlyAsync"/>만 호출합니다(<see cref="_deviceFileWatcher"/> 참고).
+/// (PD-01e) <see cref="CurrentDeviceTreeHolder"/>를 이제 부팅 시점에 최초 1회 직접 채우고(예전엔
+/// device.json.signal이 와야만 채워지는 반응형이었음), 그 내용으로 <see cref="SimulationDeviceBinder.Bind"/>가
+/// 만든 시뮬레이션 <see cref="DeviceMapPoller"/>들을 시작합니다(<see cref="RebuildSimulationPollers"/>) —
+/// device.json.signal이 다시 오면 같은 메서드가 이전 폴러를 정리하고 새로 배선합니다. 생성자가
+/// <see cref="SimulationSlaveHolder"/>도 선택적으로 주입받아, 만든 <c>VirtualModbusSlave</c>를 그
+/// 홀더에 등록해 <c>MonitorHub.SetSimulatedRegister</c>(Editor의 SimulatorPanelView가 원격으로
+/// 호출)가 접근할 수 있게 합니다.
 /// </summary>
 /// <example>
 /// <code>
@@ -57,12 +64,16 @@ public sealed class Worker : BackgroundService
     private readonly StatusBroadcaster? _statusBroadcaster;
     private readonly CurrentEngineHolder? _currentEngineHolder;
     private readonly MsgTraceStore? _msgTraceStore;
+    private readonly SimulationSlaveHolder? _simulationSlaveHolder;
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
 
     /// <summary>(ED-D13) <c>"device.json.signal"</c> 전용 두 번째 감시자 — <see cref="_flowFileWatcher"/>와 동일하게 <see cref="Dispose"/>에서 함께 정리합니다.</summary>
     private FlowFileWatcher? _deviceFileWatcher;
+
+    /// <summary>(PD-01e) <see cref="ExecuteAsync"/>가 배선한 시뮬레이션 <see cref="DeviceMapPoller"/> 전체 — 구조 재로드마다 <see cref="RebuildSimulationPollers"/>가 이전 것들을 <c>StopAsync</c>한 뒤 새로 교체합니다.</summary>
+    private List<DeviceMapPoller> _simulationPollers = new();
 
     /// <summary>
     /// (RN-04a) DI로 <see cref="RunnerHealthState"/>를 주입받습니다 — 배포에 성공했을 때
@@ -79,13 +90,22 @@ public sealed class Worker : BackgroundService
     /// 자동으로 채워지고, 생략하면(예: 기존 <c>RunnerWorkerTests</c>처럼 인자 없이 생성) SignalR
     /// 중계 없이 이전과 동일하게 동작합니다(하위 호환).
     /// </summary>
+    /// <remarks>
+    /// (PD-01e) <paramref name="simulationSlaveHolder"/>도 같은 방식(선택적, 기본값 <c>null</c>)으로
+    /// 주입받습니다 — DI 컨테이너에 <c>AddSingleton&lt;SimulationSlaveHolder&gt;()</c>가 등록돼 있으면
+    /// <see cref="ExecuteAsync"/>가 device.json의 simulationMode PLC마다 만든
+    /// <c>VirtualModbusSlave</c>를 여기에 등록해 <c>MonitorHub.SetSimulatedRegister</c>가 원격으로
+    /// 값을 쓸 수 있게 합니다. 생략하면(예: 기존 <c>RunnerWorkerTests</c>) 시뮬레이션 배선 자체를
+    /// 건너뜁니다(하위 호환 — 아래 <see cref="ExecuteAsync"/> 참고).
+    /// </remarks>
     public Worker(
         RunnerHealthState healthState,
         ClockDriftMonitor? clockDriftMonitor = null,
         DiskSpaceMonitor? diskSpaceMonitor = null,
         StatusBroadcaster? statusBroadcaster = null,
         CurrentEngineHolder? currentEngineHolder = null,
-        MsgTraceStore? msgTraceStore = null)
+        MsgTraceStore? msgTraceStore = null,
+        SimulationSlaveHolder? simulationSlaveHolder = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
@@ -93,6 +113,7 @@ public sealed class Worker : BackgroundService
         _statusBroadcaster = statusBroadcaster;
         _currentEngineHolder = currentEngineHolder;
         _msgTraceStore = msgTraceStore;
+        _simulationSlaveHolder = simulationSlaveHolder;
     }
 
     /// <summary>
@@ -119,6 +140,21 @@ public sealed class Worker : BackgroundService
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         var deployer = new FlowDeployer();
 
+        // (PD-01e) DeviceMapPoller들과 FlowEngine(NodeContext.GetTagValue)이 함께 공유하는 캐시 —
+        // FlowDeployer.CreateEngineWithLogger가 이 인스턴스를 new FlowEngine(..., tagValueCache:)로
+        // 그대로 전달한다(위 FlowDeployer 클래스 remarks "PD-01e" 항목 참고). _simulationSlaveHolder가
+        // 없어도(테스트 등) 항상 만든다 — 그냥 아무도 채우지 않는 빈 캐시가 될 뿐 해가 없다.
+        var tagValueCache = new TagValueCache();
+
+        // (PD-01e) DeviceMapPoller 전용 별도 EventBus — StatusBroadcaster.Subscribe(IEventBus)가
+        // 버스에 무관하다는 점(클래스 remarks 참고)을 이용해, FlowEngine의 EventBus(attachMonitor가
+        // 구독하는 대상)와 완전히 분리된 버스를 하나 더 만든다. DeviceMapPoller가 발행하는
+        // TagValueUpdatedEvent가 FlowEngine 재배포/재사용 여부와 무관하게 항상 SignalR로 중계되게
+        // 하기 위함(FlowEngine의 EventBus는 재배포마다 재사용되지만, 시뮬레이션 폴링은 FlowEngine
+        // 배포 여부와 완전히 독립적으로 계속 돌아야 하므로 같은 버스를 공유하지 않는 편이 더 단순함).
+        var simulationEventBus = new EventBusAdapter();
+        _statusBroadcaster?.Subscribe(simulationEventBus);
+
         // (LK-02a, LK-04 확장) _statusBroadcaster/_msgTraceStore가 있으면(DI로 주입됨) 이 콜백을 두
         // 배포 호출 모두에 넘긴다 — FlowDeployer.CreateEngineWithLogger가 "진짜 새 FlowEngine을 만들
         // 때만" 호출하므로, 아래 RedeployAsync가 기존 engine을 재사용하는 흔한 경우엔 이 콜백이 다시
@@ -126,7 +162,7 @@ public sealed class Worker : BackgroundService
         // 등) attachMonitor 자체를 null로 둬 하위 호환을 유지한다.
         Func<IEventBus, IDisposable>? attachMonitor = BuildAttachMonitor();
 
-        FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken, attachMonitor);
+        FlowEngine? engine = await deployer.DeployIfAvailableAsync(baseDirectory, stages, registry, stoppingToken, attachMonitor, tagValueCache);
         if (engine is not null)
         {
             _healthState.RecordDeploy(engine);
@@ -144,7 +180,7 @@ public sealed class Worker : BackgroundService
         // 엔진을 만들어 배포한다(FlowDeployer.RedeployAsync XML 문서 참고).
         _flowFileWatcher = new FlowFileWatcher(baseDirectory, async ct =>
         {
-            engine = await deployer.RedeployAsync(engine, baseDirectory, registry, ct, attachMonitor);
+            engine = await deployer.RedeployAsync(engine, baseDirectory, registry, ct, attachMonitor, tagValueCache);
             if (engine is not null)
             {
                 _healthState.RecordDeploy(engine);
@@ -158,10 +194,22 @@ public sealed class Worker : BackgroundService
         // (ED-D13) device.json.signal 변경 감지 — FlowEngine을 전혀 건드리지 않는 "가벼운" 재로드
         // (StructureReloader 클래스 문서 참고). FlowFileWatcher를 그대로 재사용하되 signalFileName만
         // 바꿔 별도 FileSystemWatcher 인스턴스로 감시한다(위 flowFileWatcher와 독립적으로 동작).
+        // (PD-01e, ★ 갱신) 예전에는 이 홀더가 반응형(신호가 와야만 채워짐)이라 최초 부팅 시점엔 항상
+        // 비어 있었다 — 시뮬레이션 배선(SimulationDeviceBinder)이 부팅 직후부터 동작해야 하므로, 아래
+        // for 루프 전에 최초 1회 직접 ReloadStructureOnlyAsync를 호출해 채운 뒤 RebuildSimulationPollers도
+        // 바로 이어 호출한다(파일이 아직 없으면 홀더가 null인 채로 남고, RebuildSimulationPollers는
+        // "장비 0개"로 처리해 그냥 빈 목록을 반환할 뿐 예외가 나지 않는다).
         var deviceTreeHolder = new CurrentDeviceTreeHolder();
+        await StructureReloader.ReloadStructureOnlyAsync(baseDirectory, deviceTreeHolder, stoppingToken);
+        await RebuildSimulationPollers(deviceTreeHolder, tagValueCache, simulationEventBus, stoppingToken);
+
         _deviceFileWatcher = new FlowFileWatcher(
             baseDirectory,
-            ct => StructureReloader.ReloadStructureOnlyAsync(baseDirectory, deviceTreeHolder, ct),
+            async ct =>
+            {
+                await StructureReloader.ReloadStructureOnlyAsync(baseDirectory, deviceTreeHolder, ct);
+                await RebuildSimulationPollers(deviceTreeHolder, tagValueCache, simulationEventBus, ct);
+            },
             signalFileName: "device.json.signal");
 
         var diskSpaceMonitor = _diskSpaceMonitor ?? new DiskSpaceMonitor(baseDirectory);
@@ -229,6 +277,35 @@ public sealed class Worker : BackgroundService
         };
     }
 
+    /// <summary>
+    /// (PD-01e) <paramref name="deviceTreeHolder"/>의 최신 내용으로 시뮬레이션 <see cref="DeviceMapPoller"/>
+    /// 배선을 다시 만듭니다 — 이전 <see cref="_simulationPollers"/>를 먼저 <c>StopAsync</c>한 뒤(스케줄러
+    /// 누수 방지, <see cref="Dispose"/>의 "구독/리소스는 반드시 해제" 원칙과 동일), <see cref="SimulationDeviceBinder.Bind"/>가
+    /// 만든 새 목록으로 교체하고 각각 <c>StartAsync</c>합니다. <see cref="_simulationSlaveHolder"/>가
+    /// 없으면(DI 미등록, 예: 기존 <c>RunnerWorkerTests</c>) 시뮬레이션 배선 자체를 건너뜁니다 —
+    /// <c>VirtualModbusSlave</c>를 어디에도 등록할 수 없는데 만들어봐야 아무도 접근할 수 없기 때문입니다.
+    /// </summary>
+    private async Task RebuildSimulationPollers(CurrentDeviceTreeHolder deviceTreeHolder, TagValueCache tagValueCache, IEventBus simulationEventBus, CancellationToken ct)
+    {
+        if (_simulationSlaveHolder is null)
+        {
+            return;
+        }
+
+        foreach (var oldPoller in _simulationPollers)
+        {
+            await oldPoller.StopAsync();
+        }
+
+        var newPollers = SimulationDeviceBinder.Bind(deviceTreeHolder.DeviceTree, _simulationSlaveHolder, tagValueCache, simulationEventBus);
+        foreach (var poller in newPollers)
+        {
+            await poller.StartAsync(ct);
+        }
+
+        _simulationPollers = newPollers.ToList();
+    }
+
     /// <summary>여러 <see cref="IDisposable"/> 구독(<see cref="StatusBroadcaster"/>/<see cref="MsgTraceStore"/>)을 하나로 묶어 한 번에 해제하는 얇은 래퍼(<c>StatusBroadcaster.CompositeSubscription</c>과 동일한 역할, Worker 레벨에서 둘을 합칠 때 필요).</summary>
     private sealed class CompositeMonitorSubscription : IDisposable
     {
@@ -253,6 +330,14 @@ public sealed class Worker : BackgroundService
     {
         _flowFileWatcher?.Dispose();
         _deviceFileWatcher?.Dispose();
+        // (PD-01e) 시뮬레이션 폴러들도 함께 정리 — StopAsync는 비동기지만 Dispose()는 동기 오버라이드라
+        // .GetAwaiter().GetResult()로 기다린다(FlowFileWatcher.Dispose 자체는 동기 FileSystemWatcher
+        // 해제만 하는 것과 달리, DeviceMapPoller.StopAsync는 AsyncSchedulerAdapter.Unschedule 호출뿐이라
+        // 실제로는 거의 즉시 완료된다 — 데드락 위험이 낮다고 판단).
+        foreach (var poller in _simulationPollers)
+        {
+            poller.StopAsync().GetAwaiter().GetResult();
+        }
         base.Dispose();
     }
 }

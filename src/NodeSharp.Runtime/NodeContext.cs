@@ -57,6 +57,7 @@ public sealed class NodeContext : INodeContext
     private readonly FlowEngine _engine;
     private readonly IEventBus _eventBus;
     private readonly string _nodeId;
+    private readonly TagValueCache? _tagValueCache;
 
     /// <summary>이 노드 하나만의 변수 스코프입니다(scope="node", scopeId=nodeId) — 다른 노드와 절대 섞이지 않습니다.</summary>
     public ContextScope Local { get; }
@@ -78,11 +79,19 @@ public sealed class NodeContext : INodeContext
     /// 대상)·<paramref name="store"/>(4개 스코프가 공유할 저장소)를 받아 특정 <paramref name="flowId"/>/
     /// <paramref name="nodeId"/> 노드 전용 Context를 만듭니다.
     /// </summary>
-    public NodeContext(FlowEngine engine, IEventBus eventBus, IContextStore store, string flowId, string nodeId)
+    /// <remarks>
+    /// (PD-01e, ★ 추가) <paramref name="tagValueCache"/> — <see cref="GetTagValue"/>가 조회할 대상.
+    /// 트레일링 선택적 매개변수(기본값 <c>null</c>)라 기존 4-인자 호출부(테스트 포함)는 전혀 바뀌지
+    /// 않아도 그대로 동작합니다(<c>FlowDeployer</c>의 <c>attachMonitor</c> 확장과 동일한 하위 호환
+    /// 방식) — 생략하면 <see cref="GetTagValue"/>가 항상 <c>null</c>을 반환합니다(태그 폴링과 무관한
+    /// 배포 시나리오, 예: 기존 테스트).
+    /// </remarks>
+    public NodeContext(FlowEngine engine, IEventBus eventBus, IContextStore store, string flowId, string nodeId, TagValueCache? tagValueCache = null)
     {
         _engine = engine;
         _eventBus = eventBus;
         _nodeId = nodeId;
+        _tagValueCache = tagValueCache;
 
         Local = new ContextScope(store, "node", nodeId);
         Flow = new ContextScope(store, "flow", flowId);
@@ -101,4 +110,8 @@ public sealed class NodeContext : INodeContext
     /// <inheritdoc/>
     public void Debug(string nodeName, string msgJson) =>
         _eventBus.Publish(new DebugMessageEvent(_nodeId, nodeName, msgJson, DateTime.UtcNow));
+
+    /// <inheritdoc/>
+    /// <remarks>(PD-01e, ★ 신규) <see cref="_tagValueCache"/>가 없으면(기존 4-인자 생성자 호출부) 항상 <c>null</c> — <see cref="INodeContext.GetTagValue"/> 기본 구현과 동일한 결과입니다.</remarks>
+    public object? GetTagValue(string tagId) => _tagValueCache?.GetCached(tagId);
 }

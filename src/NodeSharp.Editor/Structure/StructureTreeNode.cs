@@ -74,6 +74,16 @@ public sealed class PlcNode : StructureTreeNode
 
     public string Host { get; set; } = string.Empty;
     public int Port { get; set; }
+
+    /// <summary>
+    /// (PD-01d, ★ 추가) true면 이 PLC는 실제 하드웨어 대신 Editor 시뮬레이터 패널
+    /// (<c>SimulatorPanelView</c>)이 관리하는 <c>NodeSharp.Drivers.Modbus.VirtualModbusSlave</c>에
+    /// 연결됩니다(PD-01c) — Host/Port 값은 이 모드에서는 쓰이지 않습니다. 범위: 사용자 확인
+    /// ("체크박스+패널 UI만 우선 구현", 2026-09-02) — 캔버스 PlcTagReadNode 실시간 반영까지 이
+    /// 값과 자동으로 연결하는 배선(DeviceMapPoller→EventBus)은 후속 Step(PD-01e)으로 분리했습니다.
+    /// </summary>
+    public bool SimulationMode { get; set; }
+
     public override string IconGlyph => "🔧";
     public override IReadOnlyList<Type> AllowedChildTypes => new[] { typeof(DeviceMapNode) };
     public override IReadOnlyList<PropertyField> PropertySchema => new[]
@@ -86,6 +96,11 @@ public sealed class PlcNode : StructureTreeNode
         new PropertyField("host", "IP/주소", PropertyFieldType.Text, Example: "예: 192.168.1.10"),
         new PropertyField("port", "포트", PropertyFieldType.Number, DefaultValue: "502",
             HelpText: "Modbus TCP는 보통 502번을 사용합니다."),
+        new PropertyField("simulationMode", "시뮬레이션 모드", PropertyFieldType.Checkbox,
+            HelpText: "켜면 실제 하드웨어 없이 Editor 좌측 \"시뮬레이터\" 탭에서 가상 레지스터 값을 " +
+                      "직접 보고 바꿀 수 있습니다(PD-01c VirtualModbusSlave). Host/IP·포트 값은 이 " +
+                      "모드에서는 쓰이지 않습니다.",
+            Example: "예: 실제 PLC가 아직 없는 개발·테스트 단계에서 켬"),
     };
 }
 
