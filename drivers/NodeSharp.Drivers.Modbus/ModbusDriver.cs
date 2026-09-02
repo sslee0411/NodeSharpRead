@@ -15,7 +15,9 @@ namespace NodeSharp.Drivers.Modbus;
 /// TCP 모드(<see cref="ProtocolDriverType.ModbusTcp"/>)를 구현합니다. (PD-01b, ★ 추가) Serial 기반
 /// RTU 모드(<see cref="ProtocolDriverType.ModbusRtu"/>, <see cref="System.IO.Ports.SerialPort"/> +
 /// CRC16)도 이 클래스에 이어서 구현했습니다 — <see cref="ConnectAsync"/>가 <c>isRtu</c> 여부에 따라
-/// TCP/RTU 두 경로 중 하나로 연결합니다.
+/// TCP/RTU 두 경로 중 하나로 연결합니다. (PD-01c, ★ 추가) <see cref="VirtualSlave"/>를 지정하면 실제
+/// TCP/RTU 대신 <see cref="VirtualModbusSlave"/>(메모리 기반 가상 슬레이브, <c>NetTransportType.Virtual</c>)에
+/// 인메모리로 연결합니다 — 실제 하드웨어 없이 개발·테스트할 때 사용합니다.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -64,6 +66,14 @@ namespace NodeSharp.Drivers.Modbus;
 /// <see cref="Config"/>를 지정하지 않고 기존처럼 <see cref="ConnectAsync"/>를 직접 호출하는 사용법
 /// (PD-01a 테스트 등)은 이 확장과 무관하게 그대로 동작합니다 — SharedResourceManager를 거칠 때만
 /// <see cref="StartAsync"/>가 필요합니다.</item>
+/// <item><b>(PD-01c, ★ 추가) VirtualSlave — 가상 Modbus 슬레이브 연결</b>: <see cref="VirtualSlave"/>에
+/// <see cref="VirtualModbusSlave"/> 인스턴스를 지정하면 <see cref="ConnectAsync"/>가 실제
+/// <see cref="TcpClient"/>/<see cref="SerialPort"/> 대신 그 슬레이브가 만든 인메모리 <see cref="Stream"/>에
+/// 연결합니다 — 이후 <see cref="ReadAsync"/>/<see cref="WriteAsync"/>/PDU 처리는 TCP 경로와 완전히
+/// 동일하게 동작합니다(MBAP 프레이밍 공용, <see cref="VirtualModbusSlave"/> 클래스 문서 참고). RTU
+/// (<c>isRtu: true</c>)와 함께 쓰면 <see cref="ArgumentException"/>을 던집니다 — <see cref="VirtualModbusSlave"/>는
+/// MBAP만 지원하기 때문입니다(범위: 사용자 확인 "핵심만 우선 구현", 2026-09-01 — Editor 시뮬레이터
+/// 패널·PlcNode 체크박스·캔버스 반영은 PD-01d로 분리).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -84,6 +94,13 @@ namespace NodeSharp.Drivers.Modbus;
 /// var config = new PlcConnectionConfig(Host: "192.168.1.10", Port: 502);
 /// var d1 = await manager.AcquireAsync("plc-1", () => new ModbusDriver(id: "plc-1", config: config), ct); // TagNode #1
 /// var d2 = await manager.AcquireAsync("plc-1", () => new ModbusDriver(id: "plc-1", config: config), ct); // TagNode #2, d1과 동일 인스턴스
+///
+/// // 4) (PD-01c, ★ 추가) Virtual 모드 — 실제 하드웨어 없이 VirtualModbusSlave에 연결
+/// var slave = new VirtualModbusSlave();
+/// slave.SetRegister(0, 0x1234);
+/// using var virtualDriver = new ModbusDriver { VirtualSlave = slave };
+/// await virtualDriver.ConnectAsync(new PlcConnectionConfig(Host: "", Port: 0), ct); // Host/Port는 쓰이지 않음
+/// byte[] virtualRaw = await virtualDriver.ReadAsync(startAddress: 0, lengthBytes: 2, ct); // { 0x12, 0x34 }
 /// </code>
 /// </example>
 public sealed class ModbusDriver : IProtocolDriver, ISharedServiceNode, IDisposable
@@ -145,16 +162,38 @@ public sealed class ModbusDriver : IProtocolDriver, ISharedServiceNode, IDisposa
     /// </summary>
     internal Func<PlcConnectionConfig, CancellationToken, Task<Stream>>? RtuStreamFactory { get; set; }
 
+    /// <summary>
+    /// (PD-01c, ★ 추가) 설정하면 <see cref="ConnectAsync"/>가 실제 TCP/RTU 대신 이 가상 슬레이브에
+    /// 인메모리로 연결합니다 — 실제 하드웨어 없이 개발·테스트할 때 씁니다(클래스 remarks
+    /// "VirtualSlave — 가상 Modbus 슬레이브 연결" 참고). <c>isRtu: true</c>와 함께 설정하면
+    /// <see cref="ConnectAsync"/>가 <see cref="ArgumentException"/>을 던집니다 — <see cref="VirtualModbusSlave"/>는
+    /// MBAP(TCP) 프레이밍만 지원하기 때문입니다.
+    /// </summary>
+    public VirtualModbusSlave? VirtualSlave { get; init; }
+
     /// <inheritdoc />
     /// <remarks>
     /// (PD-01b, ★ 변경) RTU 모드는 더 이상 <see cref="NotSupportedException"/>을 던지지 않고
     /// <paramref name="config"/>.<see cref="PlcConnectionConfig.ComPort"/>로 실제 <see cref="SerialPort"/>를
     /// 엽니다(8N1, 클래스 remarks의 "RTU 시리얼 설정 고정값" 참고). <c>ComPort</c>가 비어 있으면
+    /// <see cref="ArgumentException"/>을 던집니다. (PD-01c, ★ 추가) <see cref="VirtualSlave"/>가 설정돼
+    /// 있으면 실제 TCP/RTU 대신 그 가상 슬레이브에 연결합니다 — <c>isRtu: true</c>와 함께 쓰면
     /// <see cref="ArgumentException"/>을 던집니다.
     /// </remarks>
     public async Task ConnectAsync(PlcConnectionConfig config, CancellationToken ct)
     {
         Disconnect();
+
+        if (VirtualSlave is not null)
+        {
+            if (_isRtu)
+            {
+                throw new ArgumentException("VirtualModbusSlave는 MBAP(TCP) 프레이밍만 지원합니다 — isRtu: true와 함께 쓸 수 없습니다.", nameof(config));
+            }
+
+            _stream = VirtualSlave.Connect();
+            return;
+        }
 
         if (_isRtu)
         {

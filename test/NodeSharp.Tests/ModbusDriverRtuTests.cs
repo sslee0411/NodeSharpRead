@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using NodeSharp.Contracts.Models;
 using NodeSharp.Drivers.Modbus;
 using Xunit;
@@ -8,19 +7,22 @@ namespace NodeSharp.Tests;
 /// <summary>
 /// (PD-01b) <see cref="ModbusDriver"/>의 RTU 모드(<see cref="System.IO.Ports.SerialPort"/> + CRC16)에
 /// 대한 단위 테스트입니다. 완료 기준(03번 Step맵 PD-01b): "RTU 모드에서 CRC 오류 응답은 거부되고
-/// 정상 응답만 반영되는지"를 실제 COM 포트 없이 증명하기 위해, 이 파일 안에 <see cref="DuplexPairStream"/>
-/// (메모리 큐 기반 양방향 Stream 페어)과 <see cref="FakeModbusRtuSlave"/>(그 위에서 실제 RTU
-/// ADU+CRC16 프레이밍으로 응답하는 가짜 슬레이브)를 직접 구현합니다 — TCP 쪽 <c>ModbusDriverTests</c>의
-/// <c>FakeModbusTcpSlave</c>가 실제 루프백 소켓을 쓰는 것과 동일한 취지로, 목(mock)이 아니라 실제
-/// 바이트 왕복 경로를 태웁니다. <see cref="ModbusDriver.RtuStreamFactory"/>(internal, PD-01b에서
-/// 신설)로 실제 SerialPort 대신 이 페어를 주입합니다.
+/// 정상 응답만 반영되는지"를 실제 COM 포트 없이 증명하기 위해, 이 파일 안에 <see cref="FakeModbusRtuSlave"/>
+/// (그 위에서 실제 RTU ADU+CRC16 프레이밍으로 응답하는 가짜 슬레이브)를 직접 구현합니다 — TCP 쪽
+/// <c>ModbusDriverTests</c>의 <c>FakeModbusTcpSlave</c>가 실제 루프백 소켓을 쓰는 것과 동일한 취지로,
+/// 목(mock)이 아니라 실제 바이트 왕복 경로를 태웁니다. 양방향 Stream 페어는 (PD-01c, ★ 변경) 이 파일
+/// 전용 <c>DuplexPairStream</c>을 별도로 두지 않고 프로덕션으로 승격된
+/// <see cref="NodeSharp.Drivers.Modbus.InMemoryDuplexStream"/>(<c>InternalsVisibleTo</c>로 이 테스트
+/// 프로젝트에 공개됨, <see cref="VirtualModbusSlave"/>가 쓰는 것과 동일 클래스)를 재사용합니다.
+/// <see cref="ModbusDriver.RtuStreamFactory"/>(internal, PD-01b에서 신설)로 실제 SerialPort 대신 이
+/// 페어를 주입합니다.
 /// </summary>
 public class ModbusDriverRtuTests
 {
     [Fact]
     public async Task RTU_ReadAsync는_슬레이브에_미리_채워둔_레지스터_값을_그대로_반환한다()
     {
-        var (masterStream, slaveStream) = DuplexPairStream.CreatePair();
+        var (masterStream, slaveStream) = InMemoryDuplexStream.CreatePair();
         var slave = new FakeModbusRtuSlave(slaveStream);
         slave.SetRegister(0, 0x1234);
         slave.SetRegister(1, 0x5678);
@@ -39,7 +41,7 @@ public class ModbusDriverRtuTests
     [Fact]
     public async Task RTU_WriteAsync_단일_레지스터_이후_ReadAsync가_변경된_값을_반환한다()
     {
-        var (masterStream, slaveStream) = DuplexPairStream.CreatePair();
+        var (masterStream, slaveStream) = InMemoryDuplexStream.CreatePair();
         var slave = new FakeModbusRtuSlave(slaveStream);
         var slaveTask = slave.RunAsync();
 
@@ -59,7 +61,7 @@ public class ModbusDriverRtuTests
     public async Task RTU_CRC가_손상된_응답은_거부되고_ModbusException이_발생한다()
     {
         // 완료 기준의 핵심 항목: CRC 오류 응답은 정상 값으로 반영되지 않고 반드시 예외로 거부돼야 한다.
-        var (masterStream, slaveStream) = DuplexPairStream.CreatePair();
+        var (masterStream, slaveStream) = InMemoryDuplexStream.CreatePair();
         var slave = new FakeModbusRtuSlave(slaveStream) { CorruptNextResponseCrc = true };
         slave.SetRegister(0, 0x1234);
         var slaveTask = slave.RunAsync();
@@ -81,7 +83,7 @@ public class ModbusDriverRtuTests
     [Fact]
     public async Task RTU_슬레이브가_예외_응답을_반환하면_CRC가_정상이어도_ModbusException이_발생하고_예외_코드가_담긴다()
     {
-        var (masterStream, slaveStream) = DuplexPairStream.CreatePair();
+        var (masterStream, slaveStream) = InMemoryDuplexStream.CreatePair();
         var slave = new FakeModbusRtuSlave(slaveStream) { RejectAllReads = true };
         var slaveTask = slave.RunAsync();
 
@@ -98,77 +100,7 @@ public class ModbusDriverRtuTests
     }
 
     /// <summary>
-    /// (PD-01b) 메모리 큐 2개로 만든 양방향 Stream 페어의 한쪽 끝입니다. <see cref="CreatePair"/>가
-    /// 반환하는 <c>Master</c>가 쓰면 <c>Slave</c>가 읽고, <c>Slave</c>가 쓰면 <c>Master</c>가 읽습니다
-    /// — 실제 <see cref="System.IO.Ports.SerialPort.BaseStream"/>과 마찬가지로 <see cref="ReadAsync"/>는
-    /// 요청한 바이트 수를 다 채우지 않고도 반환할 수 있습니다(그래서 <c>ModbusDriver.ReadExactAsync</c>가
-    /// 필요합니다).
-    /// </summary>
-    private sealed class DuplexPairStream : Stream
-    {
-        private readonly BlockingCollection<byte> _readQueue;
-        private readonly BlockingCollection<byte> _writeQueue;
-
-        private DuplexPairStream(BlockingCollection<byte> readQueue, BlockingCollection<byte> writeQueue)
-        {
-            _readQueue = readQueue;
-            _writeQueue = writeQueue;
-        }
-
-        public static (Stream Master, Stream Slave) CreatePair()
-        {
-            var masterToSlave = new BlockingCollection<byte>();
-            var slaveToMaster = new BlockingCollection<byte>();
-            Stream master = new DuplexPairStream(readQueue: slaveToMaster, writeQueue: masterToSlave);
-            Stream slave = new DuplexPairStream(readQueue: masterToSlave, writeQueue: slaveToMaster);
-            return (master, slave);
-        }
-
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            if (buffer.Length == 0)
-            {
-                return 0;
-            }
-
-            var first = await Task.Run(() => _readQueue.Take(cancellationToken), cancellationToken).ConfigureAwait(false);
-            buffer.Span[0] = first;
-            var read = 1;
-            while (read < buffer.Length && _readQueue.TryTake(out var next))
-            {
-                buffer.Span[read] = next;
-                read++;
-            }
-
-            return read;
-        }
-
-        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-        {
-            foreach (var b in buffer.Span)
-            {
-                _writeQueue.Add(b, cancellationToken);
-            }
-
-            return ValueTask.CompletedTask;
-        }
-
-        public override bool CanRead => true;
-        public override bool CanWrite => true;
-        public override bool CanSeek => false;
-        public override long Length => throw new NotSupportedException();
-        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
-        public override void Flush() { }
-        public override int Read(byte[] buffer, int offset, int count) =>
-            ReadAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        public override void Write(byte[] buffer, int offset, int count) =>
-            WriteAsync(buffer.AsMemory(offset, count), CancellationToken.None).AsTask().GetAwaiter().GetResult();
-        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-        public override void SetLength(long value) => throw new NotSupportedException();
-    }
-
-    /// <summary>
-    /// (PD-01b) 테스트 전용 가짜 Modbus RTU 슬레이브 — <see cref="DuplexPairStream"/>의 Slave 쪽에서
+    /// (PD-01b) 테스트 전용 가짜 Modbus RTU 슬레이브 — <see cref="NodeSharp.Drivers.Modbus.InMemoryDuplexStream"/>의 Slave 쪽에서
     /// [슬레이브주소(1)][함수코드(1)][데이터][CRC16(2)] 형식의 요청을 읽어 FC03/FC06 요청에 실제로
     /// CRC16이 붙은 RTU 프레이밍 응답을 돌려줍니다. <see cref="CorruptNextResponseCrc"/>를 켜면 다음
     /// 응답 1건의 CRC 바이트를 일부러 훼손해 <see cref="ModbusDriver"/>의 CRC 거부 경로를 검증할 수
