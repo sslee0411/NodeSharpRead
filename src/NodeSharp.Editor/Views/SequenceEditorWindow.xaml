@@ -1,0 +1,57 @@
+<!--
+  SequenceEditorWindow.xaml
+  ====================
+  (SQ-02) 캔버스(FlowCanvasView)와 별개의 독립 WPF Window로 뜨는 Sequence Editor의 뼈대 — 02번
+  설계 문서 11번 탭 카드6("캔버스와 별개의 독립 Window")을 실제로 여는 첫 Step. ED-B2b가 만든
+  진입점(메뉴/좌측 네비게이션)이 지금까지는 MessageBox 안내만 띄웠는데, 이 Step부터 실제 Window가
+  뜬다. 단계 목록 편집 UI 자체(단계 추가/순서변경/조건·동작 편집)는 아직 없는 Step이라(SQ 표에
+  "편집 화면"을 명시적으로 배정한 Step이 없어 SQ-04 "sequences.json 저장 + Undo 공유"나 그 이후에서
+  다뤄질 예정) 지금은 placeholder 안내문만 둔다 — RT-01a "뼈대 우선, 확장" 원칙과 동일.
+  TokenInputDialog(LK-03)/NodePropertyDialog와 동일한 DynamicResource 브러시 관례를 따르되, 이
+  Window는 모달 대화상자가 아니라(SequenceWindowManager가 재사용하는 비모달 창) ResizeMode는
+  CanResize, WindowStartupLocation은 Manual(SequenceWindowManager가 이전 위치를 복원하거나, 최초
+  1회는 MainWindow 기준 CenterOwner 좌표를 계산해 채움).
+
+  (SQ-03, ★ 보강) 완료 기준의 "역방향"(호출하는 Flow 노드 보기)을 최소한으로 확인할 수 있게, "시퀀스
+  Id" TextBox 1개 + "호출하는 Flow 노드 보기" Button 1개를 추가했다. 아직 sequences.json 저장/로드가
+  없어(SQ-04 이후) 이 창이 "지금 편집 중인 시퀀스"를 스스로 알 방법이 없으므로, SequenceTriggerNode를
+  더블클릭해 열면(편도) 그 노드의 sequenceId가 자동으로 채워지고, 사용자가 직접 타이핑해 다른 Id를
+  조회할 수도 있다(TagCatalog 도입 전 TagRef가 거쳤던 것과 동일한 "직접 입력" 임시 단계).
+-->
+<Window x:Class="NodeSharp.Editor.Views.SequenceEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sequence Editor"
+        Width="640" Height="420" MinWidth="420" MinHeight="280"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="True"
+        Background="{DynamicResource WindowBackgroundBrush}">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16" VerticalAlignment="Center">
+            <TextBlock Text="시퀀스 Id:" Foreground="{DynamicResource PrimaryTextBrush}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox x:Name="SequenceIdBox" Width="220"
+                     Background="{DynamicResource ControlBackgroundBrush}"
+                     Foreground="{DynamicResource PrimaryTextBrush}"
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     Padding="4" VerticalAlignment="Center" Margin="0,0,12,0" />
+            <Button x:Name="FindCallersButton" Content="호출하는 Flow 노드 보기"
+                    Padding="10,4" Click="OnFindCallersClick" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Sequence Editor"
+                       FontSize="20" FontWeight="Bold"
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       HorizontalAlignment="Center" Margin="0,0,0,10" />
+            <TextBlock Text="단계 목록 편집 화면은 후속 Step(SQ-04 sequences.json 저장 + Undo 공유 이후)에서 채워질 예정입니다."
+                       Foreground="{DynamicResource PrimaryTextBrush}"
+                       TextWrapping="Wrap" TextAlignment="Center" MaxWidth="480" Opacity="0.75" />
+        </StackPanel>
+    </Grid>
+</Window>

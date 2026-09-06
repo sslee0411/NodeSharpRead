@@ -400,22 +400,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// (ED-B2b) 헤더 "보기 → Sequence Editor" 메뉴와 좌측 네비게이션 "Sequence" 항목이 공유하는
-    /// 클릭 핸들러입니다. 실제 Sequence Editor 창(11번 탭 카드6, 캔버스와 별개의 독립 Window)은
-    /// Phase 10에서 만들어지므로, 지금은 안내 메시지만 띄웁니다. <paramref name="e"/>는
-    /// <see cref="RoutedEventArgs"/>를 받는 메서드가 <c>MouseButtonEventHandler</c>(
-    /// <see cref="System.Windows.Input.MouseButtonEventArgs"/> 파생)에도 그대로 연결될 수 있게
-    /// 하는 C# 델리게이트 반공변성을 이용해, 메뉴 Click과 네비게이션 MouseLeftButtonUp 두 이벤트를
-    /// 같은 메서드 하나로 처리합니다.
+    /// (ED-B2b, ★ SQ-02에서 실제 창 연결) 헤더 "보기 → Sequence Editor" 메뉴와 좌측 네비게이션
+    /// "Sequence" 항목이 공유하는 클릭 핸들러입니다. ED-B2b 시점에는 Sequence Editor 창(11번 탭
+    /// 카드6, 캔버스와 별개의 독립 Window)이 아직 없어 안내 MessageBox만 띄웠지만, SQ-02가 실제
+    /// 창(<see cref="Views.SequenceEditorWindow"/>)을 만들면서 <see cref="SequenceWindowManager.ShowOrActivate"/>
+    /// 호출로 교체했습니다(중복 방지·위치 기억은 매니저 책임 — 클래스 XML 문서 참고).
+    /// <paramref name="e"/>는 <see cref="RoutedEventArgs"/>를 받는 메서드가
+    /// <c>MouseButtonEventHandler</c>(<see cref="System.Windows.Input.MouseButtonEventArgs"/> 파생)에도
+    /// 그대로 연결될 수 있게 하는 C# 델리게이트 반공변성을 이용해, 메뉴 Click과 네비게이션
+    /// MouseLeftButtonUp 두 이벤트를 같은 메서드 하나로 처리합니다.
     /// </summary>
-    private void OnSequenceEditorEntryClick(object sender, RoutedEventArgs e)
-    {
-        MessageBox.Show(
-            "Sequence Editor는 Phase 10(Sequence)에서 별도 창으로 제공될 예정입니다.",
-            "Sequence Editor",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
+    private void OnSequenceEditorEntryClick(object sender, RoutedEventArgs e) =>
+        SequenceWindowManager.ShowOrActivate(this);
 
     /// <summary>
     /// (ED-B2b) 헤더 "보기 → Dashboard" 메뉴와 좌측 네비게이션 "Dashboard" 항목이 공유하는 클릭

@@ -198,7 +198,7 @@ public partial class NodePropertyDialog : Window
     /// 현재 값(없으면 DefaultValue)으로 채웁니다. (ED-D04) TagRef는 ComboBox와 렌더링 방식(PropCombo
     /// 스타일)은 같지만 선택지 출처가 다르므로 별도 분기로 처리합니다 — ComboBox는 <see cref="PropertyField.Options"/>의
     /// 정적 리터럴 목록을, TagRef는 <see cref="TagCatalog.CurrentTags"/>(구조 설정 트리의 실시간
-    /// 태그 목록)를 선택지로 씁니다. Number/CredentialRef/TypedValue는 아직 전용 컨트롤이 없어(각각
+    /// 태그 목록)를 선택지로 씁니다. Number/CredentialRef/TypedValue/SequenceRef(SQ-03)는 아직 전용 컨트롤이 없어(각각
     /// 후속 Step 범위) 지금은 TextBox로 대체합니다.
     /// </summary>
     private FrameworkElement CreateInputControl(PropertyField field)
@@ -318,7 +318,7 @@ public partial class NodePropertyDialog : Window
                 });
 
             default:
-                // Text/Number/CredentialRef/TypedValue — 전용 컨트롤은 각각 후속 Step 범위라 지금은
+                // Text/Number/CredentialRef/TypedValue/SequenceRef(SQ-03) — 전용 컨트롤은 각각 후속 Step 범위라 지금은
                 // 단순 TextBox로 대체한다.
                 return new TextBox
                 {

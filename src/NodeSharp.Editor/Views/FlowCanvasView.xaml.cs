@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using NodeSharp.Contracts.Enums;
 using NodeSharp.Contracts.Events;
 using NodeSharp.Contracts.Models;
+using NodeSharp.Editor.Core;
 using NodeSharp.Editor.Core.Commands;
 using NodeSharp.Editor.Core.Config;
 using NodeSharp.Editor.Structure;
@@ -16,6 +17,7 @@ using NodeSharp.Nodes.Function;
 using NodeSharp.Nodes.Inject;
 using NodeSharp.Nodes.PlcTagRead;
 using NodeSharp.Nodes.PlcTagWrite;
+using NodeSharp.Nodes.SequenceTrigger;
 using NodeSharp.Nodes.Switch;
 using NodeSharp.Registry;
 // (v3.01 버그 수정) PaletteView.xaml.cs와 동일한 이유로 네임스페이스 전체 대신 DebugNodeType 타입
@@ -29,6 +31,9 @@ using DebugNodeType = NodeSharp.Nodes.Debug.DebugNodeType;
 // 함께 발생). 이 파일이 실제로 필요한 건 INodeTypeDescriptor 하나뿐이라, 네임스페이스 전체 대신
 // 이 타입 하나만 별칭으로 가져와 충돌을 원천 차단한다.
 using INodeTypeDescriptor = NodeSharp.Contracts.Interfaces.INodeTypeDescriptor;
+// (SQ-03) 위와 같은 이유로 IFlowNodeIndex도 네임스페이스 전체 대신 타입 하나만 별칭으로
+// 가져온다(NodeSharp.Contracts.Interfaces를 통째로 using하면 IEditorCommand가 다시 모호해짐).
+using IFlowNodeIndex = NodeSharp.Contracts.Interfaces.IFlowNodeIndex;
 
 namespace NodeSharp.Editor.Views;
 
@@ -290,7 +295,7 @@ namespace NodeSharp.Editor.Views;
 /// 자세한 설계 근거(왜 원안의 <c>EditorSessionState</c> 대신 이 뷰의 기존 더티 판정을 재사용했는지
 /// 등)는 <c>AutosaveService</c> 클래스 자체 주석 참고.
 /// </summary>
-public partial class FlowCanvasView : UserControl
+public partial class FlowCanvasView : UserControl, IFlowNodeIndex
 {
     // 모든 카드는 이 고정 크기로 그린다 — 포트 개수는 더 이상 고정이 아니다(EC-15, 위 클래스 주석 참고).
     private const double NodeCardWidth = 120;
@@ -469,12 +474,14 @@ public partial class FlowCanvasView : UserControl
         // (FN-01) FunctionNodeType 추가. (v3.01 버그 수정) NR-11(Debug 노드)이 이 목록에 추가하는
         // 것을 빠뜨려 캔버스에 배치해도 항상 "missing type"(⚠)으로 그려지던 누락을 보완.
         // (ED-D04) PlcTagReadNodeType 추가. (ED-D06a) PlcTagWriteNodeType 추가.
+        // (SQ-03) SequenceTriggerNodeType 추가.
         _registry.ScanAssembly(typeof(InjectNodeType).Assembly);
         _registry.ScanAssembly(typeof(SwitchNodeType).Assembly);
         _registry.ScanAssembly(typeof(FunctionNodeType).Assembly);
         _registry.ScanAssembly(typeof(DebugNodeType).Assembly);
         _registry.ScanAssembly(typeof(PlcTagReadNodeType).Assembly);
         _registry.ScanAssembly(typeof(PlcTagWriteNodeType).Assembly);
+        _registry.ScanAssembly(typeof(SequenceTriggerNodeType).Assembly);
         RenderFlowTabStrip();
         Loaded += OnLoaded;
     }
@@ -1816,6 +1823,13 @@ public partial class FlowCanvasView : UserControl
     /// <see cref="JsonElement"/>일 수 있다는 <see cref="NodeConfig"/> 자체 문서의 경고와 동일한 이유로,
     /// <see cref="FindBrokenTagRefs"/>가 쓰는 것과 같은 방어적 변환을 별도 메서드로 뽑아둔 것입니다.
     /// </summary>
+    /// <summary>
+    /// PropertySchema 필드 값(JsonElement/원본 CLR 타입 양쪽 모두 가능 — InjectNodeType.ReadString과
+    /// 동일한 이유)을 문자열로 안전하게 풀어냅니다. 이름은 <see cref="PropertyFieldType.TagRef"/>
+    /// 스캔에서 처음 만들어졌지만, 실제로는 필드 타입과 무관한 범용 추출 로직이라 (SQ-03)
+    /// <see cref="FindNodesBySequenceId"/>의 <see cref="PropertyFieldType.SequenceRef"/> 스캔도 그대로
+    /// 재사용합니다.
+    /// </summary>
     private static string? ReadTagRefValue(object raw) => raw is JsonElement je
         ? (je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString())
         : raw.ToString();
@@ -1891,13 +1905,16 @@ public partial class FlowCanvasView : UserControl
     }
 
     /// <summary>
-    /// (EC-03, EC-06 확장, EC-10 확장, 사용자 요청으로 노드 드래그-이동 확장) 카드를 더블클릭
-    /// (<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로 <see cref="OpenPropertyDialog"/>를
-    /// 엽니다. 한 번 클릭이면 Ctrl(<see cref="ModifierKeys.Control"/>)이 눌려 있는지로 갈립니다 —
-    /// (EC-10) Ctrl+클릭은 <see cref="ToggleNodeSelection"/>으로 그 노드만 선택 목록에 추가/제거
-    /// (여러 노드를 모아 <see cref="GroupSelectedNodes"/>로 그룹 묶기, 이 경로는 드래그-이동 후보로는
-    /// 삼지 않습니다 — 여러 노드 동시 이동은 이번 요청 범위 밖), (EC-06) Ctrl 없는 일반 클릭은
-    /// <see cref="SelectNode"/>로 "이 노드 하나만" 선택(다른 선택은 모두 해제)한 뒤
+    /// (EC-03, EC-06 확장, EC-10 확장, 사용자 요청으로 노드 드래그-이동 확장, SQ-03 확장) 카드를
+    /// 더블클릭(<c>e.ClickCount == 2</c>)하면 그 카드의 Tag(NodeId)로 <see cref="OpenPropertyDialog"/>를
+    /// 엽니다 — 단, (SQ-03) 그 노드가 <c>sequenceTrigger</c> 타입이고 Ctrl이 눌려있지 않으면 대신
+    /// <see cref="OpenSequenceTriggerWindow"/>로 Sequence Editor 창을 엽니다("편도" 내비게이션 —
+    /// 이 노드 타입만 더블클릭의 기본 의미를 "탐색"으로 바꾸므로, 속성(sequenceId) 편집은
+    /// Ctrl+더블클릭으로 남겨둡니다). 한 번 클릭이면 Ctrl(<see cref="ModifierKeys.Control"/>)이 눌려
+    /// 있는지로 갈립니다 — (EC-10) Ctrl+클릭은 <see cref="ToggleNodeSelection"/>으로 그 노드만 선택
+    /// 목록에 추가/제거(여러 노드를 모아 <see cref="GroupSelectedNodes"/>로 그룹 묶기, 이 경로는
+    /// 드래그-이동 후보로는 삼지 않습니다 — 여러 노드 동시 이동은 이번 요청 범위 밖), (EC-06) Ctrl
+    /// 없는 일반 클릭은 <see cref="SelectNode"/>로 "이 노드 하나만" 선택(다른 선택은 모두 해제)한 뒤
     /// <see cref="BeginNodeDrag"/>로 이동 후보 상태를 시작합니다(실제로 옮겨질지는
     /// <see cref="ContinueNodeDrag"/>의 임계값 판정에 달려 있어, 그대로 마우스를 놓으면 평범한
     /// 클릭-선택과 동일하게 동작합니다). 어느 경우든 <paramref name="e"/>.Handled를 <c>true</c>로
@@ -1911,7 +1928,13 @@ public partial class FlowCanvasView : UserControl
             return;
         }
 
-        if (e.ClickCount == 2)
+        var isSequenceTrigger = _nodeConfigs.TryGetValue(nodeId, out var cfg) && cfg.Type == "sequenceTrigger";
+
+        if (e.ClickCount == 2 && isSequenceTrigger && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            OpenSequenceTriggerWindow(nodeId);
+        }
+        else if (e.ClickCount == 2)
         {
             OpenPropertyDialog(nodeId);
         }
@@ -1926,6 +1949,63 @@ public partial class FlowCanvasView : UserControl
         }
 
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// (SQ-03) <paramref name="nodeId"/>(<c>sequenceTrigger</c> 타입 노드)의 <c>sequenceId</c> 속성값을
+    /// 읽어 <see cref="SequenceWindowManager.ShowOrActivate"/>를 호출합니다("편도" 내비게이션) — 이
+    /// 창을 소유할 최상위 <c>MainWindow</c>는 <see cref="Window.GetWindow(System.Windows.DependencyObject)"/>로
+    /// 얻습니다(이 뷰는 항상 MainWindow 안에 도킹되어 있음, ED-B1부터의 레이아웃 전제).
+    /// </summary>
+    private void OpenSequenceTriggerWindow(string nodeId)
+    {
+        if (!_nodeConfigs.TryGetValue(nodeId, out var config))
+        {
+            return;
+        }
+
+        if (Window.GetWindow(this) is not NodeSharp.Editor.MainWindow owner)
+        {
+            return;
+        }
+
+        var sequenceId = config.Properties.TryGetValue("sequenceId", out var raw) && raw is not null
+            ? (raw is JsonElement je ? (je.ValueKind == JsonValueKind.String ? je.GetString() : je.ToString()) : raw.ToString())
+            : null;
+
+        SequenceWindowManager.ShowOrActivate(owner, sequenceId ?? string.Empty);
+    }
+
+    /// <summary>
+    /// <inheritdoc cref="IFlowNodeIndex.FindNodesBySequenceId"/> (SQ-03) <see cref="HighlightNodesByTagRef"/>/
+    /// <see cref="FindBrokenTagRefs"/>와 동일한 방식으로(노드 타입을 하드코딩하지 않고
+    /// <see cref="PropertyFieldType.SequenceRef"/> 필드를 PropertySchema에서 찾아 값을 비교) 모든 Flow
+    /// (활성 탭 여부와 무관 — <see cref="_nodeConfigs"/>는 전체 탭의 노드를 담고 있음, <see cref="NavigateToNode"/>와
+    /// 동일한 전제)를 통틀어 <paramref name="sequenceId"/>를 가리키는 노드를 찾습니다.
+    /// </summary>
+    public IReadOnlyList<NodeRef> FindNodesBySequenceId(string sequenceId)
+    {
+        var results = new List<NodeRef>();
+        foreach (var config in _nodeConfigs.Values)
+        {
+            if (!_registry.Descriptors.TryGetValue(config.Type, out var descriptor))
+            {
+                continue; // 등록 안 된 타입(MissingNode, EC-08) — FindBrokenTagRefs와 동일하게 검사 범위 밖.
+            }
+
+            var matches = descriptor.PropertySchema.Any(field =>
+                field.Type == PropertyFieldType.SequenceRef &&
+                config.Properties.TryGetValue(field.Key, out var raw) &&
+                raw is not null &&
+                ReadTagRefValue(raw) == sequenceId);
+
+            if (matches)
+            {
+                results.Add(new NodeRef(config.FlowId, config.Id, config.Name));
+            }
+        }
+
+        return results;
     }
 
     /// <summary>

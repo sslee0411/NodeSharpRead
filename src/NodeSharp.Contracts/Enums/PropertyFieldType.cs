@@ -72,5 +72,18 @@ public enum PropertyFieldType
     /// (<c>IconPickerDialog</c>, Font Awesome 아이콘 세트에서 클릭으로 선택)을 함께 그립니다 —
     /// <see cref="Color"/>와 동일하게 팔레트 선택과 직접 타이핑(이모지 등) 둘 다 지원합니다.
     /// </summary>
-    Icon
+    Icon,
+
+    /// <summary>
+    /// (SQ-03) 시퀀스 참조. <see cref="TagRef"/>와 대칭 구조로 "이 필드는 SequenceDefinition.Id를
+    /// 가리킨다"는 메타데이터를 선언합니다 — <c>FlowCanvasView.FindNodesBySequenceId</c>(<c>IFlowNodeIndex</c>
+    /// 구현)가 <see cref="TagRef"/>를 스캔하는 <c>HighlightNodesByTagRef</c>/<c>FindBrokenTagRefs</c>와
+    /// 동일한 방식(노드 타입을 하드코딩하지 않고 PropertySchema에서 이 타입의 필드를 찾아 값을 비교)으로
+    /// 이 필드를 스캔합니다. 아직 시퀀스 목록을 실시간으로 보여주는 카탈로그(<c>TagCatalog</c>에
+    /// 대응하는 시퀀스판)가 없어(<c>sequences.json</c> 저장·로드 자체가 SQ-04 이후 범위)
+    /// <c>NodePropertyDialog.CreateInputControl</c>은 지금은 이 타입도 <c>default</c> 분기(단순
+    /// TextBox)로 처리합니다 — 사용자가 시퀀스 Id 문자열을 직접 입력합니다(<see cref="TagRef"/>가
+    /// <c>TagCatalog</c> 도입 전 거쳤던 것과 동일한 임시 단계).
+    /// </summary>
+    SequenceRef
 }

@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    NodeSharp.Nodes.SequenceTrigger
+    ====================
+    캔버스에서 특정 SequenceDefinition을 가리키는 자리표시자 노드(SQ-03, 편도/역방향 내비게이션의
+    "편도" 진입점) 코어 플러그인. 02번 설계 문서 1번 탭 폴더 구조(nodes\ ← 코어 노드 플러그인, 개별
+    csproj, Contracts만 참조)에 따라 이 프로젝트는 NodeSharp.Contracts 하나만 참조합니다.
+
+    Step: SQ-03 (03번 개발 Step맵.html, Phase 10 — 편도/역방향 내비게이션)
+    - 착수 전 조사에서 SequenceTriggerNode(IFlowNodeIndex/NodeRef 계약이 CT-04b에서 문서 예시로만
+      언급하던 노드 타입)가 어느 Step에도 별도로 배정돼 있지 않음을 발견 — AskUserQuestion으로 사용자
+      확인("SequenceTriggerNode 범위") 결과 "에디터 전용 최소 노드로 지금 만들기(권장)" 선택. 팔레트에
+      나타나고 sequenceId 속성을 가진 최소 IFlowNode 구현만 지금 만들고, 실제 실행 시
+      SequenceExecutor(SQ-01)를 호출하는 런타임 배선은 후속 Step으로 명시적으로 미룬다(PlcTagReadNode가
+      ED-D04→PD-01e로 단계적으로 완성됐던 것과 동일한 패턴).
+    - SequenceTriggerNode.cs 신규 — IFlowNode 직접 구현(PlcTagReadNode와 동일한 선례,
+      LssLibNodeAdapterBase는 실제 코드베이스 어디에도 없음). 입력 1개·출력 1개, OnInputAsync는 아직
+      패스스루(위 범위 축소 근거).
+    - SequenceTriggerNodeType.cs 신규 — PlcTagReadNodeType과 동일한 관례로 INodeTypeDescriptor 직접
+      구현. PropertySchema에 "sequenceId"(PropertyFieldType.SequenceRef, 신규 열거값, Required) 필드
+      1개.
+    - src\NodeSharp.Contracts\Enums\PropertyFieldType.cs에 SequenceRef 신규 추가(TagRef와 대칭 구조).
+      src\NodeSharp.Editor\Views\NodePropertyDialog.xaml.cs의 CreateInputControl은 아직 시퀀스
+      카탈로그가 없어(sequences.json 저장·로드 자체가 SQ-04 이후 범위) SequenceRef도 default 분기(단순
+      TextBox)로 처리 — TagRef가 TagCatalog 도입 전 거쳤던 것과 동일한 임시 단계.
+    - src\NodeSharp.Editor\Views\FlowCanvasView.xaml.cs 수정 — IFlowNodeIndex 구현 추가
+      (FindNodesBySequenceId, HighlightNodesByTagRef/FindBrokenTagRefs와 동일한 PropertySchema 스캔
+      방식), 카드 더블클릭 분기에 sequenceTrigger 타입 특수 처리(일반 더블클릭은 Sequence Editor 창
+      열기 "편도", Ctrl+더블클릭은 기존 OpenPropertyDialog로 속성 편집 — 이 노드 타입만 더블클릭의
+      기본 의미를 "탐색"으로 바꾸므로 속성 편집 접근 경로를 별도로 남겨둠). NodeSharp.Editor.csproj/
+      PaletteView.xaml.cs에 ScanAssembly 배선 추가(기존 노드들과 동일한 관례).
+    - src\NodeSharp.Editor\Views\SequenceEditorWindow.xaml(.cs)/src\NodeSharp.Editor\Core\
+      SequenceWindowManager.cs 수정 — "시퀀스 Id" 입력란 + "호출하는 Flow 노드 보기" 버튼 추가(SQ-02
+      placeholder에 최소 기능 보강), 매니저가 IFlowNodeIndex.FindNodesBySequenceId 결과로
+      FlowCanvasView.NavigateToNode(EC-12 기존 메서드 재사용)를 호출해 캔버스 하이라이트(역방향).
+      완료 기준의 "양방향 확인"을 위한 최소 배선 — 검색 결과가 2개 이상일 때의 선택 UI는 범위 축소(첫
+      번째 결과로 이동, 다중 선택 목록은 후속 Step).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>NodeSharp.Nodes.SequenceTrigger</RootNamespace>
+    <AssemblyName>NodeSharp.Nodes.SequenceTrigger</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 02번 문서 1번 탭 폴더 구조 — 코어 노드 플러그인은 Contracts(+필요시 Util)만 참조. 이 노드는
+         스케줄러 등 Util 기능이 필요 없어 Contracts만 참조합니다. -->
+    <ProjectReference Include="..\..\src\NodeSharp.Contracts\NodeSharp.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
