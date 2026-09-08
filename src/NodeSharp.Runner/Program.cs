@@ -46,6 +46,7 @@ using NodeSharp.Runner;
 using NodeSharp.Runner.Core;
 using NodeSharp.Runner.Diagnostics;
 using NodeSharp.Runner.Health;
+using NodeSharp.Runtime;
 
 // 0) 크래시 덤프 수집기 등록(RN-06a) — 이 프로그램이 뭘 하기도 전에 가장 먼저 실행돼야
 //    이후 어디서 예외가 나도 놓치지 않고 덤프·이벤트 로그를 남길 수 있다.
@@ -84,6 +85,14 @@ builder.Services.AddSingleton<MsgTraceStore>();
 // 3-4) (PD-01e) SimulationSlaveHolder(현재 시뮬레이션 모드 PLC별 VirtualModbusSlave, 자체 문서 참고)
 //      등록 — Worker(쓰기)와 MonitorHub(읽기, SetSimulatedRegister)가 같은 인스턴스를 나눠 쓴다.
 builder.Services.AddSingleton<SimulationSlaveHolder>();
+
+// 3-5) (SQ-05) SequenceCheckpointStore(Runtime — 단계 전환마다 원자적으로 기록되는 체크포인트
+//      저장소, 자체 문서 참고)와 SequenceCheckpointRecoveryService(그 저장소를 기동 시 읽어
+//      상태별로 처리하는 1회성 서비스, 자체 문서 참고) 등록 — Worker(RecoverAsync 호출)와
+//      MonitorHub(ResolveSequenceCheckpoint 호출)가 같은 인스턴스를 나눠 쓴다
+//      (CurrentEngineHolder/RunnerTokenStore와 동일한 "Worker가 쓰고 Hub가 읽는" 배선 관례).
+builder.Services.AddSingleton<SequenceCheckpointStore>();
+builder.Services.AddSingleton<SequenceCheckpointRecoveryService>();
 
 // 4) 이 서버가 어느 주소:포트로 열릴지 지정. localhost(내 컴퓨터 안에서만 접속 가능)로
 //    한정해 외부 네트워크에서는 접속할 수 없게 막는다(기본 포트 47500, 02번 문서 7번 탭 카드11).

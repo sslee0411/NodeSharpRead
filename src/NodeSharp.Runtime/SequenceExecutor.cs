@@ -50,6 +50,17 @@ namespace NodeSharp.Runtime;
 /// 않습니다 — <see cref="Pause"/>/<see cref="Resume"/>는 매 단계 진입 직전에만 확인하는 최소 구현(진행
 /// 중인 단계 도중에는 다음 단계로 넘어가기 전까지 즉시 멈추지 않음)으로 두고, 정밀한 즉시 일시정지는
 /// 필요해지는 후속 Step(SQ-02 이후 Sequence Editor 연동)에서 재검토합니다.</item>
+/// <item><b>(SQ-05) 크래시 복구 체크포인트 연동</b>: 사용자 확인(2026-09-08 세션, "SQ-05 범위" 질문 —
+/// "체크포인트 인프라만 지금 구현(권장)")에 따라, 생성자에 <see cref="SequenceCheckpointStore"/>와
+/// 저장 경로(<c>checkpointDataDirectory</c>)를 선택적으로 받아 <see cref="PublishStepChangedAsync"/>
+/// 호출 시점(=단계 전환마다, <see cref="CurrentStepName"/>이 갱신된 직후)마다 함께 체크포인트를
+/// 원자적으로 기록하도록 확장했습니다. 두 값 다 지정됐고 <see cref="CurrentStepName"/>이 <c>null</c>이
+/// 아닐 때만 기록하며(생성자 직후처럼 아직 첫 단계에 진입하지 않은 시점은 기록하지 않음), 체크포인트
+/// 저장은 <see cref="CancellationToken.None"/>으로 수행합니다 — <see cref="Abort"/>로 인해
+/// <c>RunAsync</c>의 취소 토큰이 이미 취소된 상태에서도(=크래시/안전정지로 향하는 마지막 전환) 마지막
+/// 상태만큼은 반드시 디스크에 남아야 재기동 시 <c>SequenceCheckpointRecoveryService</c>(Runner)가 정확한
+/// 마지막 상태를 읽을 수 있기 때문입니다. 두 값이 모두 지정되지 않으면(기존 호출자·테스트) 이 클래스의
+/// 동작은 SQ-05 이전과 완전히 동일합니다(체크포인트 저장 자체를 건너뜀).</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -94,6 +105,8 @@ public sealed class SequenceExecutor : IDisposable
     private readonly List<SequenceStepDto> _orderedSteps;
     private readonly Dictionary<string, SequenceStepDto> _stepsByName;
     private readonly IDisposable? _alarmSubscription;
+    private readonly SequenceCheckpointStore? _checkpointStore;
+    private readonly string? _checkpointDataDirectory;
 
     private CancellationTokenSource? _abortCts;
 
@@ -118,6 +131,12 @@ public sealed class SequenceExecutor : IDisposable
     /// <param name="triggerEvaluator"><c>null</c>이면 <see cref="SimpleSequenceTriggerEvaluator"/>(임시 구현, 클래스 XML 문서 참고).</param>
     /// <param name="resolveVariable">진입조건 식 안의 식별자(주로 태그 Id)를 값으로 바꿔주는 콜백. <c>null</c>이면 항상 <c>null</c> 반환.</param>
     /// <param name="pollIntervalMs">진입조건이 거짓일 때 재확인 간격(밀리초). 최소 1로 보정됩니다.</param>
+    /// <param name="checkpointStore">
+    /// (SQ-05) 단계 전환마다 체크포인트를 기록할 저장소. <c>null</c>이면(기본값) 체크포인트를 전혀
+    /// 기록하지 않습니다 — <paramref name="checkpointDataDirectory"/>도 함께 지정해야 실제로 기록됩니다
+    /// (클래스 XML 문서의 "(SQ-05) 크래시 복구 체크포인트 연동" 항목 참고).
+    /// </param>
+    /// <param name="checkpointDataDirectory">(SQ-05) 체크포인트 파일(<c>sequences.checkpoint.json</c>)을 저장할 디렉터리. <c>checkpointStore</c>와 함께 지정해야 합니다.</param>
     /// <exception cref="ArgumentException"><paramref name="definition"/>.Steps에 같은 Name이 2개 이상일 때.</exception>
     public SequenceExecutor(
         SequenceDefinition definition,
@@ -125,7 +144,9 @@ public sealed class SequenceExecutor : IDisposable
         IReadOnlyDictionary<string, ISequenceStepAction>? actions = null,
         ISequenceTriggerEvaluator? triggerEvaluator = null,
         Func<string, object?>? resolveVariable = null,
-        int pollIntervalMs = 20)
+        int pollIntervalMs = 20,
+        SequenceCheckpointStore? checkpointStore = null,
+        string? checkpointDataDirectory = null)
     {
         _definition = definition ?? throw new ArgumentNullException(nameof(definition));
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -133,6 +154,8 @@ public sealed class SequenceExecutor : IDisposable
         _triggerEvaluator = triggerEvaluator ?? new SimpleSequenceTriggerEvaluator();
         _resolveVariable = resolveVariable ?? (_ => null);
         _pollIntervalMs = Math.Max(1, pollIntervalMs);
+        _checkpointStore = checkpointStore;
+        _checkpointDataDirectory = checkpointDataDirectory;
 
         _orderedSteps = definition.Steps.OrderBy(s => s.Order).ToList();
         _stepsByName = new Dictionary<string, SequenceStepDto>();
@@ -183,7 +206,7 @@ public sealed class SequenceExecutor : IDisposable
             }
 
             CurrentStepName = current.Name;
-            PublishStepChanged(stopwatch.ElapsedMilliseconds);
+            await PublishStepChangedAsync(stopwatch.ElapsedMilliseconds);
 
             var outcome = await RunStepAsync(current, _abortCts.Token);
             switch (outcome)
@@ -223,7 +246,7 @@ public sealed class SequenceExecutor : IDisposable
             State = SequenceState.Completed;
         }
 
-        PublishStepChanged(stopwatch.ElapsedMilliseconds);
+        await PublishStepChangedAsync(stopwatch.ElapsedMilliseconds);
         return State;
     }
 
@@ -331,11 +354,25 @@ public sealed class SequenceExecutor : IDisposable
     private SequenceStepDto? ResolveBranch(string? targetStepName) =>
         targetStepName is not null && _stepsByName.TryGetValue(targetStepName, out var step) ? step : null;
 
-    private void PublishStepChanged(long elapsedMs)
+    /// <summary>
+    /// <see cref="SequenceStepChangedEvent"/>를 발행하고, (SQ-05) 체크포인트 저장소가 구성돼 있으면
+    /// <see cref="SequenceCheckpointStore.Checkpoint"/>도 함께 기록합니다. 체크포인트 저장은
+    /// <see cref="CancellationToken.None"/>으로 수행합니다 — 생성자 XML 문서의 "(SQ-05) 크래시 복구
+    /// 체크포인트 연동" 항목 참고(Abort로 인한 취소 중에도 마지막 상태는 반드시 기록되어야 함).
+    /// </summary>
+    private async Task PublishStepChangedAsync(long elapsedMs)
     {
-        if (CurrentStepName is not null)
+        if (CurrentStepName is null)
         {
-            _eventBus.Publish(new SequenceStepChangedEvent(_definition.Id, CurrentStepName, State, elapsedMs));
+            return;
+        }
+
+        _eventBus.Publish(new SequenceStepChangedEvent(_definition.Id, CurrentStepName, State, elapsedMs));
+
+        if (_checkpointStore is not null && _checkpointDataDirectory is not null)
+        {
+            var checkpoint = new SequenceCheckpointStore.Checkpoint(_definition.Id, CurrentStepName, State, DateTime.UtcNow);
+            await _checkpointStore.SaveAsync(checkpoint, _checkpointDataDirectory, CancellationToken.None);
         }
     }
 }

@@ -35,6 +35,9 @@ namespace NodeSharp.Runner.Core;
 /// <item><b>(PD-01e) <see cref="SetSimulatedRegister"/></b>: Editor의 <c>SimulatorPanelView</c>가
 /// 이제 <c>VirtualModbusSlave</c>를 직접 들고 있지 않고(Runner가 소유 — 클래스 문서의 "Runner로
 /// 이전 + SignalR 원격제어" 설계 변경 참고) 이 네 번째 클라이언트→서버 메서드로 원격 기입만 합니다.</item>
+/// <item><b>(SQ-05) <see cref="ResolveSequenceCheckpoint"/></b>: <see cref="SequenceCheckpointRecoveryService"/>가
+/// 기동 시 방송한 <c>"sequenceCheckpointNeedsConfirmation"</c>에 대해 Editor가 사용자의 선택
+/// (재개/처음부터/무시)을 돌려보내는 다섯 번째 클라이언트→서버 메서드입니다 — 자체 문서 참고.</item>
 /// </list>
 /// </remarks>
 public sealed class MonitorHub : Hub
@@ -43,18 +46,28 @@ public sealed class MonitorHub : Hub
     private readonly RunnerTokenStore _tokenStore;
     private readonly MsgTraceStore _msgTraceStore;
     private readonly SimulationSlaveHolder _simulationSlaveHolder;
+    private readonly SequenceCheckpointRecoveryService? _sequenceCheckpointRecoveryService;
 
     /// <summary>
     /// DI가 <see cref="AddSingleton{TService}"/>로 등록된 <see cref="CurrentEngineHolder"/>/
     /// <see cref="RunnerTokenStore"/>/<see cref="MsgTraceStore"/>(LK-04)/<see cref="SimulationSlaveHolder"/>
-    /// (PD-01e)를 자동으로 주입합니다.
+    /// (PD-01e)를 자동으로 주입합니다. <paramref name="sequenceCheckpointRecoveryService"/>(SQ-05)는
+    /// 선택적으로 주입받습니다 — 생략하면(예: 기존 테스트) <see cref="ResolveSequenceCheckpoint"/>
+    /// 호출이 조용히 아무 것도 하지 않습니다(하위 호환, <see cref="Worker"/>의 다른 선택적 의존성과
+    /// 동일한 관례).
     /// </summary>
-    public MonitorHub(CurrentEngineHolder engineHolder, RunnerTokenStore tokenStore, MsgTraceStore msgTraceStore, SimulationSlaveHolder simulationSlaveHolder)
+    public MonitorHub(
+        CurrentEngineHolder engineHolder,
+        RunnerTokenStore tokenStore,
+        MsgTraceStore msgTraceStore,
+        SimulationSlaveHolder simulationSlaveHolder,
+        SequenceCheckpointRecoveryService? sequenceCheckpointRecoveryService = null)
     {
         _engineHolder = engineHolder;
         _tokenStore = tokenStore;
         _msgTraceStore = msgTraceStore;
         _simulationSlaveHolder = simulationSlaveHolder;
+        _sequenceCheckpointRecoveryService = sequenceCheckpointRecoveryService;
     }
 
     /// <summary>
@@ -131,4 +144,18 @@ public sealed class MonitorHub : Hub
         _simulationSlaveHolder.TryGet(plcId)?.SetRegister(address, (ushort)value);
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// (SQ-05) Editor가 <c>"sequenceCheckpointNeedsConfirmation"</c> 알림을 받고 사용자의 선택을
+    /// 확인한 뒤 이 메서드를 호출합니다. <see cref="SequenceCheckpointRecoveryService.ResolveAsync"/>에
+    /// 그대로 위임만 합니다(<see cref="TriggerInject"/>·<see cref="GetMsgTrace"/>와 동일한 얇은 창구
+    /// 원칙). <see cref="Hub.Context"/> 대신 <see cref="AppContext.BaseDirectory"/>를 씁니다 —
+    /// <see cref="ReissueToken"/>과 동일한 이유(Runner의 데이터 폴더는 항상 실행 파일 폴더 기준).
+    /// <see cref="_sequenceCheckpointRecoveryService"/>가 주입되지 않았으면(하위 호환) 아무 것도
+    /// 하지 않습니다.
+    /// </summary>
+    /// <param name="sequenceId">확인 대상 시퀀스의 Id.</param>
+    /// <param name="choice"><see cref="SequenceCheckpointRecoveryService.ResolveAsync"/> 문서 참고 — <c>"restart"</c>/<c>"ignore"</c>/<c>"resume"</c>.</param>
+    public Task ResolveSequenceCheckpoint(string sequenceId, string choice) =>
+        _sequenceCheckpointRecoveryService?.ResolveAsync(sequenceId, choice, AppContext.BaseDirectory, CancellationToken.None) ?? Task.CompletedTask;
 }

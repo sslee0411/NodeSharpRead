@@ -16,6 +16,10 @@ namespace NodeSharp.Editor.Core;
 /// 잇습니다 — <see cref="SequenceEditorWindow.FindCallersRequested"/>를 구독해
 /// <c>MainWindow.FlowCanvas</c>(<see cref="IFlowNodeIndex"/> 구현)로 조회한 뒤
 /// <c>FlowCanvasView.NavigateToNode</c>(EC-12, 기존 메서드 재사용)로 캔버스를 전환·하이라이트합니다.
+/// (SQ-04, ★ 보강) 창을 새로 만들 때 <see cref="SequenceEditorWindow.History"/>에
+/// <c>owner.FlowCanvas.History</c>(EC-07 공유 CommandHistory)를, <see cref="SequenceEditorWindow.DataDirectory"/>에
+/// <c>owner.FlowCanvas.DataDirectory</c>를 그대로 채워줍니다 — <c>StructureTab.History = FlowCanvas.History;</c>
+/// (ED-D13)와 동일한 배선을 이 매니저의 창 생성 지점 한 곳에 모아둔 것입니다.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
@@ -78,7 +82,15 @@ public static class SequenceWindowManager
             return;
         }
 
-        var window = new SequenceEditorWindow { Owner = owner };
+        var window = new SequenceEditorWindow
+        {
+            Owner = owner,
+            // (SQ-04) StructureTab.History = FlowCanvas.History;(위 클래스 주석 ED-D13 단락)와 동일한
+            // 배선 — 시퀀스 단계 추가/삭제 커맨드도 캔버스·구조 트리와 같은 CommandHistory 스택을 쓴다.
+            History = owner.FlowCanvas.History,
+            // (SQ-04) sequences.json도 flows.json/device.json과 같은 데이터 폴더에 둔다.
+            DataDirectory = owner.FlowCanvas.DataDirectory,
+        };
         if (initialSequenceId is not null)
         {
             window.SetSequenceId(initialSequenceId);

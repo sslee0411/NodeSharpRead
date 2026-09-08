@@ -291,4 +291,64 @@ public class SequenceExecutorTests
 
         Assert.Throws<ArgumentException>(() => new SequenceExecutor(def, NewBus()));
     }
+
+    /// <summary>
+    /// (SQ-05) checkpointStore/checkpointDataDirectory를 함께 지정하면 단계 전환마다(마지막 전환 포함)
+    /// SequenceCheckpointStore에 현재 상태가 기록되는지 확인합니다 — 완료 기준: 03번 Step맵 SQ-05.
+    /// </summary>
+    [Fact]
+    public async Task 체크포인트_저장소가_구성되면_시퀀스_완료시_마지막_단계_상태가_기록된다()
+    {
+        var calls = new List<string>();
+        var action = new FakeAction(calls);
+        var def = new SequenceDefinition(
+            "seq-checkpoint-1", "체크포인트 기록 확인",
+            new[]
+            {
+                new SequenceStepDto(0, "1단계", "true", "Do", new Dictionary<string, object?>()),
+                new SequenceStepDto(1, "2단계", "true", "Do", new Dictionary<string, object?>()),
+            },
+            Array.Empty<string>());
+        var checkpointStore = new SequenceCheckpointStore();
+        var dataDirectory = Path.Combine(Path.GetTempPath(), "NodeSharpTests_" + Guid.NewGuid().ToString("N"));
+
+        try
+        {
+            var executor = new SequenceExecutor(
+                def, NewBus(), new Dictionary<string, ISequenceStepAction> { ["Do"] = action },
+                checkpointStore: checkpointStore, checkpointDataDirectory: dataDirectory);
+
+            var final = await executor.RunAsync();
+
+            Assert.Equal(SequenceState.Completed, final);
+            var checkpoint = await checkpointStore.TryLoadAsync("seq-checkpoint-1", dataDirectory);
+            Assert.NotNull(checkpoint);
+            Assert.Equal("2단계", checkpoint!.CurrentStepId);
+            Assert.Equal(SequenceState.Completed, checkpoint.State);
+        }
+        finally
+        {
+            if (Directory.Exists(dataDirectory))
+            {
+                Directory.Delete(dataDirectory, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>(SQ-05) checkpointStore를 지정하지 않으면(기존 호출자) 체크포인트 파일이 전혀 생성되지 않아야 합니다 — SQ-05 이전과 동일한 동작 보장.</summary>
+    [Fact]
+    public async Task 체크포인트_저장소를_지정하지_않으면_체크포인트_파일이_생성되지_않는다()
+    {
+        var calls = new List<string>();
+        var action = new FakeAction(calls);
+        var def = new SequenceDefinition(
+            "seq-checkpoint-2", "체크포인트 미구성 확인",
+            new[] { new SequenceStepDto(0, "1단계", "true", "Do", new Dictionary<string, object?>()) },
+            Array.Empty<string>());
+        var executor = new SequenceExecutor(def, NewBus(), new Dictionary<string, ISequenceStepAction> { ["Do"] = action });
+
+        var final = await executor.RunAsync();
+
+        Assert.Equal(SequenceState.Completed, final);
+    }
 }

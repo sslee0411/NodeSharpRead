@@ -44,6 +44,10 @@ namespace NodeSharp.Runner;
 /// <see cref="SimulationSlaveHolder"/>도 선택적으로 주입받아, 만든 <c>VirtualModbusSlave</c>를 그
 /// 홀더에 등록해 <c>MonitorHub.SetSimulatedRegister</c>(Editor의 SimulatorPanelView가 원격으로
 /// 호출)가 접근할 수 있게 합니다.
+/// (SQ-05) 생성자가 <see cref="SequenceCheckpointRecoveryService"/>도 같은 방식(선택적)으로
+/// 주입받습니다 — 있으면 <c>StartupSequencer</c>의 <c>"sequences.json"</c> 단계가 성공했을 때
+/// <see cref="SequenceCheckpointRecoveryService.RecoverAsync"/>를 호출해 크래시 복구 체크포인트를
+/// 처리합니다(클래스 자체 문서 참고). 생략하면(하위 호환) 이 호출 자체를 건너뜁니다.
 /// </summary>
 /// <example>
 /// <code>
@@ -65,6 +69,7 @@ public sealed class Worker : BackgroundService
     private readonly CurrentEngineHolder? _currentEngineHolder;
     private readonly MsgTraceStore? _msgTraceStore;
     private readonly SimulationSlaveHolder? _simulationSlaveHolder;
+    private readonly SequenceCheckpointRecoveryService? _sequenceCheckpointRecoveryService;
 
     /// <summary>(LK-01) <see cref="StopAsync"/>/<see cref="Dispose"/>에서 감시를 정리할 수 있도록 필드로 보관합니다.</summary>
     private FlowFileWatcher? _flowFileWatcher;
@@ -105,7 +110,8 @@ public sealed class Worker : BackgroundService
         StatusBroadcaster? statusBroadcaster = null,
         CurrentEngineHolder? currentEngineHolder = null,
         MsgTraceStore? msgTraceStore = null,
-        SimulationSlaveHolder? simulationSlaveHolder = null)
+        SimulationSlaveHolder? simulationSlaveHolder = null,
+        SequenceCheckpointRecoveryService? sequenceCheckpointRecoveryService = null)
     {
         _healthState = healthState;
         _clockDriftMonitor = clockDriftMonitor ?? new ClockDriftMonitor();
@@ -114,6 +120,7 @@ public sealed class Worker : BackgroundService
         _currentEngineHolder = currentEngineHolder;
         _msgTraceStore = msgTraceStore;
         _simulationSlaveHolder = simulationSlaveHolder;
+        _sequenceCheckpointRecoveryService = sequenceCheckpointRecoveryService;
     }
 
     /// <summary>
@@ -136,6 +143,16 @@ public sealed class Worker : BackgroundService
     {
         var baseDirectory = AppContext.BaseDirectory;
         var stages = await new StartupSequencer().RunAsync(baseDirectory, stoppingToken);
+
+        // (SQ-05) sequences.json 단계가 성공했을 때만 체크포인트 복구를 시도한다 — 그 파일 자체가
+        // 없거나 손상됐으면(단계 실패) 복구할 체크포인트도 의미가 없다(StartupSequencer의 "단계별
+        // 격리" 원칙과 동일한 정신 — SequenceCheckpointRecoveryService.RecoverAsync 자체도 파일이
+        // 없으면 조용히 넘어가지만, 여기서 먼저 걸러 불필요한 파일 접근 자체를 생략한다).
+        if (_sequenceCheckpointRecoveryService is not null
+            && stages.Any(s => s.FileName == "sequences.json" && s.Succeeded))
+        {
+            await _sequenceCheckpointRecoveryService.RecoverAsync(baseDirectory, stoppingToken);
+        }
 
         var registry = new NodeTypeRegistry(contractsVersion: "1.0.0");
         var deployer = new FlowDeployer();

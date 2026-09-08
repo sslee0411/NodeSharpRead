@@ -90,6 +90,16 @@ namespace NodeSharp.Editor;
 /// 닫을 때 <c>Dispose()</c>·<c>ClearOnCleanExit()</c>로 정리합니다. 설계 근거(왜 02번 문서 8번 탭
 /// 카드17 원안의 통합 <c>EditorSessionState</c> 대신 각 뷰의 기존 더티 판정을 재사용했는지 등)는
 /// <see cref="AutosaveService"/> 클래스 자체 주석 참고.
+/// (SQ-05) <see cref="OnWindowLoaded"/>가 <see cref="EditorMonitorClient.SequenceCheckpointConfirmationNeeded"/>/
+/// <see cref="EditorMonitorClient.SequenceAutoSafeStopped"/> 2개 이벤트를 추가로 구독합니다(위 5개와
+/// 동일하게 <see cref="SafeDispatcherInvoke"/>로 감쌈). 전자는 02번 문서 8번 탭 "★ 크래시 복구"
+/// 카드의 의도대로 <see cref="MessageBox"/>(<see cref="MessageBoxButton.YesNoCancel"/>)로 재개/
+/// 처음부터/무시를 물어 <c>_monitorClient.ResolveSequenceCheckpointAsync</c>로 응답합니다(
+/// <see cref="OnSequenceCheckpointConfirmationNeeded"/> 참고) — 완전히 커스텀한 확인 다이얼로그
+/// 창을 새로 만드는 대신 WPF 기본 <see cref="MessageBox"/>의 3버튼 조합을 그대로 쓰는 범위 축소
+/// 판단입니다(설계 단계에서 실용적으로 결정 — 완료 기준이 "3가지 선택지를 제공"까지만 요구, 버튼
+/// 문구가 재개/처음부터/무시 그대로가 아니어도 무방하다고 판단). 후자는 정보성 알림이라 응답 없이
+/// <see cref="MessageBox"/>(OK)로만 안내합니다(<see cref="OnSequenceAutoSafeStopped"/> 참고).
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -186,6 +196,9 @@ public partial class MainWindow : Window
         // (LK-03) Runner가 다른 연결에 재발급을 알리면(이 창이 재발급을 트리거한 당사자가 아니면)
         // 스스로 끊고 사용자에게 새 토큰 재입력을 안내한다.
         _monitorClient.TokenInvalidatedByServer += () => SafeDispatcherInvoke(OnTokenInvalidatedByServer);
+        // (SQ-05) Runner 기동 시 발견한 체크포인트 알림 2종 — 클래스 remarks "SQ-05" 항목 참고.
+        _monitorClient.SequenceCheckpointConfirmationNeeded += evt => SafeDispatcherInvoke(() => OnSequenceCheckpointConfirmationNeeded(evt));
+        _monitorClient.SequenceAutoSafeStopped += evt => SafeDispatcherInvoke(() => OnSequenceAutoSafeStopped(evt));
 
         // (LK-02b 후속) 이전에 사용자가 선택해둔 Runner 실행 파일 경로가 있으면 불러온다 — "Runner
         // 실행(배포)" 메뉴를 눌렀을 때 매번 다시 물어보지 않기 위함. (LK-03) 이 경로가 같은 PC
@@ -214,6 +227,63 @@ public partial class MainWindow : Window
             "토큰 재인증 필요",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
+    }
+
+    /// <summary>
+    /// (SQ-05) <see cref="EditorMonitorClient.SequenceCheckpointConfirmationNeeded"/> 수신 시
+    /// 호출됩니다 — Runner 기동 시 마지막 체크포인트가 <c>Faulted</c> 상태였던 시퀀스가 있었다는
+    /// 뜻입니다. <see cref="MessageBox"/>의 <see cref="MessageBoxButton.YesNoCancel"/> 3버튼을
+    /// 재개(Yes)/처음부터(No)/무시(Cancel)에 대응시켜(클래스 remarks "SQ-05" 항목의 범위 축소
+    /// 판단 참고) 사용자의 선택을 <c>_monitorClient.ResolveSequenceCheckpointAsync</c>로 돌려보냅니다.
+    /// 연결이 이미 끊겼으면(예: Runner가 그새 종료) 조용히 무시합니다 — 사용자가 나중에 Runner를
+    /// 다시 켜면 이 서비스가 다시 같은 체크포인트를 발견해 재확인을 요청하므로(체크포인트를 지우지
+    /// 않는 한) 응답을 놓쳐도 데이터가 유실되지 않습니다.
+    /// </summary>
+    private async void OnSequenceCheckpointConfirmationNeeded(SequenceCheckpointNoticeEvent evt)
+    {
+        var result = MessageBox.Show(
+            $"시퀀스 '{evt.SequenceId}'가 이전 종료 시 '{evt.CurrentStepId}' 단계에서 비정상 상태로 남아 있습니다.\n\n" +
+            "예(Y) = 재개, 아니오(N) = 처음부터, 취소 = 무시",
+            "시퀀스 체크포인트 확인",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Warning);
+
+        if (!_monitorClient.IsConnected)
+        {
+            return;
+        }
+
+        var choice = result switch
+        {
+            MessageBoxResult.Yes => "resume",
+            MessageBoxResult.No => "restart",
+            _ => "ignore",
+        };
+
+        try
+        {
+            await _monitorClient.ResolveSequenceCheckpointAsync(evt.SequenceId, choice);
+        }
+        catch (Exception)
+        {
+            // TriggerInjectAsync/GetMsgTraceAsync 등과 동일한 원칙 — 연결이 응답 전에 끊기는 경합은
+            // 조용히 무시한다(다음 기동 시 같은 체크포인트가 다시 확인 요청되므로 데이터 유실 없음).
+        }
+    }
+
+    /// <summary>
+    /// (SQ-05) <see cref="EditorMonitorClient.SequenceAutoSafeStopped"/> 수신 시 호출됩니다 — Runner
+    /// 기동 시 마지막 체크포인트가 <c>Running</c> 상태(=크래시)였던 시퀀스를 안전 우선 원칙으로
+    /// 자동으로 <c>Faulted</c> 처리했다는 정보성 알림입니다. 사용자의 응답이 필요 없으므로 확인(OK)
+    /// 버튼 하나짜리 <see cref="MessageBox"/>로만 알립니다.
+    /// </summary>
+    private void OnSequenceAutoSafeStopped(SequenceCheckpointNoticeEvent evt)
+    {
+        MessageBox.Show(
+            $"시퀀스 '{evt.SequenceId}'가 이전 실행 중('{evt.CurrentStepId}' 단계) 비정상 종료되어, 안전을 위해 자동으로 정지 처리했습니다.",
+            "시퀀스 자동 안전정지",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 
     /// <summary>

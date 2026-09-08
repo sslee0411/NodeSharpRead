@@ -65,6 +65,11 @@ namespace NodeSharp.Editor.Core;
 /// <item><b>(PD-01e) <see cref="SetSimulatedRegisterAsync"/></b>: <c>SimulatorPanelView</c>가 더 이상
 /// <c>VirtualModbusSlave</c>를 직접 소유하지 않고(Runner로 이전) 이 메서드로 원격 기입만 합니다 —
 /// <see cref="TriggerInjectAsync"/>와 동일한 원칙입니다.</item>
+/// <item><b>(SQ-05) <see cref="SequenceCheckpointConfirmationNeeded"/>/<see cref="SequenceAutoSafeStopped"/>/
+/// <see cref="ResolveSequenceCheckpointAsync"/></b>: Runner의 <c>SequenceCheckpointRecoveryService</c>가
+/// 기동 시 방송하는 <c>"sequenceCheckpointNeedsConfirmation"</c>(확인 필요)/<c>"sequenceAutoSafeStopped"</c>
+/// (정보성)를 위 4개 이벤트와 동일한 패턴으로 재발행하고, <c>MonitorHub.ResolveSequenceCheckpoint</c>
+/// 호출은 <see cref="TriggerInjectAsync"/>와 동일한 패턴으로 위임합니다.</item>
 /// </list>
 /// </remarks>
 /// <example>
@@ -121,6 +126,20 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     public event Action? TokenInvalidatedByServer;
 
     /// <summary>
+    /// (SQ-05) Runner가 "sequenceCheckpointNeedsConfirmation"으로 보낸 <see cref="SequenceCheckpointNoticeEvent"/>
+    /// 수신 시 발생 — 마지막 체크포인트가 <c>Faulted</c> 상태였다는 뜻이며, 구독부(<c>MainWindow</c>)가
+    /// 사용자에게 재개/처음부터/무시를 확인한 뒤 <see cref="ResolveSequenceCheckpointAsync"/>로 응답해야 합니다.
+    /// </summary>
+    public event Action<SequenceCheckpointNoticeEvent>? SequenceCheckpointConfirmationNeeded;
+
+    /// <summary>
+    /// (SQ-05) Runner가 "sequenceAutoSafeStopped"로 보낸 <see cref="SequenceCheckpointNoticeEvent"/>
+    /// 수신 시 발생 — 마지막 체크포인트가 <c>Running</c> 상태였다가(=크래시) 안전 우선 원칙으로
+    /// 자동으로 <c>Faulted</c> 처리됐다는 정보성 알림입니다(응답 불필요).
+    /// </summary>
+    public event Action<SequenceCheckpointNoticeEvent>? SequenceAutoSafeStopped;
+
+    /// <summary>
     /// <paramref name="runnerUrl"/>(기본 <c>http://localhost:47500/hubs/monitor</c>)로 연결을
     /// 준비합니다 — 이 시점엔 실제 네트워크 연결을 시도하지 않고, <see cref="StartAsync"/> 호출 시에만
     /// 시도합니다. (LK-03) <paramref name="token"/>이 있으면 <see cref="SetToken"/>으로 미리 인증
@@ -146,6 +165,10 @@ public sealed class EditorMonitorClient : IAsyncDisposable
         // 이 연결이 그 "다른 연결"이라면 옛 토큰으로는 곧 재연결이 거부되므로 스스로 끊고 사용자에게
         // 알려야 한다(구독·처리는 호출부 MainWindow 책임, 이 클래스는 재발행만 함).
         _connection.On("tokenReissued", () => TokenInvalidatedByServer?.Invoke());
+        // (SQ-05) Runner의 SequenceCheckpointRecoveryService가 기동 시 방송하는 2가지 알림 — 위
+        // 4개 모니터링 이벤트와 동일한 패턴으로 재발행만 한다.
+        _connection.On<SequenceCheckpointNoticeEvent>("sequenceCheckpointNeedsConfirmation", e => SequenceCheckpointConfirmationNeeded?.Invoke(e));
+        _connection.On<SequenceCheckpointNoticeEvent>("sequenceAutoSafeStopped", e => SequenceAutoSafeStopped?.Invoke(e));
 
         _connection.Closed += _ => { ConnectionStateChanged?.Invoke(false); return Task.CompletedTask; };
         _connection.Reconnecting += _ => { ConnectionStateChanged?.Invoke(false); return Task.CompletedTask; };
@@ -245,6 +268,17 @@ public sealed class EditorMonitorClient : IAsyncDisposable
     /// <param name="value">쓸 값(0~65535).</param>
     public Task SetSimulatedRegisterAsync(string plcId, int address, int value, CancellationToken ct = default) =>
         _connection.InvokeAsync("SetSimulatedRegister", plcId, address, value, ct);
+
+    /// <summary>
+    /// (SQ-05) <see cref="SequenceCheckpointConfirmationNeeded"/>를 받은 뒤 사용자의 선택을 Runner의
+    /// <c>MonitorHub.ResolveSequenceCheckpoint</c>로 돌려보냅니다(<see cref="TriggerInjectAsync"/>와
+    /// 동일한 패턴). 연결돼 있지 않으면 예외를 던지므로(동일한 원칙), 호출부가 미리
+    /// <see cref="IsConnected"/>를 확인하거나 예외를 처리해야 합니다.
+    /// </summary>
+    /// <param name="sequenceId">확인 대상 시퀀스의 Id.</param>
+    /// <param name="choice"><c>MonitorHub.ResolveSequenceCheckpoint</c> 문서 참고 — <c>"restart"</c>/<c>"ignore"</c>/<c>"resume"</c>.</param>
+    public Task ResolveSequenceCheckpointAsync(string sequenceId, string choice, CancellationToken ct = default) =>
+        _connection.InvokeAsync("ResolveSequenceCheckpoint", sequenceId, choice, ct);
 
     /// <summary>내부 <see cref="HubConnection"/>을 완전히 정리합니다(위 클래스 remarks의 "구독 해제" 항목).</summary>
     public async ValueTask DisposeAsync()
